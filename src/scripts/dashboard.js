@@ -317,6 +317,13 @@ function renderChart() {
   const canvas = document.getElementById('dashboardChart');
   if (!canvas) return;
   
+  // Check if Chart.js is loaded
+  if (typeof Chart === 'undefined') {
+    console.warn('Chart.js not loaded. Skipping chart rendering.');
+    renderChartLegend(); // Still render the legend with data
+    return;
+  }
+  
   const ctx = canvas.getContext('2d');
   
   // Destroy existing chart if it exists
