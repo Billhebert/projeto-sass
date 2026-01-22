@@ -6,169 +6,105 @@ const DEMO_DATA = {
   summary: {
     vendas: {
       total: 6954.98,
-      minis: [
-        { label: "Places/Coleta", value: 59.16, type: "flex" },
-        { label: "Flex", value: 1205.82, type: "flex" },
-        { label: "Full", value: 4890.00, type: "full" },
-        { label: "ME1", value: 800.00, type: "me" }
-      ]
+      faturamento: 6954.98
     },
-    custo: {
+    custo_imposto: {
       total: 3799.77,
       custo: 3530.70,
-      imposto: 269.07,
-      minis: [
-        { label: "Custo", value: 3530.70, type: "cost" },
-        { label: "Imposto", value: 269.07, type: "tax" }
-      ]
+      imposto: 269.07
     },
     tarifa: {
       total: 1266.52
     },
     frete: {
-      total: 679.93
+      total: 679.93,
+      comprador: 76.97,
+      vendedor: 602.96
     },
     margem: {
       total: 1285.73,
       pct: 18.49
+    },
+    modalidades: {
+      places: 59.18,
+      flex: 348.45,
+      full: 6547.37,
+      me1: 0.00,
+      outros: 0.00
+    },
+    qtd_vendas: {
+      aprovadas: 74,
+      unidades: 89,
+      canceladas: 0
+    },
+    ticket_medio_venda: 93.99,
+    ticket_medio_margem: 17.37,
+    devolucoes: {
+      valor: 0.00,
+      qtd: 0
     }
   },
   chart: {
     labels: ["Frete", "Tarifa", "Margem", "Custo", "Imposto"],
-    values: [8.7, 18.2, 18.5, 50.8, 3.8],
-    colors: ["#4AA3D8", "#F4C85A", "#33A37A", "#333333", "#EE7F66"]
-  },
-  rows: Array.from({ length: 123 }, (_, i) => ({
-    id: i + 1,
-    anuncio: `Produto Premium ${i + 1}`,
-    conta: `Conta ${Math.floor(i / 10) + 1}`,
-    sku: `SKU-${String(i + 1).padStart(5, '0')}`,
-    data: new Date(2026, 0, Math.floor(i / 4) + 1).toLocaleDateString('pt-BR'),
-    frete: i % 3 === 0 ? "Full" : i % 3 === 1 ? "Flex" : "Places",
-    valor: parseFloat((Math.random() * 500 + 50).toFixed(2)),
-    qtd: Math.floor(Math.random() * 5) + 1,
-    faturamento: 0,
-    custo: parseFloat((Math.random() * 200 + 30).toFixed(2)),
-    imposto: parseFloat((Math.random() * 50 + 5).toFixed(2)),
-    tarifa: parseFloat((Math.random() * 100 + 10).toFixed(2)),
-    freteComprador: parseFloat((Math.random() * 30 + 5).toFixed(2)),
-    freteVendedor: parseFloat((Math.random() * 20 + 2).toFixed(2)),
-    margem: 0,
-    mcPct: 0
-  })).map(row => {
-    row.faturamento = parseFloat((row.valor * row.qtd).toFixed(2));
-    row.margem = parseFloat((row.faturamento - row.custo - row.imposto - row.tarifa - row.freteVendedor).toFixed(2));
-    row.mcPct = parseFloat(((row.margem / row.faturamento) * 100).toFixed(2));
-    return row;
-  })
+    values: [679.93, 1266.52, 1285.73, 3530.70, 269.07],
+    colors: ["#2F9BD6", "#F4C85A", "#33A37A", "#E08B7C", "#EE7F66"]
+  }
 };
 
 // ======================
-// APP STATE & LOGIC
+// APP
 // ======================
 
 const app = {
-  data: [],
-  filteredData: [],
-  currentPage: 1,
-  pageSize: 50,
-  sortField: 'anuncio',
-  sortDir: 'asc',
-  isLoading: false,
-
-  // Initialize
   init() {
-    this.loadDemoData();
-    this.renderCards();
     this.renderChart();
-    this.renderTable();
     console.log('Dashboard initialized');
   },
 
-  // Load demo data
-  loadDemoData() {
-    this.data = [...DEMO_DATA.rows];
-    this.filteredData = [...this.data];
-  },
-
-  // Format currency
-  formatCurrency(value) {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL'
-    }).format(value);
-  },
-
-  // Render Cards
-  renderCards() {
-    if (this.isLoading) {
-      document.getElementById('cardVendas').classList.add('skeleton');
-      return;
-    }
-
-    const summary = DEMO_DATA.summary;
-
-    // Vendas
-    document.querySelector('[data-field="vendas-total"]').textContent = this.formatCurrency(summary.vendas.total);
-    const miniVendas = document.getElementById('miniVendas');
-    miniVendas.innerHTML = summary.vendas.minis.map(m => `
-      <div class="mini-block type-${m.type}">
-        <div class="mini-label">${m.label}</div>
-        <div class="mini-value">${this.formatCurrency(m.value)}</div>
-      </div>
-    `).join('');
-
-    // Custo
-    document.querySelector('[data-field="custo-total"]').textContent = this.formatCurrency(summary.custo.total);
-    const miniCusto = document.getElementById('miniCusto');
-    miniCusto.innerHTML = summary.custo.minis.map(m => `
-      <div class="mini-block type-${m.type}">
-        <div class="mini-label">${m.label}</div>
-        <div class="mini-value">${this.formatCurrency(m.value)}</div>
-      </div>
-    `).join('');
-
-    // Tarifa
-    document.querySelector('[data-field="tarifa-total"]').textContent = this.formatCurrency(summary.tarifa.total);
-
-    // Frete
-    document.querySelector('[data-field="frete-total"]').textContent = this.formatCurrency(summary.frete.total);
-
-    // Margem
-    document.querySelector('[data-field="margem-total"]').textContent = this.formatCurrency(summary.margem.total);
-    document.querySelector('[data-field="margem-pct"]').textContent = summary.margem.pct.toFixed(2) + '%';
-
-    document.getElementById('cardVendas').classList.remove('skeleton');
-  },
-
-  // Render Chart (Custom Donut)
+  // =====================
+  // RENDER CHART (SVG DONUT)
+  // =====================
   renderChart() {
-    const chart = DEMO_DATA.chart;
+    const chartData = DEMO_DATA.chart;
     const svg = document.getElementById('donutChart');
-    svg.innerHTML = '';
+    
+    if (!svg) return;
 
-    const centerX = 75, centerY = 75, outerRadius = 60, innerRadius = 40;
-    let currentAngle = -90;
+    const cx = 60;
+    const cy = 60;
+    const outerRadius = 50;
+    const innerRadius = 30;
 
-    const total = chart.values.reduce((a, b) => a + b, 0);
+    // Calculate total
+    const total = chartData.values.reduce((a, b) => a + b, 0);
 
-    chart.values.forEach((value, i) => {
+    // Create donut segments
+    let currentAngle = -90; // Start from top
+
+    chartData.values.forEach((value, index) => {
       const sliceAngle = (value / total) * 360;
-      const startAngle = currentAngle * (Math.PI / 180);
-      const endAngle = (currentAngle + sliceAngle) * (Math.PI / 180);
+      const startAngle = currentAngle;
+      const endAngle = currentAngle + sliceAngle;
 
-      const x1 = centerX + outerRadius * Math.cos(startAngle);
-      const y1 = centerY + outerRadius * Math.sin(startAngle);
-      const x2 = centerX + outerRadius * Math.cos(endAngle);
-      const y2 = centerY + outerRadius * Math.sin(endAngle);
+      // Convert to radians
+      const startRad = (startAngle * Math.PI) / 180;
+      const endRad = (endAngle * Math.PI) / 180;
 
-      const x3 = centerX + innerRadius * Math.cos(endAngle);
-      const y3 = centerY + innerRadius * Math.sin(endAngle);
-      const x4 = centerX + innerRadius * Math.cos(startAngle);
-      const y4 = centerY + innerRadius * Math.sin(startAngle);
+      // Calculate points
+      const x1 = cx + outerRadius * Math.cos(startRad);
+      const y1 = cy + outerRadius * Math.sin(startRad);
+      const x2 = cx + outerRadius * Math.cos(endRad);
+      const y2 = cy + outerRadius * Math.sin(endRad);
 
+      const x3 = cx + innerRadius * Math.cos(endRad);
+      const y3 = cy + innerRadius * Math.sin(endRad);
+      const x4 = cx + innerRadius * Math.cos(startRad);
+      const y4 = cy + innerRadius * Math.sin(startRad);
+
+      // Large arc flag
       const largeArc = sliceAngle > 180 ? 1 : 0;
 
+      // Create path
       const path = `
         M ${x1} ${y1}
         A ${outerRadius} ${outerRadius} 0 ${largeArc} 1 ${x2} ${y2}
@@ -179,190 +115,91 @@ const app = {
 
       const pathElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       pathElement.setAttribute('d', path);
-      pathElement.setAttribute('fill', chart.colors[i]);
+      pathElement.setAttribute('fill', chartData.colors[index]);
       pathElement.setAttribute('stroke', 'white');
       pathElement.setAttribute('stroke-width', '2');
       pathElement.style.cursor = 'pointer';
+      pathElement.style.transition = 'opacity 0.2s';
+      
+      pathElement.addEventListener('mouseenter', () => {
+        pathElement.style.opacity = '0.8';
+      });
+      
+      pathElement.addEventListener('mouseleave', () => {
+        pathElement.style.opacity = '1';
+      });
+
       svg.appendChild(pathElement);
-
-      currentAngle += sliceAngle;
+      currentAngle = endAngle;
     });
 
-    // Legend
-    const legend = document.getElementById('chartLegend');
-    legend.innerHTML = chart.labels.map((label, i) => `
-      <div class="legend-item">
-        <div class="legend-color" style="background: ${chart.colors[i]}"></div>
-        <div class="legend-label">${label}</div>
-        <div class="legend-value">${chart.values[i].toFixed(1)}%</div>
-      </div>
-    `).join('');
+    // Create legend
+    this.renderLegend(chartData, total);
   },
 
-  // Render Table
-  renderTable() {
-    const tbody = document.getElementById('tableBody');
-    const start = (this.currentPage - 1) * this.pageSize;
-    const end = start + this.pageSize;
-    const pageData = this.filteredData.slice(start, end);
+  renderLegend(chartData, total) {
+    const legendContainer = document.getElementById('chartLegend');
+    legendContainer.innerHTML = '';
 
-    tbody.innerHTML = pageData.map(row => `
-      <tr>
-        <td class="col-anuncio" title="${row.anuncio}">${row.anuncio}</td>
-        <td>${row.conta}</td>
-        <td>${row.sku}</td>
-        <td>${row.data}</td>
-        <td class="col-frete">${row.frete}</td>
-        <td>${this.formatCurrency(row.valor)}</td>
-        <td class="col-qtd">${row.qtd}</td>
-        <td>${this.formatCurrency(row.faturamento)}</td>
-        <td class="col-cost">${this.formatCurrency(row.custo)}</td>
-        <td class="col-tax">${this.formatCurrency(row.imposto)}</td>
-        <td class="col-fee">${this.formatCurrency(row.tarifa)}</td>
-        <td class="col-frete-vendedor">${this.formatCurrency(row.freteVendedor)}</td>
-        <td class="col-margin">${this.formatCurrency(row.margem)}</td>
-        <td class="col-mc-percent">${row.mcPct.toFixed(2)}%</td>
-      </tr>
-    `).join('');
+    chartData.labels.forEach((label, index) => {
+      const value = chartData.values[index];
+      const pct = ((value / total) * 100).toFixed(1);
 
-    // Update pagination
-    document.getElementById('pageInfo').textContent = `${start + 1}-${Math.min(end, this.filteredData.length)}`;
-    document.getElementById('totalInfo').textContent = this.filteredData.length;
-    document.getElementById('btnPrev').disabled = this.currentPage === 1;
-    document.getElementById('btnNext').disabled = end >= this.filteredData.length;
-  },
+      const item = document.createElement('div');
+      item.className = 'legend-item';
 
-  // Pagination
-  nextPage() {
-    const maxPage = Math.ceil(this.filteredData.length / this.pageSize);
-    if (this.currentPage < maxPage) {
-      this.currentPage++;
-      this.renderTable();
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  },
+      const color = document.createElement('div');
+      color.className = 'legend-color';
+      color.style.backgroundColor = chartData.colors[index];
 
-  prevPage() {
-    if (this.currentPage > 1) {
-      this.currentPage--;
-      this.renderTable();
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  },
+      const labelSpan = document.createElement('span');
+      labelSpan.className = 'legend-label';
+      labelSpan.textContent = label;
 
-  // Sorting
-  sort(field) {
-    if (this.sortField === field) {
-      this.sortDir = this.sortDir === 'asc' ? 'desc' : 'asc';
-    } else {
-      this.sortField = field;
-      this.sortDir = 'asc';
-    }
+      const valueSpan = document.createElement('span');
+      valueSpan.className = 'legend-value';
+      valueSpan.textContent = `${pct}%`;
 
-    this.filteredData.sort((a, b) => {
-      let valA = a[field];
-      let valB = b[field];
-
-      if (typeof valA === 'string') {
-        return this.sortDir === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
-      }
-      return this.sortDir === 'asc' ? valA - valB : valB - valA;
+      item.appendChild(color);
+      item.appendChild(labelSpan);
+      item.appendChild(valueSpan);
+      legendContainer.appendChild(item);
     });
-
-    this.currentPage = 1;
-    this.renderTable();
-    this.updateSortHeaders();
   },
 
-  updateSortHeaders() {
-    document.querySelectorAll('th.sortable').forEach(th => {
-      th.classList.remove('sorted-asc', 'sorted-desc');
-    });
-
-    const th = Array.from(document.querySelectorAll('th')).find(t => {
-      return t.textContent.toLowerCase().includes(this.sortField) || 
-             (this.sortField === 'anuncio' && t.textContent.includes('Anúncio'));
-    });
-
-    if (th) {
-      th.classList.add(this.sortDir === 'asc' ? 'sorted-asc' : 'sorted-desc');
-    }
-  },
-
-  // Filters
+  // =====================
+  // FILTERS
+  // =====================
   applyFilters() {
     const startDate = document.getElementById('filterStart').value;
     const endDate = document.getElementById('filterEnd').value;
+    const order = document.getElementById('filterOrder').value.toLowerCase();
     const title = document.getElementById('filterTitle').value.toLowerCase();
     const sku = document.getElementById('filterSKU').value.toLowerCase();
+    const status = document.getElementById('filterStatus').value;
+    const modality = document.getElementById('filterModality').value;
+    const freteType = document.getElementById('filterFreteType').value;
+    const publicity = document.getElementById('filterPublicity').value;
 
-    this.filteredData = this.data.filter(row => {
-      const rowDate = row.data.split('/').reverse().join('-');
-      return (!startDate || rowDate >= startDate) &&
-             (!endDate || rowDate <= endDate) &&
-             (!title || row.anuncio.toLowerCase().includes(title)) &&
-             (!sku || row.sku.toLowerCase().includes(sku));
+    console.log('Filtros aplicados:', {
+      startDate, endDate, order, title, sku, status, modality, freteType, publicity
     });
 
-    this.currentPage = 1;
-    this.renderTable();
+    alert('Filtros aplicados com sucesso!');
   },
 
   clearFilters() {
     document.getElementById('filterStart').value = '2026-01-01';
     document.getElementById('filterEnd').value = '2026-01-31';
+    document.getElementById('filterOrder').value = '';
     document.getElementById('filterTitle').value = '';
     document.getElementById('filterSKU').value = '';
-    this.filteredData = [...this.data];
-    this.currentPage = 1;
-    this.renderTable();
-  },
+    document.getElementById('filterStatus').value = '';
+    document.getElementById('filterModality').value = '';
+    document.getElementById('filterFreteType').value = '';
+    document.getElementById('filterPublicity').value = '';
 
-  // Export CSV
-  exportCSV() {
-    const headers = ['Anúncio', 'Conta', 'SKU', 'Data', 'Frete', 'Valor Unit.', 'Qtd.', 'Faturamento ML', 'Custo', 'Imposto', 'Tarifa', 'Frete Vendedor', 'Margem', 'MC %'];
-    const rows = this.filteredData.map(row => [
-      row.anuncio,
-      row.conta,
-      row.sku,
-      row.data,
-      row.frete,
-      row.valor,
-      row.qtd,
-      row.faturamento,
-      row.custo,
-      row.imposto,
-      row.tarifa,
-      row.freteVendedor,
-      row.margem,
-      row.mcPct
-    ]);
-
-    let csv = headers.join(',') + '\n';
-    rows.forEach(row => {
-      csv += row.map(cell => `"${cell}"`).join(',') + '\n';
-    });
-
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.setAttribute('href', URL.createObjectURL(blob));
-    link.setAttribute('download', `vendas_${new Date().toISOString().slice(0, 10)}.csv`);
-    link.click();
-  },
-
-  // Simulate Loading
-  simulateLoading() {
-    this.isLoading = true;
-    document.getElementById('cardVendas').classList.add('skeleton');
-    setTimeout(() => {
-      this.isLoading = false;
-      this.renderCards();
-    }, 2000);
-  },
-
-  // Refresh
-  refresh() {
-    this.simulateLoading();
+    console.log('Filtros limpos');
   }
 };
 
