@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Dashboard profissional e responsivo com visualização de dados">
+  <title>Dashboard Profissional - Demo</title>
+  
+  <!-- Compiled Dashboard CSS -->
+  <link rel="stylesheet" href="../../dist/styles/dashboard.css">
+  
+  <!-- Google Fonts - Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Chart.js via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div class="dashboard">
+    <!-- Header -->
+    <header class="dashboard-header" role="banner">
+      <div class="header-left">
+        <h1>Dashboard</h1>
+      </div>
+      <div class="header-right">
+        <button 
+          id="logoutBtn" 
+          class="btn-logout"
+          aria-label="Sair do sistema"
+        >
+          Sair
+        </button>
+      </div>
+    </header>
+    
+    <!-- Main Content -->
+    <div class="dashboard-content">
+      <div class="dashboard-grid">
+        <!-- Main Content Area -->
+        <div class="main-content-area">
+          <!-- Stats Cards Grid -->
+          <section aria-label="Estatísticas principais">
+            <div id="statsCards" class="stats-grid">
+              <!-- Stats cards will be rendered here by JavaScript -->
+            </div>
+          </section>
+          
+          <!-- Data Table -->
+          <section aria-label="Tabela de pedidos">
+            <div id="dataTable" class="table-card">
+              <div class="table-header">
+                <h3>Pedidos Recentes</h3>
+                <div class="table-actions">
+                  <button 
+                    id="exportCSV" 
+                    class="btn-export"
+                    aria-label="Exportar para CSV"
+                  >
+                    <span aria-hidden="true">📥</span>
+                    Exportar CSV
+                  </button>
+                </div>
+              </div>
+              
+              <div class="table-container">
+                <table role="table">
+                  <thead>
+                    <tr>
+                      <th class="sortable" data-column="id">ID Pedido</th>
+                      <th class="sortable" data-column="customer">Cliente</th>
+                      <th class="sortable hide-on-mobile" data-column="product">Produto</th>
+                      <th class="sortable hide-on-tablet" data-column="date">Data</th>
+                      <th class="sortable" data-column="amount">Valor</th>
+                      <th>Status</th>
+                      <th class="hide-on-mobile">Categoria</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tableBody">
+                    <!-- Table rows will be rendered here by JavaScript -->
+                  </tbody>
+                </table>
+              </div>
+              
+              <div class="table-footer">
+                <div id="paginationInfo" class="pagination-info">
+                  <!-- Pagination info will be rendered here -->
+                </div>
+                <div id="paginationControls" class="pagination-controls">
+                  <!-- Pagination buttons will be rendered here -->
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+        
+        <!-- Sidebar Panel (Filters + Chart) -->
+        <aside class="sidebar-panel" aria-label="Painel lateral">
+          <!-- Filters Card -->
+          <div class="filters-card">
+            <div class="filters-header">
+              <h3>Filtros</h3>
+              <button 
+                id="resetFilters" 
+                class="btn-reset"
+                aria-label="Resetar filtros"
+              >
+                Limpar
+              </button>
+            </div>
+            
+            <form id="filtersForm" onsubmit="return false;">
+              <div class="filter-group">
+                <label for="filterStatus">Status</label>
+                <select id="filterStatus" aria-label="Filtrar por status">
+                  <option value="all">Todos</option>
+                  <option value="Entregue">Entregue</option>
+                  <option value="Em Trânsito">Em Trânsito</option>
+                  <option value="Processando">Processando</option>
+                  <option value="Cancelado">Cancelado</option>
+                </select>
+              </div>
+              
+              <div class="filter-group">
+                <label for="filterCategory">Categoria</label>
+                <select id="filterCategory" aria-label="Filtrar por categoria">
+                  <option value="all">Todas</option>
+                  <option value="Eletrônicos">Eletrônicos</option>
+                  <option value="Moda">Moda</option>
+                  <option value="Casa">Casa</option>
+                  <option value="Esportes">Esportes</option>
+                  <option value="Livros">Livros</option>
+                </select>
+              </div>
+              
+              <div class="filter-group">
+                <label for="filterDateFrom">Data Início</label>
+                <input 
+                  type="date" 
+                  id="filterDateFrom"
+                  aria-label="Data de início"
+                >
+              </div>
+              
+              <div class="filter-group">
+                <label for="filterDateTo">Data Fim</label>
+                <input 
+                  type="date" 
+                  id="filterDateTo"
+                  aria-label="Data de fim"
+                >
+              </div>
+              
+              <button 
+                id="applyFilters" 
+                type="button"
+                class="btn-apply-filters"
+                aria-label="Aplicar filtros"
+              >
+                Aplicar Filtros
+              </button>
+            </form>
+          </div>
+          
+          <!-- Chart Card -->
+          <div class="chart-card">
+            <h3>Vendas por Categoria</h3>
+            
+            <div class="chart-container">
+              <canvas 
+                id="dashboardChart" 
+                role="img"
+                aria-label="Gráfico de vendas por categoria"
+              ></canvas>
+            </div>
+            
+            <div id="chartLegend" class="chart-legend" role="list">
+              <!-- Chart legend will be rendered here by JavaScript -->
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Dashboard JavaScript -->
+  <script src="../../src/scripts/dashboard.js"></script>
+</body>
+</html>
