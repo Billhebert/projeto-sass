@@ -1,0 +1,107 @@
+@use "sass:color";
+@use 'variables' as *;
+
+.dashboard-container {
+  min-height: 100vh;
+  background: $background;
+}
+
+.dashboard-header {
+  background: $white;
+  box-shadow: $box-shadow;
+  padding: 20px 0;
+  
+  .header-content {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    
+    h1 {
+      color: $text-color;
+      font-size: 28px;
+      margin: 0;
+    }
+    
+    .btn-logout {
+      padding: 10px 20px;
+      background: $primary-color;
+      color: $white;
+      border: none;
+      border-radius: $border-radius;
+      font-size: 14px;
+      cursor: pointer;
+      transition: $transition;
+      
+      &:hover {
+        background: color.adjust($primary-color, $lightness: -10%);
+      }
+    }
+  }
+}
+
+.dashboard-main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 40px 20px;
+  
+  .welcome-section {
+    background: $white;
+    padding: 30px;
+    border-radius: $border-radius;
+    box-shadow: $box-shadow;
+    margin-bottom: 30px;
+    
+    h2 {
+      color: $text-color;
+      font-size: 24px;
+      margin-bottom: 10px;
+    }
+    
+    p {
+      color: $text-light;
+      font-size: 16px;
+    }
+  }
+  
+  .dashboard-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+  }
+  
+  .dashboard-card {
+    background: $white;
+    padding: 30px;
+    border-radius: $border-radius;
+    box-shadow: $box-shadow;
+    text-align: center;
+    transition: $transition;
+    
+    &:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+    }
+    
+    h3 {
+      color: $text-color;
+      font-size: 18px;
+      margin-bottom: 15px;
+    }
+    
+    .card-value {
+      color: $primary-color;
+      font-size: 36px;
+      font-weight: bold;
+      margin: 10px 0;
+    }
+    
+    .card-label {
+      color: $text-light;
+      font-size: 14px;
+      margin: 0;
+    }
+  }
+}

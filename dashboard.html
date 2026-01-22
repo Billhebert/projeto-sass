@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard</title>
+  <link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+  <div class="dashboard-container">
+    <header class="dashboard-header">
+      <div class="header-content">
+        <h1>Dashboard</h1>
+        <button class="btn-logout" onclick="logout()">Sair</button>
+      </div>
+    </header>
+    
+    <main class="dashboard-main">
+      <div class="welcome-section">
+        <h2>Bem-vindo ao Dashboard!</h2>
+        <p>Você realizou o login com sucesso.</p>
+      </div>
+      
+      <div class="dashboard-cards">
+        <div class="dashboard-card">
+          <h3>Estatísticas</h3>
+          <p class="card-value">0</p>
+          <p class="card-label">Total de Acessos</p>
+        </div>
+        
+        <div class="dashboard-card">
+          <h3>Usuários</h3>
+          <p class="card-value">1</p>
+          <p class="card-label">Usuários Ativos</p>
+        </div>
+        
+        <div class="dashboard-card">
+          <h3>Status</h3>
+          <p class="card-value">✓</p>
+          <p class="card-label">Sistema Online</p>
+        </div>
+      </div>
+    </main>
+  </div>
+  
+  <script>
+    function logout() {
+      window.location.href = 'login.html';
+    }
+  </script>
+</body>
+</html>

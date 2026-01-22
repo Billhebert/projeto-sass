@@ -10,14 +10,14 @@
   <div class="container">
     <div class="login-card">
       <h2>Bem-vindo</h2>
-      <form>
+      <form id="loginForm">
         <div class="form-group">
           <label for="email">E-mail</label>
-          <input type="email" id="email" placeholder="Digite seu e-mail">
+          <input type="email" id="email" placeholder="Digite seu e-mail" required>
         </div>
         <div class="form-group">
           <label for="senha">Senha</label>
-          <input type="password" id="senha" placeholder="Digite sua senha">
+          <input type="password" id="senha" placeholder="Digite sua senha" required>
         </div>
         <button type="submit" class="btn">Entrar</button>
       </form>
@@ -26,5 +26,20 @@
       </div>
     </div>
   </div>
+  
+  <script>
+    document.getElementById('loginForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      
+      // Validação simples dos campos
+      const email = document.getElementById('email').value;
+      const senha = document.getElementById('senha').value;
+      
+      if (email && senha) {
+        // Redireciona para o dashboard
+        window.location.href = 'dashboard.html';
+      }
+    });
+  </script>
 </body>
 </html>
