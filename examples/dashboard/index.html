@@ -9,7 +9,7 @@
 <body>
   <!-- Top Navigation -->
   <div class="topbar">
-    <a href="#" class="brand">📊 Dashboard</a>
+    <div class="brand">📊 Dashboard</div>
     <div class="user-section">
       <div class="avatar">BH</div>
       <button onclick="logout()">Sair</button>
@@ -18,82 +18,175 @@
 
   <!-- Main Dashboard -->
   <div class="container">
-    <div class="dashboard-container">
+    <div class="dashboard-wrapper">
       <!-- Main Content -->
       <div class="main-content">
         <!-- Cards Grid -->
-        <div class="cards-grid">
+        <div class="cards-section" id="cardsContainer">
           <!-- Vendas Card -->
-          <div class="stat-card card-vendas">
-            <div class="card-stripe"></div>
+          <div class="stat-card">
+            <div class="card-stripe purple"></div>
             <div class="card-content">
               <div class="card-header">
                 <h3>Vendas Aprovadas</h3>
                 <div class="icon-info" title="Total de vendas aprovadas">ⓘ</div>
               </div>
+              <div class="card-title" id="vendas-total">R$ 6.954,98</div>
               <div class="card-subtitle">Faturamento ML</div>
-              <div class="card-value" id="vendas-total">R$ 6.954,98</div>
-              <div class="card-minis" id="miniVendas"></div>
+              <div class="card-items">
+                <div class="card-item">
+                  <span class="card-item-label">Places/Coleta</span>
+                  <span class="card-item-value" id="vendas-places">R$ 59,16</span>
+                </div>
+                <div class="card-item">
+                  <span class="card-item-label">Flex</span>
+                  <span class="card-item-value" id="vendas-flex">R$ 1.205,82</span>
+                </div>
+                <div class="card-item">
+                  <span class="card-item-label">Full</span>
+                  <span class="card-item-value" id="vendas-full">R$ 6.547,37</span>
+                </div>
+                <div class="card-item">
+                  <span class="card-item-label">ME1</span>
+                  <span class="card-item-value" id="vendas-me1">R$ 0,00</span>
+                </div>
+              </div>
             </div>
           </div>
 
-          <!-- Custo Card -->
-          <div class="stat-card card-custo">
-            <div class="card-stripe"></div>
+          <!-- Vendas Canceladas Card -->
+          <div class="stat-card">
+            <div class="card-stripe red"></div>
+            <div class="card-content">
+              <div class="card-header">
+                <h3>Vendas Canceladas</h3>
+                <div class="icon-info" title="Total canceladas">ⓘ</div>
+              </div>
+              <div class="card-title">R$ 0,00</div>
+              <div class="card-subtitle">Faturamento</div>
+              <div class="card-items">
+                <div class="card-item">
+                  <span class="card-item-label">Considerado frete</span>
+                  <input type="checkbox" style="width: auto;">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Custo & Imposto Card -->
+          <div class="stat-card">
+            <div class="card-stripe red"></div>
             <div class="card-content">
               <div class="card-header">
                 <h3>Custo & Imposto</h3>
-                <div class="icon-info" title="Custo + Impostos">ⓘ</div>
+                <div class="icon-info" title="Custo total">ⓘ</div>
               </div>
+              <div class="card-title" id="custo-total">R$ 3.799,77</div>
               <div class="card-subtitle">Custo Total</div>
-              <div class="card-value" id="custo-total">R$ 3.799,77</div>
-              <div class="card-minis" id="miniCusto"></div>
+              <div class="card-items">
+                <div class="card-item">
+                  <span class="card-item-label">Custo</span>
+                  <span class="card-item-value" id="custo-value">R$ 3.530,70</span>
+                </div>
+                <div class="card-item">
+                  <span class="card-item-label">Imposto</span>
+                  <span class="card-item-value" id="imposto-value">R$ 269,07</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Qtd Vendas Card -->
+          <div class="stat-card">
+            <div class="card-stripe yellow"></div>
+            <div class="card-content">
+              <div class="card-header">
+                <h3>Qtd Vendas Aprovadas</h3>
+                <div class="icon-info" title="Quantidade">ⓘ</div>
+              </div>
+              <div class="card-title">74</div>
+              <div class="card-subtitle">(89 unidades)</div>
+              <div class="card-items">
+                <div class="card-item">
+                  <span class="card-item-label">Qtd Total Vendas</span>
+                  <span class="card-item-value">74 (89 unidades)</span>
+                </div>
+                <div class="card-item">
+                  <span class="card-item-label">Qtd Vendas Canceladas</span>
+                  <span class="card-item-value">0 (0 unidades)</span>
+                </div>
+              </div>
             </div>
           </div>
 
           <!-- Tarifa Card -->
-          <div class="stat-card card-tarifa">
-            <div class="card-stripe"></div>
+          <div class="stat-card">
+            <div class="card-stripe yellow"></div>
             <div class="card-content">
               <div class="card-header">
                 <h3>Tarifa de Venda</h3>
-                <div class="icon-info" title="Tarifa de venda">ⓘ</div>
+                <div class="icon-info" title="Taxa ML">ⓘ</div>
               </div>
+              <div class="card-title" id="tarifa-total">R$ 1.266,52</div>
               <div class="card-subtitle">Taxa ML</div>
-              <div class="card-value" id="tarifa-total">R$ 1.266,52</div>
+              <div class="card-items">
+                <div class="card-item">
+                  <span class="card-item-label">Ticket Médio por Venda Aprovada</span>
+                  <span class="card-item-value">R$ 93,99</span>
+                </div>
+              </div>
             </div>
           </div>
 
           <!-- Frete Card -->
-          <div class="stat-card card-frete">
-            <div class="card-stripe"></div>
+          <div class="stat-card">
+            <div class="card-stripe blue"></div>
             <div class="card-content">
               <div class="card-header">
                 <h3>Frete Total</h3>
-                <div class="icon-info" title="Custo de frete">ⓘ</div>
+                <div class="icon-info" title="Custo frete">ⓘ</div>
               </div>
+              <div class="card-title" id="frete-total">R$ 679,93</div>
               <div class="card-subtitle">Custo Logístico</div>
-              <div class="card-value" id="frete-total">R$ 679,93</div>
+              <div class="card-items">
+                <div class="card-item">
+                  <span class="card-item-label">Frete Comprador</span>
+                  <span class="card-item-value">R$ 76,97</span>
+                </div>
+                <div class="card-item">
+                  <span class="card-item-label">Frete Vendedor</span>
+                  <span class="card-item-value">R$ 602,96</span>
+                </div>
+              </div>
             </div>
           </div>
 
           <!-- Margem Card -->
-          <div class="stat-card card-margem">
-            <div class="card-stripe"></div>
+          <div class="stat-card">
+            <div class="card-stripe green"></div>
             <div class="card-content">
               <div class="card-header">
                 <h3>Margem de Contribuição</h3>
                 <div class="icon-info" title="Lucro líquido">ⓘ</div>
               </div>
+              <div class="card-title" id="margem-total">R$ 1.285,73</div>
               <div class="card-subtitle">MC (Margem Bruta)</div>
-              <div class="card-value" id="margem-total">R$ 1.285,73</div>
-              <div class="card-minis" id="miniMargem"></div>
+              <div class="card-items">
+                <div class="card-item">
+                  <span class="card-item-label">Devolução Parcial</span>
+                  <span class="card-item-value">R$ 0,00</span>
+                </div>
+                <div class="card-item">
+                  <span class="card-item-label">MC %</span>
+                  <span class="card-item-value">18,49%</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
         <!-- Table Section -->
-        <div class="table-container">
+        <div class="table-section">
           <div class="table-header">
             <h2>Detalhes de Vendas</h2>
             <div class="table-controls">
@@ -106,20 +199,18 @@
             <table id="dataTable">
               <thead>
                 <tr>
-                  <th class="sortable" onclick="app.sort('anuncio')">Anúncio</th>
+                  <th onclick="app.sort('anuncio')">Anúncio</th>
                   <th onclick="app.sort('conta')">Conta</th>
                   <th onclick="app.sort('sku')">SKU</th>
                   <th onclick="app.sort('data')">Data</th>
                   <th class="col-frete" onclick="app.sort('frete')">Frete</th>
                   <th onclick="app.sort('valor')">Valor Unit.</th>
-                  <th class="col-qtd" onclick="app.sort('qtd')">Qtd.</th>
+                  <th onclick="app.sort('qtd')">Qtd.</th>
                   <th onclick="app.sort('faturamento')">Faturamento ML</th>
                   <th class="col-cost" onclick="app.sort('custo')">Custo</th>
-                  <th class="col-tax" onclick="app.sort('imposto')">Imposto</th>
                   <th class="col-fee" onclick="app.sort('tarifa')">Tarifa</th>
-                  <th class="col-frete-vendedor" onclick="app.sort('freteVendedor')">Frete Vendedor</th>
                   <th class="col-margin" onclick="app.sort('margem')">Margem</th>
-                  <th class="col-mc-percent" onclick="app.sort('mcPct')">MC %</th>
+                  <th onclick="app.sort('mcPct')">MC %</th>
                 </tr>
               </thead>
               <tbody id="tableBody">
@@ -143,36 +234,96 @@
       <!-- Sidebar -->
       <aside class="sidebar">
         <!-- Filters -->
-        <div class="filters-panel">
-          <h3>Filtros</h3>
-          <div class="filter-group">
-            <label>Data Início</label>
-            <input type="date" id="filterStart" value="2026-01-01">
+        <div class="filters-section">
+          <h4>Filtrar Busca</h4>
+          
+          <div class="filter-row">
+            <div class="filter-group">
+              <label>Data Início</label>
+              <input type="date" id="filterStart" value="2026-01-01">
+            </div>
+            <div class="filter-group">
+              <label>Data Fim</label>
+              <input type="date" id="filterEnd" value="2026-01-31">
+            </div>
           </div>
-          <div class="filter-group">
-            <label>Data Fim</label>
-            <input type="date" id="filterEnd" value="2026-01-31">
+
+          <div class="filter-row full">
+            <div class="filter-group">
+              <label>Nº Pedido / Carrinho</label>
+              <input type="text" id="filterOrder" placeholder="Buscar...">
+            </div>
           </div>
-          <div class="filter-group">
-            <label>Título / MLB</label>
-            <input type="text" id="filterTitle" placeholder="Buscar anúncio...">
+
+          <div class="filter-row">
+            <div class="filter-group">
+              <label>Título ou MLB</label>
+              <input type="text" id="filterTitle" placeholder="Buscar anúncio...">
+            </div>
+            <div class="filter-group">
+              <label>SKU</label>
+              <input type="text" id="filterSKU" placeholder="Buscar SKU...">
+            </div>
           </div>
-          <div class="filter-group">
-            <label>SKU</label>
-            <input type="text" id="filterSKU" placeholder="Buscar SKU...">
+
+          <div class="filter-row">
+            <div class="filter-group">
+              <label>Status Venda</label>
+              <select id="filterStatus">
+                <option value="">Todos</option>
+                <option value="aprovado">Aprovado</option>
+                <option value="cancelado">Cancelado</option>
+                <option value="pendente">Pendente</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label>Modalidade</label>
+              <select id="filterModality">
+                <option value="">Todos</option>
+                <option value="places">Places</option>
+                <option value="flex">Flex</option>
+                <option value="full">Full</option>
+              </select>
+            </div>
           </div>
+
+          <div class="filter-row">
+            <div class="filter-group">
+              <label>Tipo do Frete</label>
+              <select id="filterFreteType">
+                <option value="">Todos</option>
+                <option value="frete-comprador">Frete Comprador</option>
+                <option value="frete-vendedor">Frete Vendedor</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label>Publicidade</label>
+              <select id="filterPublicity">
+                <option value="">Todos</option>
+                <option value="sim">Sim</option>
+                <option value="nao">Não</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="filter-row full">
+            <div class="filter-group">
+              <label>Multicontas</label>
+              <input type="text" id="filterMulticontas" placeholder="Buscar...">
+            </div>
+          </div>
+
           <div class="filter-buttons">
             <button class="btn-apply" onclick="app.applyFilters()">Aplicar</button>
             <button class="btn-clear" onclick="app.clearFilters()">Limpar</button>
           </div>
-          <button class="btn-simulate" onclick="app.simulateLoading()">⏳ Simular Loading</button>
         </div>
 
         <!-- Chart -->
-        <div class="chart-container">
-          <h3>Distribuição de Custos</h3>
+        <div class="chart-section">
+          <h4>Representação Gráfica</h4>
           <div class="donut-wrapper">
-            <svg id="donutChart" width="150" height="150" viewBox="0 0 150 150"></svg>
+            <svg id="donutChart" viewBox="0 0 150 150"></svg>
             <div class="legend" id="chartLegend"></div>
           </div>
         </div>
