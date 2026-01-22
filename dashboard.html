@@ -11,7 +11,7 @@
     <header class="dashboard-header">
       <div class="header-content">
         <h1>Dashboard</h1>
-        <button class="btn-logout" onclick="logout()">Sair</button>
+        <button class="btn-logout" id="logoutBtn">Sair</button>
       </div>
     </header>
     
@@ -44,9 +44,9 @@
   </div>
   
   <script>
-    function logout() {
+    document.getElementById('logoutBtn').addEventListener('click', function() {
       window.location.href = 'login.html';
-    }
+    });
   </script>
 </body>
 </html>
