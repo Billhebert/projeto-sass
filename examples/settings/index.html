@@ -93,10 +93,13 @@
       <button class="settings-tab" onclick="switchTab('notifications')" style="padding: 12px 20px; background: none; border: none; border-bottom: 3px solid transparent; color: #666; cursor: pointer; font-weight: 600; font-size: 14px;">
         🔔 Notificações
       </button>
-      <button class="settings-tab" onclick="switchTab('preferences')" style="padding: 12px 20px; background: none; border: none; border-bottom: 3px solid transparent; color: #666; cursor: pointer; font-weight: 600; font-size: 14px;">
-        ⚙️ Preferências
-      </button>
-    </div>
+       <button class="settings-tab" onclick="switchTab('preferences')" style="padding: 12px 20px; background: none; border: none; border-bottom: 3px solid transparent; color: #666; cursor: pointer; font-weight: 600; font-size: 14px;">
+         ⚙️ Preferências
+       </button>
+       <button class="settings-tab" onclick="switchTab('backup')" style="padding: 12px 20px; background: none; border: none; border-bottom: 3px solid transparent; color: #666; cursor: pointer; font-weight: 600; font-size: 14px;">
+         💾 Backup & Dados
+       </button>
+     </div>
 
     <!-- Account Settings -->
     <div id="account-tab" class="settings-content" style="display: block;">
@@ -437,10 +440,86 @@
         </form>
       </div>
     </div>
+
+    <!-- Backup & Data Settings -->
+    <div id="backup-tab" class="settings-content" style="display: none;">
+      <div class="form-card">
+        <div class="form-header">
+          <h2 class="form-title">💾 Backup & Dados</h2>
+          <p class="form-subtitle">Gerencie backups e exporte seus dados</p>
+        </div>
+
+        <!-- Backup Section -->
+        <div style="margin-bottom: 30px;">
+          <h3 style="font-size: 14px; font-weight: 600; color: #333; margin-bottom: 15px;">📥 Criar Backup</h3>
+          <p style="font-size: 13px; color: #666; margin-bottom: 15px;">Faça download de todos os seus dados em um arquivo JSON</p>
+          
+          <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+            <button onclick="backupModule.downloadBackup()" style="padding: 10px 16px; background: #33A37A; color: white; border: none; border-radius: 4px; font-size: 13px; font-weight: 600; cursor: pointer;">
+              📥 Download Backup
+            </button>
+            <button onclick="
+              const info = backupModule.getBackupInfo();
+              alert('Backup Atual:\\n\\nData: ' + info.timestamp.split('T')[0] + '\\n✓ ' + info.products + ' Produtos\\n✓ ' + info.categories + ' Categorias\\n✓ ' + info.sales + ' Vendas\\n✓ ' + info.movements + ' Movimentações');
+            " style="padding: 10px 16px; background: #2F9BD6; color: white; border: none; border-radius: 4px; font-size: 13px; font-weight: 600; cursor: pointer;">
+              ℹ️ Info Backup
+            </button>
+          </div>
+        </div>
+
+        <!-- Restore Section -->
+        <div style="margin-bottom: 30px; padding: 15px; background: #f5f5f5; border-radius: 6px;">
+          <h3 style="font-size: 14px; font-weight: 600; color: #333; margin-bottom: 15px;">📤 Restaurar Backup</h3>
+          <p style="font-size: 13px; color: #666; margin-bottom: 15px;">Carregue um arquivo de backup anterior para restaurar seus dados</p>
+          
+          <input 
+            type="file" 
+            id="backupFile" 
+            accept=".json" 
+            style="display: block; margin-bottom: 12px; padding: 8px; border: 1px solid #e0e0e0; border-radius: 4px; width: 100%; max-width: 400px;"
+          >
+          <button onclick="backupModule.restoreBackup(document.getElementById('backupFile'))" style="padding: 10px 16px; background: #F4C85A; color: #333; border: none; border-radius: 4px; font-size: 13px; font-weight: 600; cursor: pointer;">
+            📤 Restaurar Backup
+          </button>
+        </div>
+
+        <!-- Export CSV Section -->
+        <div style="margin-bottom: 30px;">
+          <h3 style="font-size: 14px; font-weight: 600; color: #333; margin-bottom: 15px;">📊 Exportar Dados em CSV</h3>
+          <p style="font-size: 13px; color: #666; margin-bottom: 15px;">Exporte seus dados em formato CSV para uso em outras aplicações</p>
+          
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
+            <button onclick="exportModuleData.exportProducts()" style="padding: 10px 16px; background: #667eea; color: white; border: none; border-radius: 4px; font-size: 13px; font-weight: 600; cursor: pointer;">
+              📦 Produtos CSV
+            </button>
+            <button onclick="exportModuleData.exportCategories()" style="padding: 10px 16px; background: #f093fb; color: white; border: none; border-radius: 4px; font-size: 13px; font-weight: 600; cursor: pointer;">
+              📂 Categorias CSV
+            </button>
+            <button onclick="exportModuleData.exportSales()" style="padding: 10px 16px; background: #43e97b; color: white; border: none; border-radius: 4px; font-size: 13px; font-weight: 600; cursor: pointer;">
+              💰 Vendas CSV
+            </button>
+            <button onclick="exportModuleData.exportStock()" style="padding: 10px 16px; background: #fa709a; color: white; border: none; border-radius: 4px; font-size: 13px; font-weight: 600; cursor: pointer;">
+              📊 Estoque CSV
+            </button>
+          </div>
+        </div>
+
+        <!-- Danger Zone -->
+        <div style="padding: 15px; background: #ffe0e0; border-radius: 6px; border: 2px solid #EE7F66;">
+          <h3 style="font-size: 14px; font-weight: 600; color: #EE7F66; margin-bottom: 15px;">⚠️ Zona de Perigo</h3>
+          <p style="font-size: 13px; color: #666; margin-bottom: 15px;">Estas ações não podem ser desfeitas</p>
+          
+          <button onclick="backupModule.clearAllData()" style="padding: 10px 16px; background: #EE7F66; color: white; border: none; border-radius: 4px; font-size: 13px; font-weight: 600; cursor: pointer;">
+            🗑️ Deletar Todos os Dados
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="../../src/scripts/auth.js"></script>
   <script src="../../src/scripts/settings.js"></script>
+  <script src="../../src/scripts/backup.js"></script>
   <script>
     // Check authentication
     authService.requireAuth();
@@ -498,6 +577,78 @@
         }
       }
     }
+
+    // Export Module for CSV
+    const exportModuleData = {
+      downloadCSV(filename, headers, rows) {
+        let csv = headers.join(',') + '\n';
+        rows.forEach(row => {
+          csv += row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',') + '\n';
+        });
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = filename;
+        link.click();
+      },
+      
+      exportProducts() {
+        const products = JSON.parse(localStorage.getItem('products') || '[]');
+        const stockData = JSON.parse(localStorage.getItem('product_stock') || '{}');
+        const headers = ['SKU', 'Estoque', 'Status', 'Data Cadastro'];
+        const rows = products.map(p => [
+          p.sku,
+          stockData[p.sku] || 0,
+          p.status === 'ativo' ? 'Ativo' : 'Inativo',
+          p.dataCadastro
+        ]);
+        this.downloadCSV(`produtos-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+      },
+      
+      exportCategories() {
+        const categories = JSON.parse(localStorage.getItem('categories') || '[]');
+        const headers = ['Nome', 'Descrição', 'Status', 'Produtos'];
+        const rows = categories.map(c => [
+          c.name,
+          c.description || '',
+          c.status === 'ativo' ? 'Ativa' : 'Inativa',
+          c.productCount || 0
+        ]);
+        this.downloadCSV(`categorias-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+      },
+      
+      exportSales() {
+        const sales = JSON.parse(localStorage.getItem('sales') || '[]');
+        const headers = ['SKU', 'Quantidade', 'Preço Unit', 'Desconto', 'Total', 'Marketplace', 'Pagamento', 'Status', 'Data'];
+        const rows = sales.map(s => [
+          s.sku,
+          s.quantity,
+          s.unitPrice.toFixed(2),
+          s.discount.toFixed(2) + '%',
+          s.total.toFixed(2),
+          s.marketplace,
+          s.paymentMethod,
+          s.status,
+          s.createdAt
+        ]);
+        this.downloadCSV(`vendas-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+      },
+      
+      exportStock() {
+        const movements = JSON.parse(localStorage.getItem('stock_movements') || '[]');
+        const headers = ['SKU', 'Tipo', 'Quantidade', 'Estoque Anterior', 'Novo Estoque', 'Data/Hora', 'Notas'];
+        const rows = movements.map(m => [
+          m.sku,
+          m.type,
+          m.quantity,
+          m.previousStock,
+          m.newStock,
+          m.timestamp,
+          m.notes || ''
+        ]);
+        this.downloadCSV(`estoque-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+      }
+    };
   </script>
 </body>
 </html>

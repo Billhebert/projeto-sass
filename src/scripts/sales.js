@@ -254,12 +254,139 @@ const salesModule = (() => {
     return div.innerHTML;
   }
 
+  // Apply filters to sales
+  function applyFilters() {
+    const dateFrom = document.getElementById('dateFrom').value;
+    const dateTo = document.getElementById('dateTo').value;
+    const priceMin = parseFloat(document.getElementById('priceMin').value) || 0;
+    const priceMax = parseFloat(document.getElementById('priceMax').value) || Infinity;
+    const filterStatus = document.getElementById('filterStatus').value;
+    const filterMarketplace = document.getElementById('filterMarketplace').value;
+
+    let sales = getAll();
+    
+    // Apply filters
+    sales = sales.filter(sale => {
+      // Date range filter
+      if (dateFrom || dateTo) {
+        // Parse sale date (format: "dd/mm/yyyy, hh:mm:ss")
+        const saleDateParts = sale.createdAt.split(',')[0].split('/');
+        const saleDate = new Date(saleDateParts[2], saleDateParts[1] - 1, saleDateParts[0]);
+        
+        if (dateFrom) {
+          const fromDate = new Date(dateFrom);
+          if (saleDate < fromDate) return false;
+        }
+        if (dateTo) {
+          const toDate = new Date(dateTo);
+          toDate.setHours(23, 59, 59, 999);
+          if (saleDate > toDate) return false;
+        }
+      }
+
+      // Price range filter
+      if (sale.total < priceMin || sale.total > priceMax) return false;
+
+      // Status filter
+      if (filterStatus && sale.status !== filterStatus) return false;
+
+      // Marketplace filter
+      if (filterMarketplace && sale.marketplace !== filterMarketplace) return false;
+
+      return true;
+    });
+
+    // Render filtered results
+    renderFilteredSales(sales);
+    updateFilteredSummary(sales);
+  }
+
+  // Clear all filters
+  function clearFilters() {
+    document.getElementById('dateFrom').value = '';
+    document.getElementById('dateTo').value = '';
+    document.getElementById('priceMin').value = '';
+    document.getElementById('priceMax').value = '';
+    document.getElementById('filterStatus').value = '';
+    document.getElementById('filterMarketplace').value = '';
+    
+    renderSales();
+    updateSalesSummary();
+  }
+
+  // Render filtered sales
+  function renderFilteredSales(sales) {
+    const tbody = document.getElementById('salesTableBody');
+    const emptyState = document.getElementById('emptyState');
+
+    tbody.innerHTML = '';
+
+    if (sales.length === 0) {
+      emptyState.style.display = 'block';
+      return;
+    }
+
+    emptyState.style.display = 'none';
+
+    [...sales].reverse().forEach(sale => {
+      const row = document.createElement('tr');
+      const statusClass = getStatusClass(sale.status);
+      const statusLabel = getStatusLabel(sale.status);
+      const marketplaceLabel = getMarketplaceLabel(sale.marketplace);
+      const paymentLabel = getPaymentLabel(sale.paymentMethod);
+      
+      row.innerHTML = `
+        <td><strong>${escapeHtml(sale.sku)}</strong></td>
+        <td>${sale.quantity}</td>
+        <td>R$ ${sale.unitPrice.toFixed(2)}</td>
+        <td>${sale.discount > 0 ? sale.discount.toFixed(2) + '%' : '-'}</td>
+        <td><strong>R$ ${sale.total.toFixed(2)}</strong></td>
+        <td>${marketplaceLabel}</td>
+        <td>${paymentLabel}</td>
+        <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
+        <td>${sale.createdAt}</td>
+      `;
+      tbody.appendChild(row);
+    });
+  }
+
+  // Update summary for filtered sales
+  function updateFilteredSummary(sales) {
+    const summaryEl = document.getElementById('salesSummary');
+
+    if (sales.length === 0) {
+      summaryEl.style.display = 'none';
+      return;
+    }
+
+    summaryEl.style.display = 'block';
+
+    const totalSales = sales.length;
+    const totalQuantity = sales.reduce((sum, s) => sum + s.quantity, 0);
+    const totalValue = sales.reduce((sum, s) => sum + s.total, 0);
+    const averageTicket = totalValue / totalSales;
+
+    document.getElementById('totalSales').textContent = totalSales;
+    document.getElementById('totalQuantity').textContent = totalQuantity;
+    document.getElementById('totalValue').textContent = 'R$ ' + totalValue.toFixed(2);
+    document.getElementById('averageTicket').textContent = 'R$ ' + averageTicket.toFixed(2);
+  }
+
+  // Escape HTML to prevent XSS
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
   return {
     init,
     getAll,
     add,
     renderSales,
-    updateSalesSummary
+    updateSalesSummary,
+    applyFilters,
+    clearFilters
   };
 })();
 

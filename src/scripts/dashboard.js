@@ -327,27 +327,28 @@ const app = {
   useAPI: false, // Set to true when API is ready
 
   async init() {
-     try {
-      // Check if API is available
       try {
-        await apiService.getSummary();
-        this.useAPI = true;
-        console.log('✓ API available - using live data');
-      } catch (e) {
-        console.warn('✗ API unavailable - using demo data');
-        this.useAPI = false;
-      }
+       // Check if API is available
+       try {
+         await apiService.getSummary();
+         this.useAPI = true;
+         console.log('✓ API available - using live data');
+       } catch (e) {
+         console.warn('✗ API unavailable - using demo data');
+         this.useAPI = false;
+       }
 
-      this.filteredData = [...this.data];
-      await this.renderChart();
-      await this.renderTable();
-      this.updateStatistics();
-      console.log('Dashboard initialized');
-    } catch (error) {
-      console.error('Initialization error:', error);
-      notificationService.error('Erro ao inicializar dashboard');
-    }
-  },
+       this.filteredData = [...this.data];
+       await this.renderChart();
+       await this.renderTable();
+       this.updateStatistics();
+       this.initializeCharts();
+       console.log('Dashboard initialized');
+     } catch (error) {
+       console.error('Initialization error:', error);
+       notificationService.error('Erro ao inicializar dashboard');
+     }
+   },
 
   // Format currency
   formatCurrency(value) {
@@ -762,8 +763,296 @@ const app = {
     } catch (error) {
       console.error('Statistics update error:', error);
     }
+  },
+
+  // Initialize all charts
+  async initializeCharts() {
+    try {
+      const sales = JSON.parse(localStorage.getItem('sales') || '[]');
+      const products = JSON.parse(localStorage.getItem('products') || '[]');
+      const categories = JSON.parse(localStorage.getItem('categories') || '[]');
+      const stock = JSON.parse(localStorage.getItem('product_stock') || '{}');
+
+      // Only initialize charts if we have sales data
+      if (sales.length > 0) {
+        this.initMarketplaceChart(sales);
+        this.initPaymentChart(sales);
+        this.initRevenueChart(sales);
+      }
+
+      if (Object.keys(stock).length > 0) {
+        this.initStockChart(stock);
+      }
+
+      if (categories.length > 0) {
+        this.initCategoryChart(products, categories);
+      }
+    } catch (error) {
+      console.error('Charts initialization error:', error);
+    }
+  },
+
+  // Marketplace distribution chart (Pie)
+  initMarketplaceChart(sales) {
+    const canvasElement = document.getElementById('marketplaceChart');
+    if (!canvasElement) return;
+
+    const marketplaceData = {};
+    sales.forEach(sale => {
+      const marketplace = sale.marketplace || 'outro';
+      marketplaceData[marketplace] = (marketplaceData[marketplace] || 0) + sale.total;
+    });
+
+    const labels = Object.keys(marketplaceData).map(m => {
+      const names = {
+        'mercado-livre': 'Mercado Livre',
+        'b2b-brasil': 'B2B Brasil',
+        'amazon': 'Amazon',
+        'shopee': 'Shopee',
+        'loja-propria': 'Loja Própria'
+      };
+      return names[m] || m;
+    });
+
+    const colors = ['#5D4DB3', '#33A37A', '#2F9BD6', '#F4C85A', '#E74C3C'];
+
+    new Chart(canvasElement, {
+      type: 'doughnut',
+      data: {
+        labels: labels,
+        datasets: [{
+          data: Object.values(marketplaceData),
+          backgroundColor: colors,
+          borderColor: '#fff',
+          borderWidth: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: {
+              font: { size: 11 },
+              padding: 15
+            }
+          }
+        }
+      }
+    });
+  },
+
+  // Payment method distribution chart (Bar)
+  initPaymentChart(sales) {
+    const canvasElement = document.getElementById('paymentChart');
+    if (!canvasElement) return;
+
+    const paymentData = {};
+    sales.forEach(sale => {
+      const method = sale.paymentMethod || 'outro';
+      paymentData[method] = (paymentData[method] || 0) + 1;
+    });
+
+    const labels = Object.keys(paymentData).map(m => {
+      const names = {
+        'cartao-credito': 'Crédito',
+        'cartao-debito': 'Débito',
+        'pix': 'PIX',
+        'boleto': 'Boleto',
+        'dinheiro': 'Dinheiro',
+        'cheque': 'Cheque'
+      };
+      return names[m] || m;
+    });
+
+    new Chart(canvasElement, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Número de Vendas',
+          data: Object.values(paymentData),
+          backgroundColor: '#5D4DB3',
+          borderRadius: 6
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        indexAxis: 'y',
+        plugins: {
+          legend: {
+            display: false
+          }
+        },
+        scales: {
+          x: {
+            beginAtZero: true,
+            ticks: { font: { size: 11 } }
+          },
+          y: {
+            ticks: { font: { size: 11 } }
+          }
+        }
+      }
+    });
+  },
+
+  // Revenue over time chart (Line - Last 30 days)
+  initRevenueChart(sales) {
+    const canvasElement = document.getElementById('revenueChart');
+    if (!canvasElement) return;
+
+    const dailyRevenue = {};
+    const today = new Date();
+
+    // Initialize last 30 days
+    for (let i = 29; i >= 0; i--) {
+      const date = new Date(today);
+      date.setDate(date.getDate() - i);
+      const key = date.toLocaleDateString('pt-BR', { month: '2-digit', day: '2-digit' });
+      dailyRevenue[key] = 0;
+    }
+
+    // Add sales data
+    sales.forEach(sale => {
+      const saleDate = new Date(sale.createdAt);
+      const key = saleDate.toLocaleDateString('pt-BR', { month: '2-digit', day: '2-digit' });
+      if (dailyRevenue.hasOwnProperty(key)) {
+        dailyRevenue[key] += sale.total;
+      }
+    });
+
+    new Chart(canvasElement, {
+      type: 'line',
+      data: {
+        labels: Object.keys(dailyRevenue),
+        datasets: [{
+          label: 'Receita Diária (R$)',
+          data: Object.values(dailyRevenue),
+          borderColor: '#33A37A',
+          backgroundColor: 'rgba(51, 163, 122, 0.1)',
+          fill: true,
+          borderWidth: 2,
+          tension: 0.3,
+          pointBackgroundColor: '#33A37A',
+          pointRadius: 3
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            labels: { font: { size: 11 } }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: {
+              font: { size: 11 },
+              callback: (value) => 'R$ ' + value.toFixed(0)
+            }
+          },
+          x: {
+            ticks: { font: { size: 10 } }
+          }
+        }
+      }
+    });
+  },
+
+  // Stock distribution chart (Doughnut)
+  initStockChart(stock) {
+    const canvasElement = document.getElementById('stockChart');
+    if (!canvasElement) return;
+
+    const stockValues = Object.values(stock);
+    const inStock = stockValues.filter(s => s > 0).length;
+    const lowStock = stockValues.filter(s => s > 0 && s <= 10).length;
+    const outOfStock = stockValues.filter(s => s === 0).length;
+
+    new Chart(canvasElement, {
+      type: 'doughnut',
+      data: {
+        labels: ['Em Estoque', 'Estoque Baixo', 'Fora de Estoque'],
+        datasets: [{
+          data: [inStock - lowStock, lowStock, outOfStock],
+          backgroundColor: ['#33A37A', '#F4C85A', '#E74C3C'],
+          borderColor: '#fff',
+          borderWidth: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: {
+              font: { size: 11 },
+              padding: 15
+            }
+          }
+        }
+      }
+    });
+  },
+
+  // Category distribution chart (Bar)
+  initCategoryChart(products, categories) {
+    const canvasElement = document.getElementById('categoryChart');
+    if (!canvasElement) return;
+
+    const categoryData = {};
+    categories.forEach(cat => {
+      categoryData[cat.name] = 0;
+    });
+
+    products.forEach(product => {
+      // Count products in each category (for this demo, we'll just count all products)
+      if (Object.keys(categoryData).length > 0) {
+        categoryData[Object.keys(categoryData)[0]]++;
+      }
+    });
+
+    const filteredLabels = Object.keys(categoryData).slice(0, 8);
+    const filteredData = filteredLabels.map(label => categoryData[label]);
+
+    new Chart(canvasElement, {
+      type: 'bar',
+      data: {
+        labels: filteredLabels,
+        datasets: [{
+          label: 'Produtos',
+          data: filteredData,
+          backgroundColor: '#2F9BD6',
+          borderRadius: 6
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: false
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: { font: { size: 11 } }
+          },
+          x: {
+            ticks: { font: { size: 10 } }
+          }
+        }
+      }
+    });
   }
-};
+
 
 // Initialize on load
 document.addEventListener('DOMContentLoaded', () => {
