@@ -1,0 +1,73 @@
+@use "sass:color";
+@use 'variables' as *;
+
+.login-card {
+  background: $white;
+  padding: 40px;
+  border-radius: $border-radius;
+  box-shadow: $box-shadow;
+
+  h2 {
+    text-align: center;
+    color: $text-color;
+    margin-bottom: 30px;
+    font-size: 24px;
+  }
+
+  .form-group {
+    margin-bottom: 20px;
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      color: $text-light;
+      font-size: 14px;
+    }
+
+    input {
+      width: 100%;
+      padding: 12px 15px;
+      border: 1px solid #ddd;
+      border-radius: $border-radius;
+      font-size: 14px;
+      transition: $transition;
+
+      &:focus {
+        outline: none;
+        border-color: $primary-color;
+        box-shadow: 0 0 0 3px rgba($primary-color, 0.1);
+      }
+    }
+  }
+
+  .btn {
+    width: 100%;
+    padding: 12px;
+    background: $primary-color;
+    color: $white;
+    border: none;
+    border-radius: $border-radius;
+    font-size: 16px;
+    cursor: pointer;
+    transition: $transition;
+
+    &:hover {
+      background: color.adjust($primary-color, $lightness: -10%);
+    }
+  }
+
+  .links {
+    margin-top: 20px;
+    text-align: center;
+
+    a {
+      color: $primary-color;
+      text-decoration: none;
+      font-size: 14px;
+
+      &:hover {
+        text-decoration: underline;
+      }
+    }
+  }
+}

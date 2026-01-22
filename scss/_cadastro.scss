@@ -1,0 +1,83 @@
+@use "sass:color";
+@use 'variables' as *;
+
+.cadastro-card {
+  background: $white;
+  padding: 40px;
+  border-radius: $border-radius;
+  box-shadow: $box-shadow;
+
+  h2 {
+    text-align: center;
+    color: $text-color;
+    margin-bottom: 30px;
+    font-size: 24px;
+  }
+
+  .form-row {
+    display: flex;
+    gap: 15px;
+
+    .form-group {
+      flex: 1;
+    }
+  }
+
+  .form-group {
+    margin-bottom: 20px;
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      color: $text-light;
+      font-size: 14px;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 12px 15px;
+      border: 1px solid #ddd;
+      border-radius: $border-radius;
+      font-size: 14px;
+      transition: $transition;
+      background: $white;
+
+      &:focus {
+        outline: none;
+        border-color: $secondary-color;
+        box-shadow: 0 0 0 3px rgba($secondary-color, 0.1);
+      }
+    }
+  }
+
+  .btn {
+    width: 100%;
+    padding: 12px;
+    background: $secondary-color;
+    color: $white;
+    border: none;
+    border-radius: $border-radius;
+    font-size: 16px;
+    cursor: pointer;
+    transition: $transition;
+
+    &:hover {
+      background: color.adjust($secondary-color, $lightness: -10%);
+    }
+  }
+
+  .links {
+    margin-top: 20px;
+    text-align: center;
+
+    a {
+      color: $secondary-color;
+      text-decoration: none;
+      font-size: 14px;
+
+      &:hover {
+        text-decoration: underline;
+      }
+    }
+  }
+}
