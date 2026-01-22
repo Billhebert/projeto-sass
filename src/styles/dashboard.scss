@@ -113,6 +113,11 @@ input:focus, select:focus {
 }
 
 /* ===================== */
+/* NAVBAR - Import shared styles */
+/* ===================== */
+@import 'navbar';
+
+/* ===================== */
 /* CONTAINER */
 /* ===================== */
 .container {

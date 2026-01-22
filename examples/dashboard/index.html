@@ -18,10 +18,63 @@
       </div>
       <button onclick="logout()">Sair</button>
     </div>
-  </div>
+   </div>
 
-  <!-- Main Content -->
-  <div class="container">
+   <!-- Navigation Menu -->
+   <nav class="navbar">
+     <div class="nav-container">
+       <ul class="nav-menu">
+         <!-- Dashboard -->
+         <li class="nav-item">
+           <a href="../dashboard/index.html" class="nav-link active">
+             <span class="nav-icon">📊</span>
+             <span class="nav-text">Dashboard</span>
+           </a>
+         </li>
+
+         <!-- Produtos (Dropdown) -->
+         <li class="nav-item dropdown">
+           <button class="nav-link dropdown-toggle" onclick="toggleDropdown(event)">
+             <span class="nav-icon">📦</span>
+             <span class="nav-text">Produtos</span>
+             <span class="dropdown-arrow">▼</span>
+           </button>
+           <ul class="dropdown-menu">
+             <li><a href="../products/index.html" class="dropdown-link">Meus Produtos (SKUs)</a></li>
+             <li><a href="#categorias" class="dropdown-link">Categorias</a></li>
+             <li><a href="#estoque" class="dropdown-link">Estoque</a></li>
+           </ul>
+         </li>
+
+         <!-- Vendas -->
+         <li class="nav-item">
+           <a href="#vendas" class="nav-link">
+             <span class="nav-icon">💰</span>
+             <span class="nav-text">Vendas</span>
+           </a>
+         </li>
+
+         <!-- Relatórios -->
+         <li class="nav-item">
+           <a href="#relatorios" class="nav-link">
+             <span class="nav-icon">📈</span>
+             <span class="nav-text">Relatórios</span>
+           </a>
+         </li>
+
+         <!-- Configurações -->
+         <li class="nav-item">
+           <a href="#configuracoes" class="nav-link">
+             <span class="nav-icon">⚙️</span>
+             <span class="nav-text">Configurações</span>
+           </a>
+         </li>
+       </ul>
+     </div>
+   </nav>
+
+   <!-- Main Content -->
+   <div class="container">
     <div class="dashboard-wrapper">
       <!-- KPI Cards Section -->
       <div class="kpi-section">
@@ -458,6 +511,13 @@
         .join('')
         .toUpperCase();
       document.getElementById('userAvatar').textContent = initials;
+    }
+
+    // Toggle dropdown menu
+    function toggleDropdown(e) {
+      e.preventDefault();
+      const dropdown = e.target.closest('.dropdown');
+      dropdown.classList.toggle('active');
     }
   </script>
 </body>
