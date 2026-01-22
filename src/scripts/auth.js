@@ -24,6 +24,11 @@ const authService = {
     }
   },
 
+  // Save user to localStorage
+  saveUser(user) {
+    localStorage.setItem(this.userKey, JSON.stringify(user));
+  },
+
   // Check if token is valid
   isTokenValid() {
     const token = this.getToken();

@@ -487,11 +487,86 @@
                <button onclick="app.nextPage()" id="btnNext">Próxima →</button>
              </div>
            </div>
-         </div>
-       </div>
-   </div>
- 
-  <script src="../../src/scripts/auth.js"></script>
+        </div>
+      </div>
+
+      <!-- Additional Statistics Section -->
+      <div style="margin-top: 30px; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
+        <h3 style="margin: 0 0 20px 0; font-size: 16px; font-weight: 700; color: #333;">Estatísticas Adicionais</h3>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px;">
+          <!-- Total Products -->
+          <div style="padding: 15px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 6px; color: white;">
+            <div style="font-size: 12px; opacity: 0.9; margin-bottom: 8px;">Total de Produtos</div>
+            <div style="font-size: 28px; font-weight: bold;" id="totalProducts">0</div>
+          </div>
+
+          <!-- Total Categories -->
+          <div style="padding: 15px; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); border-radius: 6px; color: white;">
+            <div style="font-size: 12px; opacity: 0.9; margin-bottom: 8px;">Categorias</div>
+            <div style="font-size: 28px; font-weight: bold;" id="totalCategories">0</div>
+          </div>
+
+          <!-- Low Stock Items -->
+          <div style="padding: 15px; background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); border-radius: 6px; color: #333;">
+            <div style="font-size: 12px; opacity: 0.8; margin-bottom: 8px;">Itens com Estoque Baixo</div>
+            <div style="font-size: 28px; font-weight: bold;" id="lowStockItems">0</div>
+          </div>
+
+          <!-- Total Sales (Month) -->
+          <div style="padding: 15px; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); border-radius: 6px; color: white;">
+            <div style="font-size: 12px; opacity: 0.9; margin-bottom: 8px;">Vendas (Mês)</div>
+            <div style="font-size: 28px; font-weight: bold;" id="monthlySales">0</div>
+          </div>
+
+          <!-- Top Seller -->
+          <div style="padding: 15px; background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); border-radius: 6px; color: #333;">
+            <div style="font-size: 12px; opacity: 0.8; margin-bottom: 8px;">Melhor Vendedor</div>
+            <div style="font-size: 18px; font-weight: bold;" id="topSeller">--</div>
+          </div>
+
+          <!-- Avg Order Value -->
+          <div style="padding: 15px; background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); border-radius: 6px; color: #333;">
+            <div style="font-size: 12px; opacity: 0.8; margin-bottom: 8px;">Ticket Médio</div>
+            <div style="font-size: 20px; font-weight: bold;" id="avgOrder">R$ 0,00</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Performance Section -->
+      <div style="margin-top: 30px; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
+        <h3 style="margin: 0 0 20px 0; font-size: 16px; font-weight: 700; color: #333;">Desempenho</h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+          <!-- Growth Chart -->
+          <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+              <div>
+                <div style="font-size: 13px; color: #999; margin-bottom: 4px;">Crescimento (Mês)</div>
+                <div style="font-size: 24px; font-weight: bold; color: #33A37A;" id="growthPercent">+15.3%</div>
+              </div>
+              <div style="text-align: right;">
+                <div style="font-size: 13px; color: #999; margin-bottom: 4px;">vs Mês Anterior</div>
+                <div style="font-size: 14px;">📈 Crescimento Positivo</div>
+              </div>
+            </div>
+            <div style="height: 200px; background: #f5f5f5; border-radius: 6px; display: flex; align-items: flex-end; justify-content: space-around; padding: 20px 10px; gap: 8px;">
+              <div style="width: 20px; background: linear-gradient(180deg, #33A37A 0%, #2a8a66 100%); border-radius: 4px; flex: 1;" title="Semana 1"></div>
+              <div style="width: 20px; background: linear-gradient(180deg, #33A37A 0%, #2a8a66 100%); border-radius: 4px; flex: 1; height: 65%;" title="Semana 2"></div>
+              <div style="width: 20px; background: linear-gradient(180deg, #33A37A 0%, #2a8a66 100%); border-radius: 4px; flex: 1; height: 45%;" title="Semana 3"></div>
+              <div style="width: 20px; background: linear-gradient(180deg, #33A37A 0%, #2a8a66 100%); border-radius: 4px; flex: 1; height: 80%;" title="Semana 4"></div>
+            </div>
+          </div>
+
+          <!-- Top Products -->
+          <div>
+            <div style="font-size: 13px; color: #999; margin-bottom: 15px; font-weight: 600;">Top 5 Produtos Mais Vendidos</div>
+            <div id="topProductsList" style="display: flex; flex-direction: column; gap: 10px;">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    </div>
   <script src="../../src/scripts/dashboard.js"></script>
   <script>
     // Check authentication

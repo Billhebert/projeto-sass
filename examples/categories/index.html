@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Produtos - Dashboard</title>
+  <title>Categorias - Dashboard</title>
   <link rel="stylesheet" href="../../dist/styles/products.css">
 </head>
 <body>
@@ -32,23 +32,23 @@
           </a>
         </li>
 
-         <!-- Produtos (Dropdown) -->
-         <li class="nav-item dropdown">
-           <button class="nav-link dropdown-toggle active" onclick="toggleDropdown(event)">
-             <span class="nav-icon">📦</span>
-             <span class="nav-text">Produtos</span>
-             <span class="dropdown-arrow">▼</span>
-           </button>
-           <ul class="dropdown-menu">
-             <li><a href="../products/index.html" class="dropdown-link active">Meus Produtos (SKUs)</a></li>
-             <li><a href="#categorias" class="dropdown-link">Categorias</a></li>
-             <li><a href="#estoque" class="dropdown-link">Estoque</a></li>
-           </ul>
-         </li>
+        <!-- Produtos (Dropdown) -->
+        <li class="nav-item dropdown">
+          <button class="nav-link dropdown-toggle active" onclick="toggleDropdown(event)">
+            <span class="nav-icon">📦</span>
+            <span class="nav-text">Produtos</span>
+            <span class="dropdown-arrow">▼</span>
+          </button>
+          <ul class="dropdown-menu">
+            <li><a href="../products/index.html" class="dropdown-link">Meus Produtos (SKUs)</a></li>
+            <li><a href="../categories/index.html" class="dropdown-link active">Categorias</a></li>
+            <li><a href="../stock/index.html" class="dropdown-link">Estoque</a></li>
+          </ul>
+        </li>
 
         <!-- Vendas -->
         <li class="nav-item">
-          <a href="#vendas" class="nav-link">
+          <a href="../sales/index.html" class="nav-link">
             <span class="nav-icon">💰</span>
             <span class="nav-text">Vendas</span>
           </a>
@@ -64,7 +64,7 @@
 
         <!-- Configurações -->
         <li class="nav-item">
-          <a href="#configuracoes" class="nav-link">
+          <a href="../settings/index.html" class="nav-link">
             <span class="nav-icon">⚙️</span>
             <span class="nav-text">Configurações</span>
           </a>
@@ -79,7 +79,7 @@
     <span class="breadcrumb-sep">/</span>
     <a href="#produtos">Produtos</a>
     <span class="breadcrumb-sep">/</span>
-    <span class="breadcrumb-current">Meus Produtos (SKUs)</span>
+    <span class="breadcrumb-current">Categorias</span>
   </div>
 
   <!-- Main Content -->
@@ -87,94 +87,99 @@
     <!-- Form Section -->
     <div class="form-card">
       <div class="form-header">
-        <h2 class="form-title">➕ Cadastrar Novo Produto (SKU)</h2>
-        <p class="form-subtitle">Adicione um novo SKU ao seu catálogo de produtos</p>
+        <h2 class="form-title">➕ Cadastrar Nova Categoria</h2>
+        <p class="form-subtitle">Adicione uma nova categoria para organizar seus produtos</p>
       </div>
 
-      <form id="productForm" class="product-form">
-        <!-- SKU Input -->
+      <form id="categoryForm" class="product-form">
+        <!-- Category Name -->
         <div class="form-group">
-          <label for="sku" class="form-label">SKU</label>
+          <label for="categoryName" class="form-label">Nome da Categoria</label>
           <div class="input-wrapper">
             <input
               type="text"
-              id="sku"
-              name="sku"
-              placeholder="Ex.: 012-345-678"
+              id="categoryName"
+              name="categoryName"
+              placeholder="Ex.: Eletrônicos, Roupas, Livros"
               class="form-input"
               required
-              pattern="^[A-Za-z0-9\-]{3,}$"
+              minlength="3"
             >
-            <button type="submit" class="btn-primary btn-submit">
-              <span class="btn-icon">➕</span>
-              <span class="btn-text">Cadastrar</span>
-            </button>
           </div>
-          <div class="form-help">
-            <span class="help-text">Formato: letras, números e hífens (mínimo 3 caracteres)</span>
+          <div class="form-error" id="nameError"></div>
+        </div>
+
+        <!-- Category Description -->
+        <div class="form-group">
+          <label for="categoryDescription" class="form-label">Descrição (Opcional)</label>
+          <div class="input-wrapper">
+            <textarea
+              id="categoryDescription"
+              name="categoryDescription"
+              placeholder="Descreva a categoria..."
+              class="form-input"
+              style="resize: vertical; min-height: 80px;"
+            ></textarea>
           </div>
-          <div class="form-error" id="skuError"></div>
+        </div>
+
+        <!-- Category Status -->
+        <div class="form-group">
+          <label for="categoryStatus" class="form-label">Status</label>
+          <div class="input-wrapper">
+            <select id="categoryStatus" name="categoryStatus" class="form-input">
+              <option value="ativo">Ativa</option>
+              <option value="inativo">Inativa</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Submit Button -->
+        <div class="form-group">
+          <button type="submit" class="btn-submit">
+            <span class="btn-icon">➕</span>
+            <span class="btn-text">Cadastrar Categoria</span>
+          </button>
         </div>
 
         <!-- Hidden Success Message -->
         <div id="successMessage" class="form-success" style="display: none;">
-          ✓ Produto cadastrado com sucesso!
+          ✓ Categoria cadastrada com sucesso!
         </div>
       </form>
 
-      <!-- Products Table -->
+      <!-- Categories Table -->
       <div class="products-section">
-        <h3 class="section-title">Produtos Cadastrados</h3>
-        
-        <!-- Search and Filter -->
-        <div style="display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;">
-          <div style="flex: 1; min-width: 200px;">
-            <input
-              type="text"
-              id="searchInput"
-              placeholder="🔍 Buscar por SKU..."
-              style="width: 100%; padding: 10px 12px; border: 1px solid #e0e0e0; border-radius: 4px; font-size: 13px;"
-            >
-          </div>
-          <div style="min-width: 150px;">
-            <select
-              id="statusFilter"
-              style="width: 100%; padding: 10px 12px; border: 1px solid #e0e0e0; border-radius: 4px; font-size: 13px;"
-            >
-              <option value="">Todos os Status</option>
-              <option value="ativo">Ativo</option>
-              <option value="inativo">Inativo</option>
-            </select>
-          </div>
-        </div>
+        <h3 class="section-title">Categorias Cadastradas</h3>
         
         <div class="products-table-wrapper">
           <table class="products-table">
             <thead>
               <tr>
-                <th>SKU</th>
-                <th>Data de Cadastro</th>
+                <th>Nome</th>
+                <th>Descrição</th>
                 <th>Status</th>
+                <th>Produtos</th>
                 <th>Ações</th>
               </tr>
             </thead>
-            <tbody id="productsTableBody">
+            <tbody id="categoriesTableBody">
               <!-- Populated by JS -->
             </tbody>
           </table>
         </div>
 
         <div class="empty-state" id="emptyState" style="display: none;">
-          <div class="empty-icon">📦</div>
-          <h4>Nenhum produto cadastrado</h4>
-          <p>Comece adicionando seu primeiro SKU acima</p>
+          <div class="empty-icon">📂</div>
+          <h4>Nenhuma categoria cadastrada</h4>
+          <p>Comece adicionando sua primeira categoria acima</p>
         </div>
       </div>
     </div>
   </div>
 
   <script src="../../src/scripts/auth.js"></script>
-  <script src="../../src/scripts/products.js"></script>
+  <script src="../../src/scripts/categories.js"></script>
   <script>
     // Check authentication
     authService.requireAuth();
@@ -200,15 +205,6 @@
       const dropdown = e.target.closest('.dropdown');
       dropdown.classList.toggle('active');
     }
-
-    // Close dropdown when clicking outside
-    document.addEventListener('click', function(e) {
-      if (!e.target.closest('.dropdown')) {
-        document.querySelectorAll('.dropdown.active').forEach(d => {
-          d.classList.remove('active');
-        });
-      }
-    });
   </script>
 </body>
 </html>

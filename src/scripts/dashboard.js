@@ -327,7 +327,7 @@ const app = {
   useAPI: false, // Set to true when API is ready
 
   async init() {
-    try {
+     try {
       // Check if API is available
       try {
         await apiService.getSummary();
@@ -341,6 +341,7 @@ const app = {
       this.filteredData = [...this.data];
       await this.renderChart();
       await this.renderTable();
+      this.updateStatistics();
       console.log('Dashboard initialized');
     } catch (error) {
       console.error('Initialization error:', error);
@@ -680,6 +681,86 @@ const app = {
       notificationService.error('Erro ao atualizar tabela');
       const btn = document.querySelector('.btn-refresh');
       this.setLoading(false, btn);
+    }
+  },
+
+  // =====================
+  // STATISTICS
+  // =====================
+  updateStatistics() {
+    try {
+      // Get data from localStorage
+      const products = JSON.parse(localStorage.getItem('products')) || [];
+      const categories = JSON.parse(localStorage.getItem('categories')) || [];
+      const sales = JSON.parse(localStorage.getItem('sales')) || [];
+      const stockData = JSON.parse(localStorage.getItem('product_stock')) || {};
+
+      // Update total products
+      document.getElementById('totalProducts').textContent = products.length;
+
+      // Update total categories
+      document.getElementById('totalCategories').textContent = categories.length;
+
+      // Calculate low stock items (assume min stock of 10)
+      const lowStockItems = Object.keys(stockData).filter(sku => {
+        return stockData[sku] < 10;
+      }).length;
+      document.getElementById('lowStockItems').textContent = lowStockItems;
+
+      // Calculate monthly sales (from this month)
+      const currentMonth = new Date().getMonth();
+      const currentYear = new Date().getFullYear();
+      const monthlySalesCount = sales.filter(sale => {
+        const saleDate = new Date(sale.createdAt);
+        return saleDate.getMonth() === currentMonth && saleDate.getFullYear() === currentYear;
+      }).length;
+      document.getElementById('monthlySales').textContent = monthlySalesCount;
+
+      // Calculate average order value
+      if (sales.length > 0) {
+        const totalValue = sales.reduce((sum, sale) => sum + sale.total, 0);
+        const avgValue = totalValue / sales.length;
+        document.getElementById('avgOrder').textContent = 'R$ ' + avgValue.toFixed(2);
+      }
+
+      // Top seller (most sold SKU)
+      if (sales.length > 0) {
+        const skuCounts = {};
+        sales.forEach(sale => {
+          skuCounts[sale.sku] = (skuCounts[sale.sku] || 0) + sale.quantity;
+        });
+        const topSku = Object.keys(skuCounts).reduce((a, b) => 
+          skuCounts[a] > skuCounts[b] ? a : b
+        );
+        document.getElementById('topSeller').textContent = topSku;
+      }
+
+      // Top products list
+      if (sales.length > 0) {
+        const skuRevenue = {};
+        sales.forEach(sale => {
+          skuRevenue[sale.sku] = (skuRevenue[sale.sku] || 0) + sale.total;
+        });
+        
+        const topProducts = Object.keys(skuRevenue)
+          .sort((a, b) => skuRevenue[b] - skuRevenue[a])
+          .slice(0, 5);
+
+        const topProductsList = document.getElementById('topProductsList');
+        topProductsList.innerHTML = topProducts.map((sku, index) => `
+          <div style="display: flex; align-items: center; padding: 8px 0; border-bottom: 1px solid #f0f0f0;">
+            <div style="font-size: 18px; font-weight: bold; color: #5D4DB3; width: 30px;">${index + 1}.</div>
+            <div style="flex: 1;">
+              <div style="font-size: 13px; font-weight: 600; color: #333;">${sku}</div>
+              <div style="font-size: 11px; color: #999;">R$ ${skuRevenue[sku].toFixed(2)}</div>
+            </div>
+            <div style="text-align: right; font-size: 12px; color: #666;">⭐ Popular</div>
+          </div>
+        `).join('');
+      }
+
+    } catch (error) {
+      console.error('Statistics update error:', error);
     }
   }
 };

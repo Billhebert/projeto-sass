@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Estoque - Dashboard</title>
+  <link rel="stylesheet" href="../../dist/styles/products.css">
+</head>
+<body>
+  <!-- Topbar -->
+  <div class="topbar">
+    <div class="brand">📊 Dashboard</div>
+    <div class="user-section">
+      <div class="avatar" id="userAvatar">--</div>
+      <div style="flex: 1; padding: 0 12px;">
+        <div style="font-size: 12px; font-weight: 600;" id="userName">Usuário</div>
+        <div style="font-size: 11px; color: #999; margin-top: 2px;" id="userEmail">user@example.com</div>
+      </div>
+      <button onclick="logout()">Sair</button>
+    </div>
+  </div>
+
+  <!-- Navigation Menu -->
+  <nav class="navbar">
+    <div class="nav-container">
+      <ul class="nav-menu">
+        <!-- Dashboard -->
+        <li class="nav-item">
+          <a href="../dashboard/index.html" class="nav-link">
+            <span class="nav-icon">📊</span>
+            <span class="nav-text">Dashboard</span>
+          </a>
+        </li>
+
+        <!-- Produtos (Dropdown) -->
+        <li class="nav-item dropdown">
+          <button class="nav-link dropdown-toggle active" onclick="toggleDropdown(event)">
+            <span class="nav-icon">📦</span>
+            <span class="nav-text">Produtos</span>
+            <span class="dropdown-arrow">▼</span>
+          </button>
+          <ul class="dropdown-menu">
+            <li><a href="../products/index.html" class="dropdown-link">Meus Produtos (SKUs)</a></li>
+            <li><a href="../categories/index.html" class="dropdown-link">Categorias</a></li>
+            <li><a href="../stock/index.html" class="dropdown-link active">Estoque</a></li>
+          </ul>
+        </li>
+
+        <!-- Vendas -->
+        <li class="nav-item">
+          <a href="../sales/index.html" class="nav-link">
+            <span class="nav-icon">💰</span>
+            <span class="nav-text">Vendas</span>
+          </a>
+        </li>
+
+        <!-- Relatórios -->
+        <li class="nav-item">
+          <a href="#relatorios" class="nav-link">
+            <span class="nav-icon">📈</span>
+            <span class="nav-text">Relatórios</span>
+          </a>
+        </li>
+
+        <!-- Configurações -->
+        <li class="nav-item">
+          <a href="../settings/index.html" class="nav-link">
+            <span class="nav-icon">⚙️</span>
+            <span class="nav-text">Configurações</span>
+          </a>
+        </li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Breadcrumb -->
+  <div class="breadcrumb">
+    <a href="../dashboard/index.html">Dashboard</a>
+    <span class="breadcrumb-sep">/</span>
+    <a href="#produtos">Produtos</a>
+    <span class="breadcrumb-sep">/</span>
+    <span class="breadcrumb-current">Estoque</span>
+  </div>
+
+  <!-- Main Content -->
+  <div class="container">
+    <!-- Form Section -->
+    <div class="form-card">
+      <div class="form-header">
+        <h2 class="form-title">📦 Gerenciar Estoque</h2>
+        <p class="form-subtitle">Adicione ou atualize a quantidade em estoque dos seus produtos</p>
+      </div>
+
+      <form id="stockForm" class="product-form">
+        <!-- Product SKU -->
+        <div class="form-group">
+          <label for="productSku" class="form-label">Produto (SKU)</label>
+          <div class="input-wrapper">
+            <select id="productSku" name="productSku" class="form-input" required>
+              <option value="">Selecione um produto...</option>
+            </select>
+          </div>
+          <div class="form-error" id="skuError"></div>
+        </div>
+
+        <!-- Current Stock -->
+        <div class="form-group">
+          <label for="currentStock" class="form-label">Estoque Atual</label>
+          <div class="input-wrapper">
+            <input
+              type="number"
+              id="currentStock"
+              name="currentStock"
+              placeholder="Quantidade atual"
+              class="form-input"
+              readonly
+              value="0"
+            >
+          </div>
+        </div>
+
+        <!-- Quantity Change -->
+        <div class="form-group">
+          <label for="quantityChange" class="form-label">Quantidade (Adicionar/Remover)</label>
+          <div class="input-wrapper">
+            <input
+              type="number"
+              id="quantityChange"
+              name="quantityChange"
+              placeholder="Ex.: +10 para adicionar, -5 para remover"
+              class="form-input"
+              required
+            >
+          </div>
+          <div class="form-help">
+            <span class="help-text">Use números positivos para adicionar ou negativos para remover</span>
+          </div>
+          <div class="form-error" id="quantityError"></div>
+        </div>
+
+        <!-- Reason/Notes -->
+        <div class="form-group">
+          <label for="stockNotes" class="form-label">Motivo (Opcional)</label>
+          <div class="input-wrapper">
+            <textarea
+              id="stockNotes"
+              name="stockNotes"
+              placeholder="Ex.: Reposição, Venda, Ajuste, Devoluçã..."
+              class="form-input"
+              style="resize: vertical; min-height: 80px;"
+            ></textarea>
+          </div>
+        </div>
+
+        <!-- Submit Button -->
+        <div class="form-group">
+          <button type="submit" class="btn-submit">
+            <span class="btn-icon">✔️</span>
+            <span class="btn-text">Atualizar Estoque</span>
+          </button>
+        </div>
+
+        <!-- Hidden Success Message -->
+        <div id="successMessage" class="form-success" style="display: none;">
+          ✓ Estoque atualizado com sucesso!
+        </div>
+      </form>
+
+      <!-- Stock History Table -->
+      <div class="products-section">
+        <h3 class="section-title">Histórico de Movimentação</h3>
+        
+        <div class="products-table-wrapper">
+          <table class="products-table">
+            <thead>
+              <tr>
+                <th>Produto (SKU)</th>
+                <th>Tipo</th>
+                <th>Quantidade</th>
+                <th>Estoque Anterior</th>
+                <th>Novo Estoque</th>
+                <th>Data/Hora</th>
+                <th>Notas</th>
+              </tr>
+            </thead>
+            <tbody id="stockHistoryBody">
+              <!-- Populated by JS -->
+            </tbody>
+          </table>
+        </div>
+
+        <div class="empty-state" id="emptyState" style="display: none;">
+          <div class="empty-icon">📊</div>
+          <h4>Nenhuma movimentação de estoque</h4>
+          <p>As movimentações aparecerão aqui</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="../../src/scripts/auth.js"></script>
+  <script src="../../src/scripts/products.js"></script>
+  <script src="../../src/scripts/stock.js"></script>
+  <script>
+    // Check authentication
+    authService.requireAuth();
+    
+    // Load user info
+    const user = authService.getUser();
+    if (user) {
+      document.getElementById('userName').textContent = user.name || 'Usuário';
+      document.getElementById('userEmail').textContent = user.email || '';
+      
+      const initials = (user.name || 'U')
+        .split(' ')
+        .slice(0, 2)
+        .map(n => n[0])
+        .join('')
+        .toUpperCase();
+      document.getElementById('userAvatar').textContent = initials;
+    }
+
+    // Toggle dropdown menu
+    function toggleDropdown(e) {
+      e.preventDefault();
+      const dropdown = e.target.closest('.dropdown');
+      dropdown.classList.toggle('active');
+    }
+  </script>
+</body>
+</html>
