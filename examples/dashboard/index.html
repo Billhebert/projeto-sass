@@ -336,6 +336,100 @@
         </div>
       </aside>
     </div>
+
+    <!-- TABLE SECTION -->
+    <div class="table-section">
+      <div class="table-header">
+        <h2>Detalhes de Vendas</h2>
+        <div class="table-controls">
+          <button class="btn-refresh" onclick="app.refreshTable()">↻ Atualizar</button>
+          <button class="btn-export" onclick="app.exportCSV()">📥 Exportar CSV</button>
+        </div>
+      </div>
+
+      <div class="table-wrapper">
+        <table id="dataTable">
+          <thead>
+            <tr>
+              <th class="sortable" onclick="app.sort('anuncio')">
+                Anúncio
+                <span class="sort-icon">⇅</span>
+              </th>
+              <th class="sortable" onclick="app.sort('conta')">
+                Conta
+                <span class="sort-icon">⇅</span>
+              </th>
+              <th class="sortable" onclick="app.sort('sku')">
+                SKU
+                <span class="sort-icon">⇅</span>
+              </th>
+              <th class="sortable" onclick="app.sort('data')">
+                Data
+                <span class="sort-icon">⇅</span>
+              </th>
+              <th class="sortable" onclick="app.sort('frete')">
+                Frete
+                <span class="sort-icon">⇅</span>
+              </th>
+              <th class="sortable numeric" onclick="app.sort('valor')">
+                Valor Unit.
+                <span class="sort-icon">⇅</span>
+              </th>
+              <th class="sortable numeric" onclick="app.sort('qtd')">
+                Qtd.
+                <span class="sort-icon">⇅</span>
+              </th>
+              <th class="sortable numeric revenue" onclick="app.sort('faturamento')">
+                Faturamento ML
+                <span class="sort-icon">⇅</span>
+              </th>
+              <th class="sortable numeric cost" onclick="app.sort('custo')">
+                Custo (-)
+                <span class="sort-icon">⇅</span>
+              </th>
+              <th class="sortable numeric tax" onclick="app.sort('imposto')">
+                Imposto (-)
+                <span class="sort-icon">⇅</span>
+              </th>
+              <th class="sortable numeric fee" onclick="app.sort('tarifa')">
+                Tarifa (-)
+                <span class="sort-icon">⇅</span>
+              </th>
+              <th class="sortable numeric" onclick="app.sort('freteComprador')">
+                Frete Comprador (-)
+                <span class="sort-icon">⇅</span>
+              </th>
+              <th class="sortable numeric" onclick="app.sort('freteVendedor')">
+                Frete Vendedor (-)
+                <span class="sort-icon">⇅</span>
+              </th>
+              <th class="sortable numeric margin" onclick="app.sort('margem')">
+                Margem Contrib. (+)
+                <span class="sort-icon">⇅</span>
+              </th>
+              <th class="sortable numeric margin" onclick="app.sort('mcPct')">
+                MC em %
+                <span class="sort-icon">⇅</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody id="tableBody">
+            <!-- Populated by JS -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="table-footer">
+        <div class="pagination-info">
+          Mostrando <span id="pageStart">0</span>-<span id="pageEnd">0</span> de <span id="totalRows">0</span> registros
+        </div>
+        <div class="pagination-controls">
+          <button onclick="app.prevPage()" id="btnPrev">← Anterior</button>
+          <span id="pageNumber">Página 1</span>
+          <button onclick="app.nextPage()" id="btnNext">Próxima →</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="../../src/scripts/dashboard.js"></script>

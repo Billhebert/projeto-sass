@@ -444,3 +444,254 @@ input:focus, select:focus {
     padding: 8px;
   }
 }
+
+/* ===================== */
+/* TABLE */
+/* ===================== */
+.table-section {
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  margin-top: 20px;
+}
+
+.table-header {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--muted-2);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.table-header h2 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.table-controls {
+  display: flex;
+  gap: 6px;
+}
+
+.table-controls button {
+  background: var(--primary);
+  color: white;
+  padding: 6px 10px;
+  font-size: 11px;
+  border-radius: 4px;
+}
+
+.table-controls button:hover {
+  background: var(--primary-dark);
+}
+
+.btn-export {
+  background: var(--margem) !important;
+}
+
+.btn-export:hover {
+  background: #2d8c66 !important;
+}
+
+.table-wrapper {
+  overflow-x: auto;
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.table-wrapper table {
+  width: 100%;
+  min-width: 1400px;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.table-wrapper th {
+  background: var(--bg);
+  padding: 10px 12px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 11px;
+  border-bottom: 2px solid var(--muted-2);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  color: var(--text-dark);
+}
+
+.table-wrapper th:hover {
+  background: #efefef;
+}
+
+.table-wrapper th.sortable {
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.table-wrapper .sort-icon {
+  margin-left: 4px;
+  font-size: 9px;
+  color: var(--muted);
+  font-weight: normal;
+}
+
+.table-wrapper th.numeric {
+  text-align: right;
+}
+
+.table-wrapper th.revenue {
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.table-wrapper th.cost {
+  color: var(--custo);
+}
+
+.table-wrapper th.tax {
+  color: var(--imposto);
+}
+
+.table-wrapper th.fee {
+  color: var(--tarifa);
+}
+
+.table-wrapper th.margin {
+  color: var(--margem);
+  font-weight: 700;
+}
+
+.table-wrapper td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--muted-2);
+  color: var(--text-dark);
+}
+
+.table-wrapper tbody tr {
+  transition: background 0.1s;
+}
+
+.table-wrapper tbody tr:hover {
+  background: #fafafa;
+}
+
+.table-wrapper td.numeric {
+  text-align: right;
+  font-family: 'Courier New', monospace;
+  font-weight: 500;
+}
+
+.table-wrapper td.revenue {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.table-wrapper td.cost {
+  color: var(--custo);
+}
+
+.table-wrapper td.tax {
+  color: var(--imposto);
+}
+
+.table-wrapper td.fee {
+  color: var(--tarifa);
+}
+
+.table-wrapper td.frete-vend {
+  color: var(--frete);
+}
+
+.table-wrapper td.margin {
+  color: var(--margem);
+  font-weight: 600;
+}
+
+.table-wrapper td.mcpct {
+  color: var(--margem);
+  font-weight: 600;
+}
+
+/* Anúncio column */
+.col-anuncio {
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.anuncio-link {
+  color: var(--primary);
+  text-decoration: none;
+  cursor: pointer;
+  margin-left: 4px;
+  font-size: 10px;
+}
+
+.anuncio-link:hover {
+  text-decoration: underline;
+}
+
+.sku-copy {
+  color: var(--muted);
+  cursor: pointer;
+  margin-left: 4px;
+  font-size: 10px;
+}
+
+.sku-copy:hover {
+  color: var(--primary);
+}
+
+.table-footer {
+  padding: 10px 14px;
+  border-top: 1px solid var(--muted-2);
+  background: #f9f9f9;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 11px;
+}
+
+.pagination-info {
+  color: var(--text-light);
+}
+
+.pagination-controls {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.pagination-controls button {
+  background: var(--muted-2);
+  color: var(--text-dark);
+  padding: 6px 10px;
+  font-size: 11px;
+  border-radius: 4px;
+}
+
+.pagination-controls button:hover:not(:disabled) {
+  background: #c0c0c0;
+}
+
+.pagination-controls button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+#pageNumber {
+  font-size: 11px;
+  color: var(--text-light);
+  min-width: 60px;
+  text-align: center;
+}

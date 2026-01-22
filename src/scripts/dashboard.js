@@ -51,14 +51,66 @@ const DEMO_DATA = {
   }
 };
 
-// ======================
-// APP
-// ======================
+// Generate table rows
+DEMO_DATA.rows = Array.from({ length: 150 }, (_, i) => {
+  const modalidades = ['Places/Coleta', 'Flex', 'Full', 'ME1'];
+  const fretes = ['Full', 'Flex', 'Places'];
+  
+  const valor = parseFloat((Math.random() * 500 + 20).toFixed(2));
+  const qtd = Math.floor(Math.random() * 5) + 1;
+  const faturamento = parseFloat((valor * qtd).toFixed(2));
+  const custo = parseFloat((faturamento * (Math.random() * 0.4 + 0.35)).toFixed(2));
+  const imposto = parseFloat((faturamento * (Math.random() * 0.08 + 0.02)).toFixed(2));
+  const tarifa = parseFloat((faturamento * (Math.random() * 0.15 + 0.10)).toFixed(2));
+  const freteComprador = parseFloat((Math.random() * 30).toFixed(2));
+  const freteVendedor = parseFloat((Math.random() * 50 + 5).toFixed(2));
+  const margem = parseFloat((faturamento - custo - imposto - tarifa - freteVendedor).toFixed(2));
+  const mcPct = parseFloat(((margem / faturamento) * 100).toFixed(2));
 
+  return {
+    id: i + 1,
+    anuncio: `Produto Premium ${i + 1}`,
+    conta: `Loja ${Math.floor(i / 20) + 1}`,
+    sku: `SKU-${String(i + 1).padStart(5, '0')}`,
+    data: new Date(2026, 0, (i % 28) + 1).toLocaleDateString('pt-BR'),
+    frete: fretes[i % 3],
+    valor,
+    qtd,
+    faturamento,
+    custo,
+    imposto,
+    tarifa,
+    freteComprador,
+    freteVendedor,
+    margem,
+    mcPct
+  };
+});
+
+// ======================
+// APP STATE
+// ======================
 const app = {
+  data: DEMO_DATA.rows,
+  filteredData: [],
+  currentPage: 1,
+  pageSize: 30,
+  sortField: 'data',
+  sortDir: 'desc',
+
   init() {
+    this.filteredData = [...this.data];
     this.renderChart();
+    this.renderTable();
     console.log('Dashboard initialized');
+  },
+
+  // Format currency
+  formatCurrency(value) {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL'
+    }).format(value);
   },
 
   // =====================
@@ -75,22 +127,17 @@ const app = {
     const outerRadius = 50;
     const innerRadius = 30;
 
-    // Calculate total
     const total = chartData.values.reduce((a, b) => a + b, 0);
-
-    // Create donut segments
-    let currentAngle = -90; // Start from top
+    let currentAngle = -90;
 
     chartData.values.forEach((value, index) => {
       const sliceAngle = (value / total) * 360;
       const startAngle = currentAngle;
       const endAngle = currentAngle + sliceAngle;
 
-      // Convert to radians
       const startRad = (startAngle * Math.PI) / 180;
       const endRad = (endAngle * Math.PI) / 180;
 
-      // Calculate points
       const x1 = cx + outerRadius * Math.cos(startRad);
       const y1 = cy + outerRadius * Math.sin(startRad);
       const x2 = cx + outerRadius * Math.cos(endRad);
@@ -101,10 +148,8 @@ const app = {
       const x4 = cx + innerRadius * Math.cos(startRad);
       const y4 = cy + innerRadius * Math.sin(startRad);
 
-      // Large arc flag
       const largeArc = sliceAngle > 180 ? 1 : 0;
 
-      // Create path
       const path = `
         M ${x1} ${y1}
         A ${outerRadius} ${outerRadius} 0 ${largeArc} 1 ${x2} ${y2}
@@ -118,8 +163,6 @@ const app = {
       pathElement.setAttribute('fill', chartData.colors[index]);
       pathElement.setAttribute('stroke', 'white');
       pathElement.setAttribute('stroke-width', '2');
-      pathElement.style.cursor = 'pointer';
-      pathElement.style.transition = 'opacity 0.2s';
       
       pathElement.addEventListener('mouseenter', () => {
         pathElement.style.opacity = '0.8';
@@ -133,7 +176,6 @@ const app = {
       currentAngle = endAngle;
     });
 
-    // Create legend
     this.renderLegend(chartData, total);
   },
 
@@ -168,6 +210,99 @@ const app = {
   },
 
   // =====================
+  // RENDER TABLE
+  // =====================
+  renderTable() {
+    const tbody = document.getElementById('tableBody');
+    const start = (this.currentPage - 1) * this.pageSize;
+    const end = start + this.pageSize;
+    const pageData = this.filteredData.slice(start, end);
+
+    tbody.innerHTML = pageData.map(row => `
+      <tr>
+        <td class="col-anuncio">
+          ${row.anuncio}
+          <span class="anuncio-link" title="Abrir anúncio">🔗</span>
+        </td>
+        <td>${row.conta}</td>
+        <td>
+          ${row.sku}
+          <span class="sku-copy" title="Copiar SKU">📋</span>
+        </td>
+        <td>${row.data}</td>
+        <td>${row.frete}</td>
+        <td class="numeric">${this.formatCurrency(row.valor)}</td>
+        <td class="numeric">${row.qtd}</td>
+        <td class="numeric revenue">${this.formatCurrency(row.faturamento)}</td>
+        <td class="numeric cost">${this.formatCurrency(row.custo)}</td>
+        <td class="numeric tax">${this.formatCurrency(row.imposto)}</td>
+        <td class="numeric fee">${this.formatCurrency(row.tarifa)}</td>
+        <td class="numeric">${this.formatCurrency(row.freteComprador)}</td>
+        <td class="numeric frete-vend">${this.formatCurrency(row.freteVendedor)}</td>
+        <td class="numeric margin">${this.formatCurrency(row.margem)}</td>
+        <td class="numeric mcpct">${row.mcPct.toFixed(2)}%</td>
+      </tr>
+    `).join('');
+
+    // Update pagination
+    document.getElementById('pageStart').textContent = start + 1;
+    document.getElementById('pageEnd').textContent = Math.min(end, this.filteredData.length);
+    document.getElementById('totalRows').textContent = this.filteredData.length;
+    document.getElementById('pageNumber').textContent = `Página ${this.currentPage}`;
+    
+    document.getElementById('btnPrev').disabled = this.currentPage === 1;
+    document.getElementById('btnNext').disabled = end >= this.filteredData.length;
+  },
+
+  // =====================
+  // PAGINATION
+  // =====================
+  nextPage() {
+    const maxPage = Math.ceil(this.filteredData.length / this.pageSize);
+    if (this.currentPage < maxPage) {
+      this.currentPage++;
+      this.renderTable();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  },
+
+  prevPage() {
+    if (this.currentPage > 1) {
+      this.currentPage--;
+      this.renderTable();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  },
+
+  // =====================
+  // SORTING
+  // =====================
+  sort(field) {
+    if (this.sortField === field) {
+      this.sortDir = this.sortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      this.sortField = field;
+      this.sortDir = 'asc';
+    }
+
+    this.filteredData.sort((a, b) => {
+      let valA = a[field];
+      let valB = b[field];
+
+      if (typeof valA === 'string') {
+        valA = valA.toLowerCase();
+        valB = valB.toLowerCase();
+        return this.sortDir === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+      }
+
+      return this.sortDir === 'asc' ? valA - valB : valB - valA;
+    });
+
+    this.currentPage = 1;
+    this.renderTable();
+  },
+
+  // =====================
   // FILTERS
   // =====================
   applyFilters() {
@@ -181,11 +316,21 @@ const app = {
     const freteType = document.getElementById('filterFreteType').value;
     const publicity = document.getElementById('filterPublicity').value;
 
-    console.log('Filtros aplicados:', {
-      startDate, endDate, order, title, sku, status, modality, freteType, publicity
+    this.filteredData = this.data.filter(row => {
+      const rowDate = new Date(row.data.split('/').reverse().join('-'));
+      const startD = startDate ? new Date(startDate) : null;
+      const endD = endDate ? new Date(endDate) : null;
+
+      return (!startD || rowDate >= startD) &&
+             (!endD || rowDate <= endD) &&
+             (!title || row.anuncio.toLowerCase().includes(title)) &&
+             (!sku || row.sku.toLowerCase().includes(sku)) &&
+             (!order || row.id.toString().includes(order));
     });
 
-    alert('Filtros aplicados com sucesso!');
+    this.currentPage = 1;
+    this.renderTable();
+    alert(`Filtros aplicados! ${this.filteredData.length} registros encontrados.`);
   },
 
   clearFilters() {
@@ -199,7 +344,53 @@ const app = {
     document.getElementById('filterFreteType').value = '';
     document.getElementById('filterPublicity').value = '';
 
-    console.log('Filtros limpos');
+    this.filteredData = [...this.data];
+    this.currentPage = 1;
+    this.renderTable();
+  },
+
+  // =====================
+  // EXPORT CSV
+  // =====================
+  exportCSV() {
+    const headers = ['Anúncio', 'Conta', 'SKU', 'Data', 'Frete', 'Valor Unit.', 'Qtd.', 'Faturamento ML', 'Custo', 'Imposto', 'Tarifa', 'Frete Comprador', 'Frete Vendedor', 'Margem', 'MC %'];
+    const rows = this.filteredData.map(row => [
+      row.anuncio,
+      row.conta,
+      row.sku,
+      row.data,
+      row.frete,
+      row.valor,
+      row.qtd,
+      row.faturamento,
+      row.custo,
+      row.imposto,
+      row.tarifa,
+      row.freteComprador,
+      row.freteVendedor,
+      row.margem,
+      row.mcPct
+    ]);
+
+    let csv = headers.join(',') + '\n';
+    rows.forEach(row => {
+      csv += row.map(cell => `"${cell}"`).join(',') + '\n';
+    });
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.setAttribute('href', URL.createObjectURL(blob));
+    link.setAttribute('download', `vendas_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.click();
+  },
+
+  // =====================
+  // REFRESH
+  // =====================
+  refreshTable() {
+    this.currentPage = 1;
+    this.renderTable();
+    alert('Tabela atualizada com sucesso!');
   }
 };
 
