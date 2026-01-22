@@ -152,7 +152,10 @@ const DEMO_DATA = {
 
 // Generate table rows (demo data)
 DEMO_DATA.rows = Array.from({ length: 150 }, (_, i) => {
+  const statuses = ['aprovado', 'cancelado'];
   const fretes = ['Full', 'Flex', 'Places'];
+  const modalidades = ['places', 'flex', 'full'];
+  const publicidades = ['sim', 'nao'];
   
   const valor = parseFloat((Math.random() * 500 + 20).toFixed(2));
   const qtd = Math.floor(Math.random() * 5) + 1;
@@ -164,6 +167,7 @@ DEMO_DATA.rows = Array.from({ length: 150 }, (_, i) => {
   const freteVendedor = parseFloat((Math.random() * 50 + 5).toFixed(2));
   const margem = parseFloat((faturamento - custo - imposto - tarifa - freteVendedor).toFixed(2));
   const mcPct = parseFloat(((margem / faturamento) * 100).toFixed(2));
+  const freteType = i % 2 === 0 ? 'frete-comprador' : 'frete-vendedor';
 
   return {
     id: i + 1,
@@ -181,7 +185,11 @@ DEMO_DATA.rows = Array.from({ length: 150 }, (_, i) => {
     freteComprador,
     freteVendedor,
     margem,
-    mcPct
+    mcPct,
+    status: statuses[i % 2],
+    modality: modalidades[i % 3],
+    freteType: freteType,
+    publicidade: publicidades[i % 2]
   };
 });
 
@@ -642,6 +650,23 @@ const app = {
   },
 
   // =====================
+  // FILTERS HELPER
+  // =====================
+  getFilterValues() {
+    return {
+      startDate: document.getElementById('filterStart').value,
+      endDate: document.getElementById('filterEnd').value,
+      order: document.getElementById('filterOrder').value.toLowerCase().trim(),
+      title: document.getElementById('filterTitle').value.toLowerCase().trim(),
+      sku: document.getElementById('filterSKU').value.toLowerCase().trim(),
+      status: document.getElementById('filterStatus').value,
+      modality: document.getElementById('filterModality').value,
+      freteType: document.getElementById('filterFreteType').value,
+      publicity: document.getElementById('filterPublicity').value
+    };
+  },
+
+  // =====================
   // FILTERS
   // =====================
   async applyFilters() {
@@ -660,18 +685,43 @@ const app = {
         this.filteredData = this.data.filter(row => {
           const rowDate = new Date(row.data.split('/').reverse().join('-'));
           
-          return (!startDate || rowDate >= startDate) &&
-                 (!endDate || rowDate <= endDate) &&
-                 (!filters.title || row.anuncio.toLowerCase().includes(filters.title.toLowerCase())) &&
-                 (!filters.sku || row.sku.toLowerCase().includes(filters.sku.toLowerCase())) &&
-                 (!filters.order || row.id.toString().includes(filters.order));
+          // Date range filtering
+          if (startDate && rowDate < startDate) return false;
+          if (endDate && rowDate > endDate) return false;
+          
+          // Text search filtering
+          if (filters.title && !row.anuncio.toLowerCase().includes(filters.title.toLowerCase())) {
+            return false;
+          }
+          if (filters.sku && !row.sku.toLowerCase().includes(filters.sku.toLowerCase())) {
+            return false;
+          }
+          if (filters.order && !row.id.toString().includes(filters.order)) {
+            return false;
+          }
+          
+          // Dropdown filtering (only if selected)
+          if (filters.status && row.status !== filters.status) {
+            return false;
+          }
+          if (filters.modality && row.modality !== filters.modality) {
+            return false;
+          }
+          if (filters.freteType && row.freteType !== filters.freteType) {
+            return false;
+          }
+          if (filters.publicity && row.publicidade !== filters.publicity) {
+            return false;
+          }
+          
+          return true;
         });
 
         this.renderTable();
       }
 
-      const count = this.useAPI ? '? ' : `${this.filteredData.length} `;
-      notificationService.success(`Filtros aplicados! ${count}registros encontrados.`);
+      const count = this.useAPI ? '?' : this.filteredData.length;
+      notificationService.success(`Filtros aplicados! ${count} registros encontrados.`);
     } catch (error) {
       console.error('Filter error:', error);
       notificationService.error('Erro ao aplicar filtros');
