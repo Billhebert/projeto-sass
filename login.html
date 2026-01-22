@@ -5,31 +5,133 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Login</title>
   <link rel="stylesheet" href="css/main.css">
+  <style>
+    .error-message {
+      color: #E08B7C;
+      font-size: 13px;
+      margin-top: 4px;
+      display: none;
+    }
+    .success-message {
+      color: #33A37A;
+      font-size: 13px;
+      margin-top: 4px;
+      display: none;
+    }
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .loading-spinner {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: white;
+      animation: pulse 1.5s ease-in-out infinite;
+      margin-left: 4px;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+  </style>
 </head>
 <body>
   <div class="container">
     <div class="login-card">
-      <h2>Bem-vindo</h2>
+      <h2>Bem-vindo ao Dashboard</h2>
       <form id="loginForm">
         <div class="form-group">
           <label for="email">E-mail</label>
-          <input type="email" id="email" placeholder="Digite seu e-mail">
+          <input type="email" id="email" placeholder="Digite seu e-mail" required>
+          <div class="error-message" id="emailError"></div>
         </div>
         <div class="form-group">
           <label for="senha">Senha</label>
-          <input type="password" id="senha" placeholder="Digite sua senha">
+          <input type="password" id="senha" placeholder="Digite sua senha" required>
+          <div class="error-message" id="senhaError"></div>
         </div>
-        <button type="submit" class="btn">Entrar</button>
+        <div class="form-group">
+          <div id="loginError" class="error-message"></div>
+        </div>
+        <button type="submit" class="btn" id="loginBtn">Entrar</button>
       </form>
       <div class="links">
         <a href="cadastro.html">Criar conta</a>
+        <span style="margin: 0 8px; color: #ccc;">•</span>
+        <span style="font-size: 12px; color: #666;">Demo: use qualquer e-mail/senha</span>
       </div>
     </div>
   </div>
+
+  <script src="src/scripts/auth.js"></script>
   <script>
-    document.getElementById('loginForm').addEventListener('submit', function(e) {
-      e.preventDefault();
+    const emailInput = document.getElementById('email');
+    const senhaInput = document.getElementById('senha');
+    const loginBtn = document.getElementById('loginBtn');
+    const loginError = document.getElementById('loginError');
+    const loginForm = document.getElementById('loginForm');
+
+    // Check if already authenticated
+    if (authService.isTokenValid()) {
       window.location.href = 'examples/dashboard/index.html';
+    }
+
+    // Form validation
+    emailInput.addEventListener('change', () => {
+      const emailError = document.getElementById('emailError');
+      if (!emailInput.validity.valid) {
+        emailError.textContent = 'E-mail inválido';
+        emailError.style.display = 'block';
+      } else {
+        emailError.style.display = 'none';
+      }
+    });
+
+    // Handle form submission
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const email = emailInput.value.trim();
+      const password = senhaInput.value;
+
+      // Clear previous errors
+      loginError.textContent = '';
+      loginError.style.display = 'none';
+
+      // Validate inputs
+      if (!email || !password) {
+        loginError.textContent = 'Por favor, preencha todos os campos';
+        loginError.style.display = 'block';
+        return;
+      }
+
+      // Show loading state
+      loginBtn.disabled = true;
+      const originalText = loginBtn.textContent;
+      loginBtn.innerHTML = originalText + '<span class="loading-spinner"></span>';
+
+      // Try API login first, fall back to demo
+      let result = await authService.login(email, password);
+      
+      // If API not available, use demo login
+      if (!result.success && result.error) {
+        result = await authService.loginDemo(email, password);
+      }
+
+      // Handle result
+      if (result.success) {
+        // Redirect to dashboard
+        setTimeout(() => {
+          window.location.href = 'examples/dashboard/index.html';
+        }, 300);
+      } else {
+        loginBtn.disabled = false;
+        loginBtn.textContent = originalText;
+        loginError.textContent = result.error || 'Erro ao fazer login';
+        loginError.style.display = 'block';
+      }
     });
   </script>
 </body>

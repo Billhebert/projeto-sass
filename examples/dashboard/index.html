@@ -11,7 +11,11 @@
   <div class="topbar">
     <div class="brand">📊 Dashboard</div>
     <div class="user-section">
-      <div class="avatar">BH</div>
+      <div class="avatar" id="userAvatar">--</div>
+      <div style="flex: 1; padding: 0 12px;">
+        <div style="font-size: 12px; font-weight: 600;" id="userName">Usuário</div>
+        <div style="font-size: 11px; color: #999; margin-top: 2px;" id="userEmail">user@example.com</div>
+      </div>
       <button onclick="logout()">Sair</button>
     </div>
   </div>
@@ -430,8 +434,29 @@
         </div>
       </div>
     </div>
-  </div>
-
+   </div>
+ 
+  <script src="../../src/scripts/auth.js"></script>
   <script src="../../src/scripts/dashboard.js"></script>
+  <script>
+    // Check authentication
+    authService.requireAuth();
+    
+    // Load user info
+    const user = authService.getUser();
+    if (user) {
+      document.getElementById('userName').textContent = user.name || 'Usuário';
+      document.getElementById('userEmail').textContent = user.email || '';
+      
+      // Set avatar with initials
+      const initials = (user.name || 'U')
+        .split(' ')
+        .slice(0, 2)
+        .map(n => n[0])
+        .join('')
+        .toUpperCase();
+      document.getElementById('userAvatar').textContent = initials;
+    }
+  </script>
 </body>
 </html>

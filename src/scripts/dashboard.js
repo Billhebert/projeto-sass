@@ -694,8 +694,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Logout
 function logout() {
-  if (confirm('Deseja sair?')) {
-    localStorage.removeItem('authToken');
-    window.location.href = '../login.html';
+  if (confirm('Deseja sair da sua conta?')) {
+    authService.logout();
   }
 }
