@@ -339,11 +339,12 @@ const app = {
        }
 
        this.filteredData = [...this.data];
-       await this.renderChart();
-       await this.renderTable();
-       this.updateStatistics();
-       this.initializeCharts();
-       console.log('Dashboard initialized');
+        await this.renderChart();
+        await this.renderTable();
+        this.updateStatistics();
+        this.initializeCharts();
+        this.initializeAnalytics();
+        console.log('Dashboard initialized');
      } catch (error) {
        console.error('Initialization error:', error);
        notificationService.error('Erro ao inicializar dashboard');
@@ -1050,8 +1051,97 @@ const app = {
           }
         }
       }
-    });
-  }
+     });
+   },
+
+   // Initialize Analytics
+   initializeAnalytics() {
+     try {
+       const products = JSON.parse(localStorage.getItem('products') || '[]');
+       const sales = JSON.parse(localStorage.getItem('sales') || '[]');
+       const categories = JSON.parse(localStorage.getItem('categories') || '[]');
+       const stock = JSON.parse(localStorage.getItem('product_stock') || '{}');
+
+       // Get analytics summary
+       const summary = analyticsModule.getDashboardSummary(sales, products, categories, stock);
+
+       // 1. MoM Growth
+       const momGrowth = analyticsModule.calculateMoMGrowth(sales);
+       document.getElementById('analyticsMoM').textContent = momGrowth.toFixed(1) + '%';
+
+       // 2. Sales Velocity (orders per day)
+       const velocity = analyticsModule.getSalesVelocity(sales);
+       document.getElementById('analyticsSalesVelocity').textContent = velocity.toFixed(1);
+
+       // 3. Conversion Rate
+       const conversion = analyticsModule.getConversionRate(sales);
+       document.getElementById('analyticsConversion').textContent = conversion.rate + '%';
+
+       // 4. Inventory Health
+       const inventory = analyticsModule.getInventoryHealth(stock, sales, products);
+       document.getElementById('analyticsInventory').textContent = inventory.health.toFixed(0) + '%';
+
+       // 5. Customer Repeat Rate
+       const customerMetrics = analyticsModule.getCustomerMetrics(sales);
+       document.getElementById('analyticsRepeatRate').textContent = customerMetrics.repeatRate.toFixed(1) + '%';
+
+       // 6. Discount Impact
+       const discount = analyticsModule.getDiscountAnalysis(sales);
+       document.getElementById('analyticsDiscountImpact').textContent = discount.impactOnMargin.toFixed(1) + '%';
+
+       // Marketplace Analysis
+       const aovByMarketplace = analyticsModule.getAOVByMarketplace(sales);
+       const marketplaceContainer = document.getElementById('analyticsMarketplace');
+       if (marketplaceContainer) {
+         marketplaceContainer.innerHTML = Object.entries(aovByMarketplace)
+           .map(([marketplace, aov]) => `
+             <div style="padding: 15px; background: #f5f5f5; border-radius: 6px; border-left: 4px solid #5D4DB3;">
+               <div style="font-size: 12px; color: #999; margin-bottom: 6px;">${marketplace || 'Outro'}</div>
+               <div style="font-size: 22px; font-weight: bold; color: #333;">R$ ${typeof aov === 'number' ? aov.toFixed(2) : aov}</div>
+               <div style="font-size: 11px; color: #999; margin-top: 4px;">AOV médio</div>
+             </div>
+           `)
+           .join('');
+       }
+
+       // Payment Method Analysis
+       const paymentAnalysis = analyticsModule.getPaymentMethodAnalysis(sales);
+       const paymentContainer = document.getElementById('analyticsPaymentMethods');
+       if (paymentContainer) {
+         paymentContainer.innerHTML = Object.entries(paymentAnalysis)
+           .map(([method, data]) => `
+             <div style="padding: 15px; background: #f5f5f5; border-radius: 6px; border-left: 4px solid #F4C85A;">
+               <div style="font-size: 12px; color: #999; margin-bottom: 6px;">${method || 'Outro'}</div>
+               <div style="font-size: 22px; font-weight: bold; color: #333;">${data.count}</div>
+               <div style="font-size: 11px; color: #999; margin-top: 4px;">${data.percentage.toFixed(1)}% das vendas</div>
+             </div>
+           `)
+           .join('');
+       }
+
+       // Top Products Performance
+       const productMetrics = analyticsModule.getProductMetrics(sales, products);
+       const topProducts = productMetrics.topProducts ? productMetrics.topProducts.slice(0, 5) : [];
+       const topProductsContainer = document.getElementById('analyticsTopProducts');
+       if (topProductsContainer) {
+         topProductsContainer.innerHTML = topProducts.length > 0 
+           ? topProducts.map(product => `
+               <tr>
+                 <td style="padding: 10px; border-bottom: 1px solid #ddd;">${product.sku}</td>
+                 <td style="padding: 10px; text-align: right; border-bottom: 1px solid #ddd;">${product.salesCount}</td>
+                 <td style="padding: 10px; text-align: right; border-bottom: 1px solid #ddd;">R$ ${product.totalRevenue.toFixed(2)}</td>
+                 <td style="padding: 10px; text-align: right; border-bottom: 1px solid #ddd;">R$ ${product.totalMargin.toFixed(2)}</td>
+                 <td style="padding: 10px; text-align: right; border-bottom: 1px solid #ddd;">${product.marginPercentage.toFixed(2)}%</td>
+               </tr>
+             `).join('')
+           : '<tr><td colspan="5" style="padding: 10px; text-align: center; color: #999;">Sem dados de produtos</td></tr>';
+       }
+
+       console.log('Analytics initialized successfully', summary);
+     } catch (error) {
+       console.error('Error initializing analytics:', error);
+     }
+   }
 
 
 // Initialize on load
