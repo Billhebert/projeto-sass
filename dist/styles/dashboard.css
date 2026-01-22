@@ -1,4 +1,7 @@
 @charset "UTF-8";
+/* ===================== */
+/* DESIGN TOKENS */
+/* ===================== */
 :root {
   --primary: #5D4DB3;
   --primary-dark: #4a3a8a;
@@ -21,6 +24,9 @@
   --shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
+/* ===================== */
+/* BASE STYLES */
+/* ===================== */
 * {
   margin: 0;
   padding: 0;
@@ -28,7 +34,7 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   background: var(--bg);
   color: var(--text-dark);
   line-height: 1.6;
@@ -41,6 +47,8 @@ button {
   padding: 10px 16px;
   border-radius: var(--radius);
   transition: all 0.2s ease;
+  font-size: 13px;
+  font-weight: 500;
 }
 
 input, select {
@@ -49,6 +57,8 @@ input, select {
   border: 1px solid var(--muted-2);
   border-radius: var(--radius);
   transition: all 0.2s ease;
+  font-size: 13px;
+  width: 100%;
 }
 
 input:focus, select:focus {
@@ -70,6 +80,7 @@ th {
   font-weight: 600;
   cursor: pointer;
   user-select: none;
+  font-size: 13px;
 }
 
 th:hover {
@@ -79,12 +90,16 @@ th:hover {
 td {
   padding: 12px;
   border-bottom: 1px solid var(--muted-2);
+  font-size: 13px;
 }
 
 tr:hover td {
   background: #fafafa;
 }
 
+/* ===================== */
+/* LAYOUT */
+/* ===================== */
 .container {
   max-width: 1400px;
   margin: 0 auto;
@@ -98,23 +113,27 @@ tr:hover td {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: var(--gap);
   position: sticky;
   top: 0;
   z-index: 100;
   box-shadow: var(--shadow);
 }
+
 .topbar .brand {
   font-size: 24px;
   font-weight: 700;
   color: var(--primary);
   text-decoration: none;
 }
+
 .topbar .user-section {
   display: flex;
   align-items: center;
   gap: 16px;
 }
-.topbar .user-section .avatar {
+
+.topbar .avatar {
   width: 40px;
   height: 40px;
   background: linear-gradient(135deg, var(--primary), var(--frete));
@@ -126,12 +145,14 @@ tr:hover td {
   font-weight: bold;
   font-size: 14px;
 }
-.topbar .user-section button {
+
+.topbar button {
   background: var(--imposto);
   color: white;
-  font-weight: 500;
+  padding: 10px 16px;
 }
-.topbar .user-section button:hover {
+
+.topbar button:hover {
   background: var(--imposto-light);
 }
 
@@ -142,44 +163,29 @@ tr:hover td {
   padding: var(--gap);
   min-height: calc(100vh - 80px);
 }
+
 @media (max-width: 1100px) {
   .dashboard-container {
     grid-template-columns: 1fr;
   }
+  .sidebar {
+    order: 2;
+    grid-column: 1/-1;
+  }
 }
-
 .main-content {
   display: flex;
   flex-direction: column;
   gap: var(--gap);
 }
 
+/* ===================== */
+/* CARDS GRID */
+/* ===================== */
 .cards-grid {
   display: grid;
   grid-template-columns: repeat(12, 1fr);
   gap: var(--gap);
-}
-@media (max-width: 1100px) {
-  .cards-grid {
-    grid-template-columns: repeat(6, 1fr);
-  }
-}
-@media (max-width: 800px) {
-  .cards-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
-}
-@media (max-width: 600px) {
-  .cards-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 1100px) {
-  .sidebar {
-    order: 2;
-    grid-column: 1/-1;
-  }
 }
 
 .stat-card {
@@ -191,55 +197,95 @@ tr:hover td {
   display: flex;
   flex-direction: column;
 }
+
 .stat-card:hover {
   box-shadow: var(--shadow-hover);
   transform: translateY(-2px);
 }
-.stat-card .card-stripe {
+
+.stat-card.card-vendas {
+  grid-column: span 6;
+}
+
+.stat-card.card-custo,
+.stat-card.card-tarifa,
+.stat-card.card-frete,
+.stat-card.card-margem {
+  grid-column: span 3;
+}
+
+@media (max-width: 1100px) {
+  .stat-card.card-vendas {
+    grid-column: span 6;
+  }
+  .stat-card.card-custo,
+  .stat-card.card-tarifa,
+  .stat-card.card-frete,
+  .stat-card.card-margem {
+    grid-column: span 3;
+  }
+}
+@media (max-width: 800px) {
+  .stat-card.card-vendas {
+    grid-column: span 12;
+  }
+  .stat-card.card-custo,
+  .stat-card.card-tarifa,
+  .stat-card.card-frete,
+  .stat-card.card-margem {
+    grid-column: span 6;
+  }
+}
+@media (max-width: 600px) {
+  .stat-card.card-vendas,
+  .stat-card.card-custo,
+  .stat-card.card-tarifa,
+  .stat-card.card-frete,
+  .stat-card.card-margem {
+    grid-column: 1/-1;
+  }
+}
+.card-stripe {
   height: 4px;
   background: linear-gradient(90deg, var(--primary), var(--frete));
 }
-.stat-card.card-custo .card-stripe {
+
+.card-custo .card-stripe {
   background: linear-gradient(90deg, var(--imposto), var(--imposto-light));
 }
-.stat-card.card-tarifa .card-stripe {
-  background: linear-gradient(90deg, var(--tarifa), var(--tarifa));
+
+.card-tarifa .card-stripe {
+  background: var(--tarifa);
 }
-.stat-card.card-frete .card-stripe {
+
+.card-frete .card-stripe {
   background: linear-gradient(90deg, var(--frete), var(--frete-light));
 }
-.stat-card.card-margem .card-stripe {
+
+.card-margem .card-stripe {
   background: linear-gradient(90deg, var(--margem), var(--margem-light));
 }
-.stat-card .card-content {
+
+.card-content {
   padding: 20px;
-  position: relative;
-  overflow: hidden;
+  flex: 1;
 }
-.stat-card .card-content::before {
-  content: "";
-  position: absolute;
-  top: -50%;
-  right: -50%;
-  width: 200%;
-  height: 200%;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.05) 1%, transparent 1%);
-  background-size: 50px 50px;
-  pointer-events: none;
-}
-.stat-card .card-header {
+
+.card-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   margin-bottom: 12px;
 }
-.stat-card .card-header h3 {
+
+.card-header h3 {
   font-size: 14px;
   font-weight: 500;
   color: var(--text-light);
   margin: 0;
 }
-.stat-card .card-header .icon-info {
+
+.icon-info {
   width: 20px;
   height: 20px;
   background: rgba(93, 77, 179, 0.1);
@@ -250,110 +296,61 @@ tr:hover td {
   font-size: 12px;
   color: var(--primary);
   cursor: help;
+  flex-shrink: 0;
 }
-.stat-card .card-subtitle {
+
+.card-subtitle {
   font-size: 12px;
   color: var(--muted);
   margin-bottom: 12px;
 }
-.stat-card .card-value {
+
+.card-value {
   font-size: 32px;
   font-weight: 700;
   color: var(--text-dark);
   margin-bottom: 16px;
   font-family: "Courier New", monospace;
 }
-.stat-card .card-minis {
+
+.card-minis {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
   gap: 12px;
 }
-.stat-card .card-minis .mini-block {
+
+.mini-block {
   background: var(--bg);
   padding: 12px;
   border-radius: 4px;
   border-left: 3px solid var(--primary);
 }
-.stat-card .card-minis .mini-block.type-flex {
+
+.mini-block.type-flex {
   border-left-color: var(--frete);
 }
-.stat-card .card-minis .mini-block.type-full {
+
+.mini-block.type-full {
   border-left-color: var(--imposto);
 }
-.stat-card .card-minis .mini-block.type-me {
+
+.mini-block.type-me {
   border-left-color: var(--tarifa);
 }
-.stat-card .card-minis .mini-block .mini-label {
+
+.mini-label {
   font-size: 11px;
   color: var(--muted);
   margin-bottom: 4px;
 }
-.stat-card .card-minis .mini-block .mini-value {
+
+.mini-value {
   font-size: 16px;
   font-weight: 600;
   color: var(--text-dark);
 }
-.stat-card.skeleton .card-value {
-  background: linear-gradient(90deg, var(--muted-2) 25%, #e0e0e0 50%, var(--muted-2) 75%);
-  background-size: 200% 100%;
-  animation: loading 1.5s infinite;
-  color: transparent;
-}
-.stat-card.skeleton .card-subtitle {
-  background: var(--muted-2);
-  animation: loading 1.5s infinite;
-  color: transparent;
-  height: 12px;
-  width: 60%;
-}
-.stat-card.skeleton .card-minis .mini-value {
-  background: var(--muted-2);
-  animation: loading 1.5s infinite;
-  color: transparent;
-  height: 16px;
-}
 
-@media (max-width: 1100px) {
-  .card-vendas {
-    grid-column: span 6;
-  }
-}
-@media (max-width: 800px) {
-  .card-vendas {
-    grid-column: span 3;
-  }
-}
-@media (max-width: 600px) {
-  .card-vendas {
-    grid-column: 1/-1;
-  }
-}
-
-@media (max-width: 1100px) {
-  .card-custo,
-  .card-tarifa,
-  .card-frete,
-  .card-margem {
-    grid-column: span 3;
-  }
-}
-@media (max-width: 800px) {
-  .card-custo,
-  .card-tarifa,
-  .card-frete,
-  .card-margem {
-    grid-column: span 3;
-  }
-}
-@media (max-width: 600px) {
-  .card-custo,
-  .card-tarifa,
-  .card-frete,
-  .card-margem {
-    grid-column: 1/-1;
-  }
-}
-
+/* Skeleton animation */
 @keyframes loading {
   0% {
     background-position: 200% 0;
@@ -362,6 +359,24 @@ tr:hover td {
     background-position: -200% 0;
   }
 }
+.stat-card.skeleton .card-value {
+  background: linear-gradient(90deg, var(--muted-2) 25%, #e0e0e0 50%, var(--muted-2) 75%);
+  background-size: 200% 100%;
+  animation: loading 1.5s infinite;
+  color: transparent;
+  height: 32px;
+  border-radius: 4px;
+}
+
+/* ===================== */
+/* SIDEBAR / FILTERS */
+/* ===================== */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
 .filters-panel {
   background: var(--card);
   padding: var(--gap);
@@ -371,108 +386,128 @@ tr:hover td {
   flex-direction: column;
   gap: 16px;
 }
+
 .filters-panel h3 {
   font-size: 14px;
   font-weight: 600;
   color: var(--text-dark);
   margin: 0;
 }
-.filters-panel .filter-group {
+
+.filter-group {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
-.filters-panel .filter-group label {
+
+.filter-group label {
   font-size: 12px;
   font-weight: 500;
   color: var(--text-light);
 }
-.filters-panel .filter-group input, .filters-panel .filter-group select {
-  width: 100%;
-}
-.filters-panel .filter-buttons {
+
+.filter-buttons {
   display: flex;
   gap: 8px;
 }
-.filters-panel .filter-buttons button {
+
+.filter-buttons button {
   flex: 1;
   font-size: 13px;
-  font-weight: 500;
 }
-.filters-panel .filter-buttons .btn-apply {
+
+.btn-apply {
   background: var(--primary);
   color: white;
 }
-.filters-panel .filter-buttons .btn-apply:hover {
+
+.btn-apply:hover {
   background: var(--primary-dark);
 }
-.filters-panel .filter-buttons .btn-clear {
+
+.btn-clear {
   background: var(--muted-2);
   color: var(--text-dark);
 }
-.filters-panel .filter-buttons .btn-clear:hover {
+
+.btn-clear:hover {
   background: #b3b3b3;
 }
-.filters-panel .btn-simulate {
+
+.btn-simulate {
   background: var(--frete);
   color: white;
-  font-size: 13px;
+  width: 100%;
 }
-.filters-panel .btn-simulate:hover {
+
+.btn-simulate:hover {
   background: var(--frete-light);
 }
 
+/* ===================== */
+/* CHART */
+/* ===================== */
 .chart-container {
   background: var(--card);
   padding: var(--gap);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  margin-top: var(--gap);
 }
+
 .chart-container h3 {
   font-size: 14px;
   font-weight: 600;
   margin-bottom: 16px;
   color: var(--text-dark);
 }
-.chart-container .donut-wrapper {
+
+.donut-wrapper {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 30px;
   flex-wrap: wrap;
 }
-.chart-container .donut-wrapper svg {
+
+.donut-wrapper svg {
   max-width: 150px;
   height: auto;
 }
-.chart-container .legend {
+
+.legend {
   display: flex;
   flex-direction: column;
   gap: 12px;
   min-width: 150px;
 }
-.chart-container .legend .legend-item {
+
+.legend-item {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 13px;
 }
-.chart-container .legend .legend-item .legend-color {
+
+.legend-color {
   width: 12px;
   height: 12px;
   border-radius: 2px;
   flex-shrink: 0;
 }
-.chart-container .legend .legend-item .legend-label {
+
+.legend-label {
   flex: 1;
   color: var(--text-light);
 }
-.chart-container .legend .legend-item .legend-value {
+
+.legend-value {
   font-weight: 600;
   color: var(--text-dark);
 }
 
+/* ===================== */
+/* TABLE */
+/* ===================== */
 .table-container {
   background: var(--card);
   border-radius: var(--radius);
@@ -481,7 +516,8 @@ tr:hover td {
   display: flex;
   flex-direction: column;
 }
-.table-container .table-header {
+
+.table-header {
   padding: 16px var(--gap);
   border-bottom: 1px solid var(--muted-2);
   display: flex;
@@ -490,96 +526,99 @@ tr:hover td {
   flex-wrap: wrap;
   gap: 12px;
 }
-.table-container .table-header h2 {
+
+.table-header h2 {
   font-size: 16px;
   font-weight: 600;
   margin: 0;
 }
-.table-container .table-header .table-controls {
+
+.table-controls {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
 }
-.table-container .table-header .table-controls button {
+
+.table-controls button {
   background: var(--primary);
   color: white;
-  font-size: 13px;
 }
-.table-container .table-header .table-controls button:hover {
+
+.table-controls button:hover {
   background: var(--primary-dark);
 }
-.table-container .table-header .table-controls button.btn-export {
-  background: var(--margem);
+
+.btn-export {
+  background: var(--margem) !important;
 }
-.table-container .table-header .table-controls button.btn-export:hover {
-  background: var(--margem-light);
+
+.btn-export:hover {
+  background: var(--margem-light) !important;
 }
-.table-container .table-scroll {
+
+.table-scroll {
   overflow-x: auto;
   flex: 1;
 }
-.table-container .table-scroll table {
+
+.table-scroll table {
   min-width: 1200px;
 }
-.table-container .table-scroll table th {
+
+.table-scroll th {
   position: sticky;
   top: 0;
   z-index: 10;
   background: var(--bg);
-  cursor: pointer;
-  user-select: none;
-  transition: background 0.2s;
 }
-.table-container .table-scroll table th:hover {
-  background: #efefef;
-}
-.table-container .table-scroll table th.sortable::after {
+
+.table-scroll th.sortable::after {
   content: " ⇅";
   font-size: 11px;
   color: var(--muted);
 }
-.table-container .table-scroll table th.sorted-asc::after {
+
+.table-scroll th.sorted-asc::after {
   content: " ↑";
 }
-.table-container .table-scroll table th.sorted-desc::after {
+
+.table-scroll th.sorted-desc::after {
   content: " ↓";
 }
-.table-container .table-scroll table tbody tr {
-  transition: background 0.1s;
-}
-.table-container .table-scroll table tbody tr:hover {
-  background: #f9f9f9;
-}
-.table-container .table-scroll table .col-anuncio {
+
+.col-anuncio {
   max-width: 200px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.table-container .table-scroll table .col-anuncio[title] {
-  cursor: help;
-}
-.table-container .table-scroll table .col-cost,
-.table-container .table-scroll table .col-tax,
-.table-container .table-scroll table .col-fee,
-.table-container .table-scroll table .col-margin {
+
+.col-cost {
   text-align: right;
-  font-family: "Courier New", monospace;
-  font-size: 13px;
-}
-.table-container .table-scroll table .col-cost {
   color: var(--imposto);
+  font-family: "Courier New", monospace;
 }
-.table-container .table-scroll table .col-tax {
+
+.col-tax {
+  text-align: right;
   color: var(--imposto-light);
+  font-family: "Courier New", monospace;
 }
-.table-container .table-scroll table .col-fee {
+
+.col-fee {
+  text-align: right;
   color: var(--tarifa);
+  font-family: "Courier New", monospace;
 }
-.table-container .table-scroll table .col-margin {
+
+.col-margin {
+  text-align: right;
   color: var(--margem);
   font-weight: 600;
+  font-family: "Courier New", monospace;
 }
-.table-container .table-footer {
+
+.table-footer {
   padding: 16px var(--gap);
   border-top: 1px solid var(--muted-2);
   display: flex;
@@ -588,100 +627,106 @@ tr:hover td {
   flex-wrap: wrap;
   gap: 12px;
   background: #f9f9f9;
-}
-.table-container .table-footer .pagination-info {
   font-size: 13px;
+}
+
+.pagination-info {
   color: var(--text-light);
 }
-.table-container .table-footer .pagination-controls {
+
+.pagination-controls {
   display: flex;
   gap: 8px;
 }
-.table-container .table-footer .pagination-controls button {
+
+.pagination-controls button {
   background: var(--muted-2);
   color: var(--text-dark);
   padding: 8px 12px;
-  font-size: 13px;
 }
-.table-container .table-footer .pagination-controls button:hover:not(:disabled) {
+
+.pagination-controls button:hover:not(:disabled) {
   background: #b3b3b3;
 }
-.table-container .table-footer .pagination-controls button:disabled {
+
+.pagination-controls button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.skeleton-row {
-  display: grid;
-  grid-template-columns: 200px 100px 80px 100px 80px 80px 80px 100px 100px 80px 80px 100px 80px;
-  gap: 12px;
-  padding: 12px var(--gap);
-  border-bottom: 1px solid var(--muted-2);
-}
-.skeleton-row .skeleton-cell {
-  height: 20px;
-  background: linear-gradient(90deg, var(--muted-2) 25%, #e0e0e0 50%, var(--muted-2) 75%);
-  background-size: 200% 100%;
-  animation: loading 1.5s infinite;
-  border-radius: 4px;
-}
-
-@keyframes loading {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
-}
+/* ===================== */
+/* RESPONSIVE */
+/* ===================== */
 @media (max-width: 1100px) {
+  .dashboard-container {
+    grid-template-columns: 1fr;
+  }
   .table-scroll table {
     min-width: 1000px;
   }
-  .table-scroll table .col-frete-vendedor {
+  .col-frete-vendedor {
     display: none;
   }
 }
 @media (max-width: 800px) {
-  .table-scroll table {
-    min-width: 800px;
+  .topbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
   }
-  .table-scroll table .col-frete-vendedor,
-  .table-scroll table .col-mc-percent {
-    display: none;
+  .topbar .brand {
+    text-align: center;
   }
-}
-@media (max-width: 600px) {
   .table-header {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: stretch;
   }
-  .table-header .table-controls {
+  .table-controls {
     width: 100%;
-    flex-wrap: wrap;
   }
-  .table-header .table-controls button {
+  .table-controls button {
     flex: 1;
     min-width: 120px;
   }
   .table-scroll table {
-    min-width: 600px;
+    min-width: 800px;
   }
-  .table-scroll table .col-frete-vendedor,
-  .table-scroll table .col-mc-percent,
-  .table-scroll table .col-frete,
-  .table-scroll table .col-qtd {
+  .col-frete-vendedor,
+  .col-mc-percent {
     display: none;
+  }
+}
+@media (max-width: 600px) {
+  .dashboard-container {
+    padding: 12px;
+    gap: 12px;
   }
   .table-footer {
     flex-direction: column;
     align-items: stretch;
   }
-  .table-footer .pagination-controls {
+  .pagination-controls {
     width: 100%;
   }
-  .table-footer .pagination-controls button {
+  .pagination-controls button {
     flex: 1;
+  }
+  .filters-panel {
+    padding: 16px;
+  }
+  .table-scroll table {
+    min-width: 600px;
+    font-size: 12px;
+  }
+  .col-frete,
+  .col-qtd,
+  .col-frete-vendedor,
+  .col-mc-percent {
+    display: none;
+  }
+  .topbar .user-section {
+    width: 100%;
+    justify-content: space-between;
   }
 }
 

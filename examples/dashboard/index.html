@@ -9,7 +9,7 @@
 <body>
   <!-- Top Navigation -->
   <div class="topbar">
-    <a href="#" class="brand">Dashboard</a>
+    <a href="#" class="brand">📊 Dashboard</a>
     <div class="user-section">
       <div class="avatar">BH</div>
       <button onclick="logout()">Sair</button>
@@ -22,9 +22,9 @@
       <!-- Main Content -->
       <div class="main-content">
         <!-- Cards Grid -->
-        <div class="cards-grid" id="cardsContainer">
+        <div class="cards-grid">
           <!-- Vendas Card -->
-          <div class="stat-card card-vendas" id="cardVendas">
+          <div class="stat-card card-vendas">
             <div class="card-stripe"></div>
             <div class="card-content">
               <div class="card-header">
@@ -32,13 +32,13 @@
                 <div class="icon-info" title="Total de vendas aprovadas">ⓘ</div>
               </div>
               <div class="card-subtitle">Faturamento ML</div>
-              <div class="card-value" data-field="vendas-total">R$ 6.954,98</div>
+              <div class="card-value" id="vendas-total">R$ 6.954,98</div>
               <div class="card-minis" id="miniVendas"></div>
             </div>
           </div>
 
           <!-- Custo Card -->
-          <div class="stat-card card-custo" id="cardCusto">
+          <div class="stat-card card-custo">
             <div class="card-stripe"></div>
             <div class="card-content">
               <div class="card-header">
@@ -46,26 +46,26 @@
                 <div class="icon-info" title="Custo + Impostos">ⓘ</div>
               </div>
               <div class="card-subtitle">Custo Total</div>
-              <div class="card-value" data-field="custo-total">R$ 3.799,77</div>
+              <div class="card-value" id="custo-total">R$ 3.799,77</div>
               <div class="card-minis" id="miniCusto"></div>
             </div>
           </div>
 
           <!-- Tarifa Card -->
-          <div class="stat-card card-tarifa" id="cardTarifa">
+          <div class="stat-card card-tarifa">
             <div class="card-stripe"></div>
             <div class="card-content">
               <div class="card-header">
                 <h3>Tarifa de Venda</h3>
-                <div class="icon-info" title="Tarifa de venda do marketplace">ⓘ</div>
+                <div class="icon-info" title="Tarifa de venda">ⓘ</div>
               </div>
               <div class="card-subtitle">Taxa ML</div>
-              <div class="card-value" data-field="tarifa-total">R$ 1.266,52</div>
+              <div class="card-value" id="tarifa-total">R$ 1.266,52</div>
             </div>
           </div>
 
           <!-- Frete Card -->
-          <div class="stat-card card-frete" id="cardFrete">
+          <div class="stat-card card-frete">
             <div class="card-stripe"></div>
             <div class="card-content">
               <div class="card-header">
@@ -73,12 +73,12 @@
                 <div class="icon-info" title="Custo de frete">ⓘ</div>
               </div>
               <div class="card-subtitle">Custo Logístico</div>
-              <div class="card-value" data-field="frete-total">R$ 679,93</div>
+              <div class="card-value" id="frete-total">R$ 679,93</div>
             </div>
           </div>
 
           <!-- Margem Card -->
-          <div class="stat-card card-margem" id="cardMargem">
+          <div class="stat-card card-margem">
             <div class="card-stripe"></div>
             <div class="card-content">
               <div class="card-header">
@@ -86,13 +86,8 @@
                 <div class="icon-info" title="Lucro líquido">ⓘ</div>
               </div>
               <div class="card-subtitle">MC (Margem Bruta)</div>
-              <div class="card-value" data-field="margem-total">R$ 1.285,73</div>
-              <div class="card-minis" id="miniMargem">
-                <div class="mini-block">
-                  <div class="mini-label">MC %</div>
-                  <div class="mini-value" data-field="margem-pct">18,49%</div>
-                </div>
-              </div>
+              <div class="card-value" id="margem-total">R$ 1.285,73</div>
+              <div class="card-minis" id="miniMargem"></div>
             </div>
           </div>
         </div>
