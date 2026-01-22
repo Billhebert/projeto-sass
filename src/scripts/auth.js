@@ -156,35 +156,99 @@ const authService = {
     }
   },
 
-  // Refresh token
-  async refreshToken() {
-    try {
-      const token = this.getToken();
-      if (!token) return false;
+   // Refresh token
+   async refreshToken() {
+     try {
+       const token = this.getToken();
+       if (!token) return false;
 
-      const response = await fetch(`${this.apiURL}/auth/refresh`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        }
-      });
+       const response = await fetch(`${this.apiURL}/auth/refresh`, {
+         method: 'POST',
+         headers: {
+           'Content-Type': 'application/json',
+           'Authorization': `Bearer ${token}`
+         }
+       });
 
-      if (!response.ok) {
-        return false;
-      }
+       if (!response.ok) {
+         return false;
+       }
 
-      const data = await response.json();
-      localStorage.setItem(this.tokenKey, data.token);
-      
-      // Update expiry
-      const expiryTime = new Date().getTime() + (24 * 60 * 60 * 1000);
-      localStorage.setItem(this.expiryKey, expiryTime.toString());
+       const data = await response.json();
+       localStorage.setItem(this.tokenKey, data.token);
+       
+       // Update expiry
+       const expiryTime = new Date().getTime() + (24 * 60 * 60 * 1000);
+       localStorage.setItem(this.expiryKey, expiryTime.toString());
 
-      return true;
-    } catch (error) {
-      console.error('Token refresh error:', error);
-      return false;
-    }
-  }
-};
+       return true;
+     } catch (error) {
+       console.error('Token refresh error:', error);
+       return false;
+     }
+   },
+
+   // Get user role
+   getUserRole() {
+     const user = this.getUser();
+     return user ? user.role : 'viewer';
+   },
+
+   // Check if user has specific role
+   hasRole(requiredRole) {
+     const userRole = this.getUserRole();
+     const roleHierarchy = {
+       'admin': 4,
+       'manager': 3,
+       'seller': 2,
+       'viewer': 1
+     };
+     return roleHierarchy[userRole] >= roleHierarchy[requiredRole];
+   },
+
+   // Check if user has specific permission
+   hasPermission(permission) {
+     const rolePermissions = {
+       'admin': ['create', 'read', 'update', 'delete', 'export', 'import', 'manage-users', 'manage-settings'],
+       'manager': ['create', 'read', 'update', 'delete', 'export', 'import'],
+       'seller': ['create', 'read', 'update', 'export'],
+       'viewer': ['read']
+     };
+
+     const userRole = this.getUserRole();
+     const permissions = rolePermissions[userRole] || [];
+     return permissions.includes(permission);
+   },
+
+   // Restrict access by role - redirect if insufficient permissions
+   requireRole(requiredRole) {
+     if (!this.hasRole(requiredRole)) {
+       alert(`Acesso negado. Role mínima necessária: ${requiredRole}`);
+       window.location.href = '../dashboard/index.html';
+     }
+   },
+
+   // Restrict access by permission - redirect if missing permission
+   requirePermission(permission) {
+     if (!this.hasPermission(permission)) {
+       alert(`Permissão negada: ${permission}`);
+       window.location.href = '../dashboard/index.html';
+     }
+   },
+
+   // Set user role (admin only)
+   setUserRole(userId, newRole) {
+     if (!this.hasRole('admin')) {
+       console.warn('Only admins can change user roles');
+       return false;
+     }
+     // In a real app, this would call the backend
+     const user = this.getUser();
+     if (user && user.id === userId) {
+       user.role = newRole;
+       this.saveUser(user);
+       return true;
+     }
+     return false;
+   }
+

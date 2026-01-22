@@ -14,7 +14,10 @@
       <div class="avatar" id="userAvatar">--</div>
       <div style="flex: 1; padding: 0 12px;">
         <div style="font-size: 12px; font-weight: 600;" id="userName">Usuário</div>
-        <div style="font-size: 11px; color: #999; margin-top: 2px;" id="userEmail">user@example.com</div>
+        <div style="font-size: 11px; color: #999; margin-top: 2px;">
+          <span id="userEmail">user@example.com</span>
+          <span style="margin-left: 8px; background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: 600;" id="userRole">--</span>
+        </div>
       </div>
       <button onclick="logout()">Sair</button>
     </div>
@@ -629,21 +632,36 @@
     // Check authentication
     authService.requireAuth();
     
-    // Load user info
-    const user = authService.getUser();
-    if (user) {
-      document.getElementById('userName').textContent = user.name || 'Usuário';
-      document.getElementById('userEmail').textContent = user.email || '';
-      
-      // Set avatar with initials
-      const initials = (user.name || 'U')
-        .split(' ')
-        .slice(0, 2)
-        .map(n => n[0])
-        .join('')
-        .toUpperCase();
-      document.getElementById('userAvatar').textContent = initials;
-    }
+     // Load user info
+     const user = authService.getUser();
+     if (user) {
+       document.getElementById('userName').textContent = user.name || 'Usuário';
+       document.getElementById('userEmail').textContent = user.email || '';
+       
+       // Set role with appropriate styling
+       const roleEl = document.getElementById('userRole');
+       if (roleEl) {
+         const roleText = user.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : 'Viewer';
+         const roleColors = {
+           'admin': '#E74C3C',
+           'manager': '#2F9BD6',
+           'seller': '#33A37A',
+           'viewer': '#999'
+         };
+         roleEl.textContent = roleText;
+         roleEl.style.background = roleColors[user.role] || '#999';
+         roleEl.style.color = 'white';
+       }
+       
+       // Set avatar with initials
+       const initials = (user.name || 'U')
+         .split(' ')
+         .slice(0, 2)
+         .map(n => n[0])
+         .join('')
+         .toUpperCase();
+       document.getElementById('userAvatar').textContent = initials;
+     }
 
     // Toggle dropdown menu
     function toggleDropdown(e) {
