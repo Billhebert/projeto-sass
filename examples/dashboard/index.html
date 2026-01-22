@@ -14,17 +14,19 @@
       <!-- Theme Switcher -->
       <div id="themeSwitcherContainer" style="display: flex; align-items: center; gap: 8px; margin-left: auto;"></div>
     </div>
-    <div class="user-section">
-      <div class="avatar" id="userAvatar">--</div>
-      <div style="flex: 1; padding: 0 12px;">
-        <div style="font-size: 12px; font-weight: 600;" id="userName">Usuário</div>
-        <div style="font-size: 11px; color: #999; margin-top: 2px;">
-          <span id="userEmail">user@example.com</span>
-          <span style="margin-left: 8px; background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: 600;" id="userRole">--</span>
-        </div>
-      </div>
-      <button onclick="logout()">Sair</button>
-    </div>
+     <div class="user-section">
+       <button onclick="showReportMenu()" style="padding: 8px 12px; background: #f0f0f0; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; margin-right: 8px;">📄 Relatórios</button>
+       <button onclick="showCustomizationPanel()" style="padding: 8px 12px; background: #f0f0f0; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; margin-right: 8px;">⚙️ Personalizar</button>
+       <div class="avatar" id="userAvatar">--</div>
+       <div style="flex: 1; padding: 0 12px;">
+         <div style="font-size: 12px; font-weight: 600;" id="userName">Usuário</div>
+         <div style="font-size: 11px; color: #999; margin-top: 2px;">
+           <span id="userEmail">user@example.com</span>
+           <span style="margin-left: 8px; background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 10px; font-weight: 600;" id="userRole">--</span>
+         </div>
+       </div>
+       <button onclick="logout()">Sair</button>
+     </div>
    </div>
 
    <!-- Navigation Menu -->
@@ -720,8 +722,14 @@
     </div>
   <script src="../../src/scripts/dashboard.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@3/dist/chart.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <script src="../../src/scripts/theme.js"></script>
   <script src="../../src/scripts/analytics.js"></script>
+  <script src="../../src/scripts/api-service.js"></script>
+  <script src="../../src/scripts/historical-analytics.js"></script>
+  <script src="../../src/scripts/analytics-export.js"></script>
+  <script src="../../src/scripts/dashboard-customization.js"></script>
+  <script src="../../src/scripts/realtime-updates.js"></script>
   <script>
     // Check authentication
     authService.requireAuth();
@@ -766,6 +774,64 @@
       const dropdown = e.target.closest('.dropdown');
       dropdown.classList.toggle('active');
     }
+
+    // Show report menu
+    function showReportMenu() {
+      const menu = `
+        <div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 9999; background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.2); padding: 0; width: 90%; max-width: 400px;">
+          <div style="padding: 20px; border-bottom: 1px solid #eee;">
+            <h2 style="margin: 0; color: #333; font-size: 18px;">📄 Gerar Relatório</h2>
+          </div>
+          <div style="padding: 20px;">
+            <button onclick="analyticsExportModule.generatePDFReport('complete'); closeModal();" style="width: 100%; padding: 12px; background: #5D4DB3; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; margin-bottom: 10px;">📑 Relatório Completo (PDF)</button>
+            <button onclick="analyticsExportModule.generateCSVReport('complete'); closeModal();" style="width: 100%; padding: 12px; background: #2F9BD6; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; margin-bottom: 10px;">📊 Dados (CSV)</button>
+            <button onclick="analyticsExportModule.generatePDFReport('summary'); closeModal();" style="width: 100%; padding: 12px; background: #33A37A; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; margin-bottom: 10px;">📈 Resumo Executivo (PDF)</button>
+            <button onclick="analyticsExportModule.generatePDFReport('products'); closeModal();" style="width: 100%; padding: 12px; background: #F4C85A; color: #333; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; margin-bottom: 10px;">📦 Análise de Produtos (PDF)</button>
+            <button onclick="closeModal();" style="width: 100%; padding: 12px; background: #f0f0f0; color: #333; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-weight: 600;">Cancelar</button>
+          </div>
+        </div>
+        <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 9998;" onclick="closeModal();"></div>
+      `;
+      document.body.insertAdjacentHTML('beforeend', menu);
+    }
+
+    // Show customization panel
+    function showCustomizationPanel() {
+      const modal = `
+        <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 9998; overflow-y: auto;" onclick="if(event.target === this) closeModal();">
+          <div style="background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.2); width: 90%; max-width: 800px; margin: 50px auto; padding: 20px; max-height: 80vh; overflow-y: auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 15px;">
+              <h2 style="margin: 0; color: #333; font-size: 18px;">⚙️ Personalizar Dashboard</h2>
+              <button onclick="closeModal();" style="background: none; border: none; font-size: 24px; cursor: pointer;">✕</button>
+            </div>
+            <div id="customizationPanelContent"></div>
+          </div>
+        </div>
+      `;
+      document.body.insertAdjacentHTML('beforeend', modal);
+      dashboardCustomizationModule.renderCustomizationPanel('customizationPanelContent');
+    }
+
+    // Close modal
+    function closeModal() {
+      const modals = document.querySelectorAll('[style*="position: fixed"]');
+      modals.forEach(m => m.remove());
+    }
+
+    // Initialize real-time updates (if WebSocket available)
+    setTimeout(() => {
+      if (realtimeModule) {
+        realtimeModule.connect()
+          .then(() => {
+            realtimeModule.subscribeToSales();
+            realtimeModule.subscribeToMetrics();
+            console.log('✓ Real-time updates connected');
+          })
+          .catch(error => {
+            console.warn('Real-time updates unavailable (using polling mode)', error);
+          });
+      }
+    }, 2000);
   </script>
 </body>
 </html>
