@@ -248,192 +248,194 @@
             </div>
           </div>
         </div>
-      </div>
+       </div>
 
-      <!-- Sidebar: Filters + Chart -->
-      <aside class="sidebar">
-        <!-- Filters -->
-        <div class="filters-section">
-          <h4>Filtrar Busca</h4>
-          
-          <div class="filter-row">
-            <div class="filter-group">
-              <label>Data Início</label>
-              <input type="date" id="filterStart" value="2026-01-01">
-            </div>
-            <div class="filter-group">
-              <label>Data Fim</label>
-              <input type="date" id="filterEnd" value="2026-01-31">
-            </div>
-          </div>
+       <!-- Bottom Section: Filters, Chart, and Table -->
+       <div class="bottom-section">
+         <!-- Sidebar: Filters + Chart -->
+         <aside class="sidebar">
+           <!-- Filters -->
+           <div class="filters-section">
+             <h4>Filtrar Busca</h4>
+             
+             <div class="filter-row">
+               <div class="filter-group">
+                 <label>Data Início</label>
+                 <input type="date" id="filterStart" value="2026-01-01">
+               </div>
+               <div class="filter-group">
+                 <label>Data Fim</label>
+                 <input type="date" id="filterEnd" value="2026-01-31">
+               </div>
+             </div>
 
-          <div class="filter-row full">
-            <div class="filter-group">
-              <label>Nº Pedido / Carrinho</label>
-              <input type="text" id="filterOrder" placeholder="Buscar...">
-            </div>
-          </div>
+             <div class="filter-row full">
+               <div class="filter-group">
+                 <label>Nº Pedido / Carrinho</label>
+                 <input type="text" id="filterOrder" placeholder="Buscar...">
+               </div>
+             </div>
 
-          <div class="filter-row">
-            <div class="filter-group">
-              <label>Título ou MLB</label>
-              <input type="text" id="filterTitle" placeholder="Buscar...">
-            </div>
-            <div class="filter-group">
-              <label>SKU</label>
-              <input type="text" id="filterSKU" placeholder="Buscar...">
-            </div>
-          </div>
+             <div class="filter-row">
+               <div class="filter-group">
+                 <label>Título ou MLB</label>
+                 <input type="text" id="filterTitle" placeholder="Buscar...">
+               </div>
+               <div class="filter-group">
+                 <label>SKU</label>
+                 <input type="text" id="filterSKU" placeholder="Buscar...">
+               </div>
+             </div>
 
-          <div class="filter-row">
-            <div class="filter-group">
-              <label>Status Venda</label>
-              <select id="filterStatus">
-                <option value="">Todos</option>
-                <option value="aprovado">Aprovado</option>
-                <option value="cancelado">Cancelado</option>
-              </select>
-            </div>
-            <div class="filter-group">
-              <label>Modalidade</label>
-              <select id="filterModality">
-                <option value="">Todos</option>
-                <option value="places">Places</option>
-                <option value="flex">Flex</option>
-                <option value="full">Full</option>
-              </select>
-            </div>
-          </div>
+             <div class="filter-row">
+               <div class="filter-group">
+                 <label>Status Venda</label>
+                 <select id="filterStatus">
+                   <option value="">Todos</option>
+                   <option value="aprovado">Aprovado</option>
+                   <option value="cancelado">Cancelado</option>
+                 </select>
+               </div>
+               <div class="filter-group">
+                 <label>Modalidade</label>
+                 <select id="filterModality">
+                   <option value="">Todos</option>
+                   <option value="places">Places</option>
+                   <option value="flex">Flex</option>
+                   <option value="full">Full</option>
+                 </select>
+               </div>
+             </div>
 
-          <div class="filter-row">
-            <div class="filter-group">
-              <label>Tipo do Frete</label>
-              <select id="filterFreteType">
-                <option value="">Todos</option>
-                <option value="frete-comprador">Frete Comprador</option>
-                <option value="frete-vendedor">Frete Vendedor</option>
-              </select>
-            </div>
-            <div class="filter-group">
-              <label>Publicidade</label>
-              <select id="filterPublicity">
-                <option value="">Todos</option>
-                <option value="sim">Sim</option>
-                <option value="nao">Não</option>
-              </select>
-            </div>
-          </div>
+             <div class="filter-row">
+               <div class="filter-group">
+                 <label>Tipo do Frete</label>
+                 <select id="filterFreteType">
+                   <option value="">Todos</option>
+                   <option value="frete-comprador">Frete Comprador</option>
+                   <option value="frete-vendedor">Frete Vendedor</option>
+                 </select>
+               </div>
+               <div class="filter-group">
+                 <label>Publicidade</label>
+                 <select id="filterPublicity">
+                   <option value="">Todos</option>
+                   <option value="sim">Sim</option>
+                   <option value="nao">Não</option>
+                 </select>
+               </div>
+             </div>
 
-          <div class="filter-buttons">
-            <button class="btn-apply" onclick="app.applyFilters()">Aplicar</button>
-            <button class="btn-clear" onclick="app.clearFilters()">Limpar</button>
-          </div>
-        </div>
+             <div class="filter-buttons">
+               <button class="btn-apply" onclick="app.applyFilters()">Aplicar</button>
+               <button class="btn-clear" onclick="app.clearFilters()">Limpar</button>
+             </div>
+           </div>
 
-        <!-- Chart -->
-        <div class="chart-section">
-          <h4>Representação Gráfica</h4>
-          <div class="donut-wrapper">
-            <svg id="donutChart" viewBox="0 0 120 120"></svg>
-            <div class="legend" id="chartLegend"></div>
-          </div>
-        </div>
-      </aside>
-    </div>
+           <!-- Chart -->
+           <div class="chart-section">
+             <h4>Representação Gráfica</h4>
+             <div class="donut-wrapper">
+               <svg id="donutChart" viewBox="0 0 120 120"></svg>
+               <div class="legend" id="chartLegend"></div>
+             </div>
+           </div>
+         </aside>
 
-    <!-- TABLE SECTION -->
-    <div class="table-section">
-      <div class="table-header">
-        <h2>Detalhes de Vendas</h2>
-        <div class="table-controls">
-          <button class="btn-refresh" onclick="app.refreshTable()">↻ Atualizar</button>
-          <button class="btn-export" onclick="app.exportCSV()">📥 Exportar CSV</button>
-        </div>
-      </div>
+         <!-- TABLE SECTION -->
+         <div class="table-section">
+           <div class="table-header">
+             <h2>Detalhes de Vendas</h2>
+             <div class="table-controls">
+               <button class="btn-refresh" onclick="app.refreshTable()">↻ Atualizar</button>
+               <button class="btn-export" onclick="app.exportCSV()">📥 Exportar CSV</button>
+             </div>
+           </div>
 
-      <div class="table-wrapper">
-        <table id="dataTable">
-          <thead>
-            <tr>
-              <th class="sortable" onclick="app.sort('anuncio')">
-                Anúncio
-                <span class="sort-icon">⇅</span>
-              </th>
-              <th class="sortable" onclick="app.sort('conta')">
-                Conta
-                <span class="sort-icon">⇅</span>
-              </th>
-              <th class="sortable" onclick="app.sort('sku')">
-                SKU
-                <span class="sort-icon">⇅</span>
-              </th>
-              <th class="sortable" onclick="app.sort('data')">
-                Data
-                <span class="sort-icon">⇅</span>
-              </th>
-              <th class="sortable" onclick="app.sort('frete')">
-                Frete
-                <span class="sort-icon">⇅</span>
-              </th>
-              <th class="sortable numeric" onclick="app.sort('valor')">
-                Valor Unit.
-                <span class="sort-icon">⇅</span>
-              </th>
-              <th class="sortable numeric" onclick="app.sort('qtd')">
-                Qtd.
-                <span class="sort-icon">⇅</span>
-              </th>
-              <th class="sortable numeric revenue" onclick="app.sort('faturamento')">
-                Faturamento ML
-                <span class="sort-icon">⇅</span>
-              </th>
-              <th class="sortable numeric cost" onclick="app.sort('custo')">
-                Custo (-)
-                <span class="sort-icon">⇅</span>
-              </th>
-              <th class="sortable numeric tax" onclick="app.sort('imposto')">
-                Imposto (-)
-                <span class="sort-icon">⇅</span>
-              </th>
-              <th class="sortable numeric fee" onclick="app.sort('tarifa')">
-                Tarifa (-)
-                <span class="sort-icon">⇅</span>
-              </th>
-              <th class="sortable numeric" onclick="app.sort('freteComprador')">
-                Frete Comprador (-)
-                <span class="sort-icon">⇅</span>
-              </th>
-              <th class="sortable numeric" onclick="app.sort('freteVendedor')">
-                Frete Vendedor (-)
-                <span class="sort-icon">⇅</span>
-              </th>
-              <th class="sortable numeric margin" onclick="app.sort('margem')">
-                Margem Contrib. (+)
-                <span class="sort-icon">⇅</span>
-              </th>
-              <th class="sortable numeric margin" onclick="app.sort('mcPct')">
-                MC em %
-                <span class="sort-icon">⇅</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody id="tableBody">
-            <!-- Populated by JS -->
-          </tbody>
-        </table>
-      </div>
+           <div class="table-wrapper">
+             <table id="dataTable">
+               <thead>
+                 <tr>
+                   <th class="sortable" onclick="app.sort('anuncio')">
+                     Anúncio
+                     <span class="sort-icon">⇅</span>
+                   </th>
+                   <th class="sortable" onclick="app.sort('conta')">
+                     Conta
+                     <span class="sort-icon">⇅</span>
+                   </th>
+                   <th class="sortable" onclick="app.sort('sku')">
+                     SKU
+                     <span class="sort-icon">⇅</span>
+                   </th>
+                   <th class="sortable" onclick="app.sort('data')">
+                     Data
+                     <span class="sort-icon">⇅</span>
+                   </th>
+                   <th class="sortable" onclick="app.sort('frete')">
+                     Frete
+                     <span class="sort-icon">⇅</span>
+                   </th>
+                   <th class="sortable numeric" onclick="app.sort('valor')">
+                     Valor Unit.
+                     <span class="sort-icon">⇅</span>
+                   </th>
+                   <th class="sortable numeric" onclick="app.sort('qtd')">
+                     Qtd.
+                     <span class="sort-icon">⇅</span>
+                   </th>
+                   <th class="sortable numeric revenue" onclick="app.sort('faturamento')">
+                     Faturamento ML
+                     <span class="sort-icon">⇅</span>
+                   </th>
+                   <th class="sortable numeric cost" onclick="app.sort('custo')">
+                     Custo (-)
+                     <span class="sort-icon">⇅</span>
+                   </th>
+                   <th class="sortable numeric tax" onclick="app.sort('imposto')">
+                     Imposto (-)
+                     <span class="sort-icon">⇅</span>
+                   </th>
+                   <th class="sortable numeric fee" onclick="app.sort('tarifa')">
+                     Tarifa (-)
+                     <span class="sort-icon">⇅</span>
+                   </th>
+                   <th class="sortable numeric" onclick="app.sort('freteComprador')">
+                     Frete Comprador (-)
+                     <span class="sort-icon">⇅</span>
+                   </th>
+                   <th class="sortable numeric" onclick="app.sort('freteVendedor')">
+                     Frete Vendedor (-)
+                     <span class="sort-icon">⇅</span>
+                   </th>
+                   <th class="sortable numeric margin" onclick="app.sort('margem')">
+                     Margem Contrib. (+)
+                     <span class="sort-icon">⇅</span>
+                   </th>
+                   <th class="sortable numeric margin" onclick="app.sort('mcPct')">
+                     MC em %
+                     <span class="sort-icon">⇅</span>
+                   </th>
+                 </tr>
+               </thead>
+               <tbody id="tableBody">
+                 <!-- Populated by JS -->
+               </tbody>
+             </table>
+           </div>
 
-      <div class="table-footer">
-        <div class="pagination-info">
-          Mostrando <span id="pageStart">0</span>-<span id="pageEnd">0</span> de <span id="totalRows">0</span> registros
-        </div>
-        <div class="pagination-controls">
-          <button onclick="app.prevPage()" id="btnPrev">← Anterior</button>
-          <span id="pageNumber">Página 1</span>
-          <button onclick="app.nextPage()" id="btnNext">Próxima →</button>
-        </div>
-      </div>
-    </div>
+           <div class="table-footer">
+             <div class="pagination-info">
+               Mostrando <span id="pageStart">0</span>-<span id="pageEnd">0</span> de <span id="totalRows">0</span> registros
+             </div>
+             <div class="pagination-controls">
+               <button onclick="app.prevPage()" id="btnPrev">← Anterior</button>
+               <span id="pageNumber">Página 1</span>
+               <button onclick="app.nextPage()" id="btnNext">Próxima →</button>
+             </div>
+           </div>
+         </div>
+       </div>
    </div>
  
   <script src="../../src/scripts/auth.js"></script>
