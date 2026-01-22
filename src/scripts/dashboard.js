@@ -287,6 +287,15 @@ style.textContent = `
     }
   }
   
+  @keyframes skeleton-loading {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
+  
   .loader {
     display: inline-block;
     width: 8px;
@@ -294,6 +303,7 @@ style.textContent = `
     border-radius: 50%;
     background: var(--primary);
     animation: pulse 1.5s ease-in-out infinite;
+    margin-left: 4px;
   }
   
   @keyframes pulse {
@@ -353,13 +363,30 @@ const app = {
       if (isLoading) {
         element.disabled = true;
         element.style.opacity = '0.6';
-        element.innerHTML += ' <span class="loader"></span>';
+        element.style.pointerEvents = 'none';
+        const originalText = element.textContent;
+        element.dataset.originalText = originalText;
+        element.innerHTML = originalText + ' <span class="loader"></span>';
       } else {
         element.disabled = false;
         element.style.opacity = '1';
-        element.querySelector('.loader')?.remove();
+        element.style.pointerEvents = 'auto';
+        element.textContent = element.dataset.originalText || 'Done';
       }
     }
+  },
+
+  // Show table skeleton loader
+  showTableSkeleton() {
+    const tbody = document.getElementById('tableBody');
+    const skeletonRows = Array(this.pageSize).fill(`
+      <tr>
+        <td colspan="15">
+          <div style="height: 20px; background: linear-gradient(90deg, #e0e0e0 25%, #f0f0f0 50%, #e0e0e0 75%); background-size: 200% 100%; animation: skeleton-loading 1.5s infinite; border-radius: 4px;"></div>
+        </td>
+      </tr>
+    `);
+    tbody.innerHTML = skeletonRows.join('');
   },
 
   // =====================
@@ -476,6 +503,10 @@ const app = {
   async renderTable() {
     try {
       const tbody = document.getElementById('tableBody');
+      
+      // Show skeleton loading
+      this.showTableSkeleton();
+      
       const start = (this.currentPage - 1) * this.pageSize;
       const end = start + this.pageSize;
       
@@ -638,160 +669,18 @@ const app = {
   // =====================
   async refreshTable() {
     try {
+      const btn = document.querySelector('.btn-refresh');
+      this.setLoading(true, btn);
       this.currentPage = 1;
       await this.renderTable();
       notificationService.success('Tabela atualizada');
+      this.setLoading(false, btn);
     } catch (error) {
       console.error('Refresh error:', error);
       notificationService.error('Erro ao atualizar tabela');
+      const btn = document.querySelector('.btn-refresh');
+      this.setLoading(false, btn);
     }
-  }
-};
-  },
-
-  // =====================
-  // FILTERS HELPER
-  // =====================
-  getFilterValues() {
-    return {
-      startDate: document.getElementById('filterStart').value,
-      endDate: document.getElementById('filterEnd').value,
-      order: document.getElementById('filterOrder').value.toLowerCase().trim(),
-      title: document.getElementById('filterTitle').value.toLowerCase().trim(),
-      sku: document.getElementById('filterSKU').value.toLowerCase().trim(),
-      status: document.getElementById('filterStatus').value,
-      modality: document.getElementById('filterModality').value,
-      freteType: document.getElementById('filterFreteType').value,
-      publicity: document.getElementById('filterPublicity').value
-    };
-  },
-
-  // =====================
-  // FILTERS
-  // =====================
-  async applyFilters() {
-    try {
-      this.currentPage = 1;
-
-      if (this.useAPI) {
-        // Let API handle filtering
-        await this.renderTable();
-      } else {
-        // Client-side filtering
-        const filters = this.getFilterValues();
-        const startDate = filters.startDate ? new Date(filters.startDate) : null;
-        const endDate = filters.endDate ? new Date(filters.endDate) : null;
-
-        this.filteredData = this.data.filter(row => {
-          const rowDate = new Date(row.data.split('/').reverse().join('-'));
-          
-          // Date range filtering
-          if (startDate && rowDate < startDate) return false;
-          if (endDate && rowDate > endDate) return false;
-          
-          // Text search filtering
-          if (filters.title && !row.anuncio.toLowerCase().includes(filters.title.toLowerCase())) {
-            return false;
-          }
-          if (filters.sku && !row.sku.toLowerCase().includes(filters.sku.toLowerCase())) {
-            return false;
-          }
-          if (filters.order && !row.id.toString().includes(filters.order)) {
-            return false;
-          }
-          
-          // Dropdown filtering (only if selected)
-          if (filters.status && row.status !== filters.status) {
-            return false;
-          }
-          if (filters.modality && row.modality !== filters.modality) {
-            return false;
-          }
-          if (filters.freteType && row.freteType !== filters.freteType) {
-            return false;
-          }
-          if (filters.publicity && row.publicidade !== filters.publicity) {
-            return false;
-          }
-          
-          return true;
-        });
-
-        this.renderTable();
-      }
-
-      const count = this.useAPI ? '?' : this.filteredData.length;
-      notificationService.success(`Filtros aplicados! ${count} registros encontrados.`);
-    } catch (error) {
-      console.error('Filter error:', error);
-      notificationService.error('Erro ao aplicar filtros');
-    }
-  },
-
-  clearFilters() {
-    try {
-      document.getElementById('filterStart').value = '2026-01-01';
-      document.getElementById('filterEnd').value = '2026-01-31';
-      document.getElementById('filterOrder').value = '';
-      document.getElementById('filterTitle').value = '';
-      document.getElementById('filterSKU').value = '';
-      document.getElementById('filterStatus').value = '';
-      document.getElementById('filterModality').value = '';
-      document.getElementById('filterFreteType').value = '';
-      document.getElementById('filterPublicity').value = '';
-
-      this.filteredData = [...this.data];
-      this.currentPage = 1;
-      this.renderTable();
-      notificationService.success('Filtros limpos');
-    } catch (error) {
-      console.error('Clear filters error:', error);
-      notificationService.error('Erro ao limpar filtros');
-    }
-  },
-
-  // =====================
-  // EXPORT CSV
-  // =====================
-  exportCSV() {
-    const headers = ['Anúncio', 'Conta', 'SKU', 'Data', 'Frete', 'Valor Unit.', 'Qtd.', 'Faturamento ML', 'Custo', 'Imposto', 'Tarifa', 'Frete Comprador', 'Frete Vendedor', 'Margem', 'MC %'];
-    const rows = this.filteredData.map(row => [
-      row.anuncio,
-      row.conta,
-      row.sku,
-      row.data,
-      row.frete,
-      row.valor,
-      row.qtd,
-      row.faturamento,
-      row.custo,
-      row.imposto,
-      row.tarifa,
-      row.freteComprador,
-      row.freteVendedor,
-      row.margem,
-      row.mcPct
-    ]);
-
-    let csv = headers.join(',') + '\n';
-    rows.forEach(row => {
-      csv += row.map(cell => `"${cell}"`).join(',') + '\n';
-    });
-
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.setAttribute('href', URL.createObjectURL(blob));
-    link.setAttribute('download', `vendas_${new Date().toISOString().slice(0, 10)}.csv`);
-    link.click();
-  },
-
-  // =====================
-  // REFRESH
-  // =====================
-  refreshTable() {
-    this.currentPage = 1;
-    this.renderTable();
-    alert('Tabela atualizada com sucesso!');
   }
 };
 
