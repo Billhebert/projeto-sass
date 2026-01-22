@@ -10,7 +10,7 @@
   <div class="container">
     <div class="login-card">
       <h2>Bem-vindo</h2>
-      <form>
+      <form id="loginForm">
         <div class="form-group">
           <label for="email">E-mail</label>
           <input type="email" id="email" placeholder="Digite seu e-mail">
@@ -26,5 +26,11 @@
       </div>
     </div>
   </div>
+  <script>
+    document.getElementById('loginForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      window.location.href = 'dashboard.html';
+    });
+  </script>
 </body>
 </html>
