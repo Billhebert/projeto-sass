@@ -1,0 +1,262 @@
+@use 'variables' as *;
+
+.table-container {
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+
+  .table-header {
+    padding: 16px var(--gap);
+    border-bottom: 1px solid var(--muted-2);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+
+    h2 {
+      font-size: 16px;
+      font-weight: 600;
+      margin: 0;
+    }
+
+    .table-controls {
+      display: flex;
+      gap: 8px;
+
+      button {
+        background: var(--primary);
+        color: white;
+        font-size: 13px;
+
+        &:hover {
+          background: var(--primary-dark);
+        }
+
+        &.btn-export {
+          background: var(--margem);
+
+          &:hover {
+            background: var(--margem-light);
+          }
+        }
+      }
+    }
+  }
+
+  .table-scroll {
+    overflow-x: auto;
+    flex: 1;
+
+    table {
+      min-width: 1200px;
+
+      th {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: var(--bg);
+        cursor: pointer;
+        user-select: none;
+        transition: background 0.2s;
+
+        &:hover {
+          background: #efefef;
+        }
+
+        &.sortable::after {
+          content: ' ⇅';
+          font-size: 11px;
+          color: var(--muted);
+        }
+
+        &.sorted-asc::after {
+          content: ' ↑';
+        }
+
+        &.sorted-desc::after {
+          content: ' ↓';
+        }
+      }
+
+      tbody tr {
+        transition: background 0.1s;
+
+        &:hover {
+          background: #f9f9f9;
+        }
+      }
+
+      .col-anuncio {
+        max-width: 200px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+
+        &[title] {
+          cursor: help;
+        }
+      }
+
+      .col-cost,
+      .col-tax,
+      .col-fee,
+      .col-margin {
+        text-align: right;
+        font-family: 'Courier New', monospace;
+        font-size: 13px;
+      }
+
+      .col-cost {
+        color: var(--imposto);
+      }
+
+      .col-tax {
+        color: var(--imposto-light);
+      }
+
+      .col-fee {
+        color: var(--tarifa);
+      }
+
+      .col-margin {
+        color: var(--margem);
+        font-weight: 600;
+      }
+    }
+  }
+
+  .table-footer {
+    padding: 16px var(--gap);
+    border-top: 1px solid var(--muted-2);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    background: #f9f9f9;
+
+    .pagination-info {
+      font-size: 13px;
+      color: var(--text-light);
+    }
+
+    .pagination-controls {
+      display: flex;
+      gap: 8px;
+
+      button {
+        background: var(--muted-2);
+        color: var(--text-dark);
+        padding: 8px 12px;
+        font-size: 13px;
+
+        &:hover:not(:disabled) {
+          background: #b3b3b3;
+        }
+
+        &:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+      }
+    }
+  }
+}
+
+.skeleton-row {
+  display: grid;
+  grid-template-columns: 200px 100px 80px 100px 80px 80px 80px 100px 100px 80px 80px 100px 80px;
+  gap: 12px;
+  padding: 12px var(--gap);
+  border-bottom: 1px solid var(--muted-2);
+
+  .skeleton-cell {
+    height: 20px;
+    background: linear-gradient(90deg, var(--muted-2) 25%, #e0e0e0 50%, var(--muted-2) 75%);
+    background-size: 200% 100%;
+    animation: loading 1.5s infinite;
+    border-radius: 4px;
+  }
+}
+
+@keyframes loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+// Responsive
+@media (max-width: 1100px) {
+  .table-scroll {
+    table {
+      min-width: 1000px;
+
+      .col-frete-vendedor {
+        display: none;
+      }
+    }
+  }
+}
+
+@media (max-width: 800px) {
+  .table-scroll {
+    table {
+      min-width: 800px;
+
+      .col-frete-vendedor,
+      .col-mc-percent {
+        display: none;
+      }
+    }
+  }
+}
+
+@media (max-width: 600px) {
+  .table-header {
+    flex-direction: column;
+    align-items: flex-start;
+
+    .table-controls {
+      width: 100%;
+      flex-wrap: wrap;
+
+      button {
+        flex: 1;
+        min-width: 120px;
+      }
+    }
+  }
+
+  .table-scroll {
+    table {
+      min-width: 600px;
+
+      .col-frete-vendedor,
+      .col-mc-percent,
+      .col-frete,
+      .col-qtd {
+        display: none;
+      }
+    }
+  }
+
+  .table-footer {
+    flex-direction: column;
+    align-items: stretch;
+
+    .pagination-controls {
+      width: 100%;
+
+      button {
+        flex: 1;
+      }
+    }
+  }
+}
