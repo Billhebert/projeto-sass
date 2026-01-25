@@ -3,45 +3,325 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Mercado Livre - Gerenciar Contas</title>
-  <link rel="stylesheet" href="../../dist/styles/dashboard.css">
+  <title>Gerenciador de Contas - Projeto SASS</title>
   <style>
-    .ml-container {
-      max-width: 1200px;
-      margin: 0 auto;
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
       padding: 20px;
     }
 
-    .ml-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 30px;
-      padding-bottom: 20px;
-      border-bottom: 2px solid #e5e7eb;
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
     }
 
-    .ml-header h1 {
-      font-size: 28px;
+    .header {
+      text-align: center;
+      color: white;
+      margin-bottom: 40px;
+    }
+
+    .header h1 {
+      font-size: 2.5em;
+      margin-bottom: 10px;
+    }
+
+    .header p {
+      font-size: 1.1em;
+      opacity: 0.9;
+    }
+
+    .main-content {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-bottom: 40px;
+    }
+
+    @media (max-width: 768px) {
+      .main-content {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Card Estilo */
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 25px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 15px 40px rgba(0, 0, 0, 0.3);
+    }
+
+    .card-title {
+      font-size: 1.3em;
       color: #333;
-      margin: 0;
-    }
-
-    .ml-header-actions {
+      margin-bottom: 20px;
       display: flex;
+      align-items: center;
       gap: 10px;
     }
 
+    .card-icon {
+      width: 30px;
+      height: 30px;
+      background: #667eea;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 0.9em;
+    }
+
+    /* Botão Adicionar Conta */
+    .btn-add-account {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 15px 25px;
+      font-size: 1em;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      width: 100%;
+      font-weight: 600;
+    }
+
+    .btn-add-account:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    }
+
+    /* Lista de Contas */
+    .accounts-list {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+
+    .account-card {
+      background: #f8f9fa;
+      border-left: 5px solid #667eea;
+      padding: 15px;
+      border-radius: 8px;
+      transition: all 0.3s ease;
+    }
+
+    .account-card:hover {
+      background: #f0f1fa;
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+    }
+
+    .account-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      margin-bottom: 12px;
+    }
+
+    .account-info h3 {
+      color: #333;
+      margin-bottom: 5px;
+    }
+
+    .account-info p {
+      color: #666;
+      font-size: 0.9em;
+    }
+
+    .account-status {
+      display: inline-block;
+      padding: 5px 12px;
+      border-radius: 20px;
+      font-size: 0.85em;
+      font-weight: 600;
+    }
+
+    .status-connected {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .status-syncing {
+      background: #fff3cd;
+      color: #856404;
+    }
+
+    .status-error {
+      background: #f8d7da;
+      color: #721c24;
+    }
+
+    .account-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin: 12px 0;
+    }
+
+    .stat-item {
+      background: white;
+      padding: 10px;
+      border-radius: 6px;
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 1.3em;
+      font-weight: 600;
+      color: #667eea;
+    }
+
+    .stat-label {
+      font-size: 0.8em;
+      color: #999;
+      text-transform: uppercase;
+    }
+
+    .account-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .btn-small {
+      flex: 1;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.9em;
+      font-weight: 600;
+      transition: all 0.3s ease;
+    }
+
+    .btn-sync {
+      background: #667eea;
+      color: white;
+    }
+
+    .btn-sync:hover {
+      background: #5568d3;
+    }
+
+    .btn-remove {
+      background: #dc3545;
+      color: white;
+    }
+
+    .btn-remove:hover {
+      background: #c82333;
+    }
+
+    .btn-toggle {
+      background: #17a2b8;
+      color: white;
+    }
+
+    .btn-toggle:hover {
+      background: #138496;
+    }
+
+    /* Modal */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal.active {
+      display: flex;
+    }
+
+    .modal-content {
+      background: white;
+      border-radius: 12px;
+      padding: 30px;
+      max-width: 500px;
+      width: 90%;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    }
+
+    .modal-header {
+      font-size: 1.5em;
+      color: #333;
+      margin-bottom: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .close-btn {
+      background: none;
+      border: none;
+      font-size: 1.5em;
+      cursor: pointer;
+      color: #999;
+    }
+
+    .form-group {
+      margin-bottom: 15px;
+    }
+
+    .form-group label {
+      display: block;
+      color: #333;
+      font-weight: 600;
+      margin-bottom: 5px;
+    }
+
+    .form-group input,
+    .form-group textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 0.95em;
+      font-family: inherit;
+    }
+
+    .form-group textarea {
+      resize: vertical;
+      min-height: 80px;
+    }
+
+    .form-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
     .btn-primary {
+      flex: 1;
       background: #667eea;
       color: white;
       border: none;
-      padding: 12px 24px;
+      padding: 12px;
       border-radius: 6px;
       cursor: pointer;
-      font-size: 14px;
       font-weight: 600;
-      transition: background 0.3s;
+      transition: all 0.3s ease;
     }
 
     .btn-primary:hover {
@@ -49,513 +329,722 @@
     }
 
     .btn-secondary {
-      background: #e5e7eb;
+      flex: 1;
+      background: #e9ecef;
       color: #333;
       border: none;
-      padding: 10px 16px;
+      padding: 12px;
       border-radius: 6px;
       cursor: pointer;
-      font-size: 13px;
-      transition: background 0.3s;
+      font-weight: 600;
+      transition: all 0.3s ease;
     }
 
     .btn-secondary:hover {
-      background: #d1d5db;
+      background: #dee2e6;
     }
 
-    .btn-danger {
-      background: #ef4444;
-      color: white;
-      border: none;
-      padding: 8px 16px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 12px;
-      transition: background 0.3s;
+    /* Notificações */
+    .notification {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: white;
+      padding: 15px 20px;
+      border-radius: 8px;
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+      z-index: 2000;
+      animation: slideIn 0.3s ease;
+      border-left: 5px solid;
     }
 
-    .btn-danger:hover {
-      background: #dc2626;
+    @keyframes slideIn {
+      from {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
     }
 
-    .accounts-grid {
+    .notification.success {
+      border-left-color: #28a745;
+      background: #f8f9fa;
+    }
+
+    .notification.error {
+      border-left-color: #dc3545;
+      background: #fff5f5;
+    }
+
+    .notification.info {
+      border-left-color: #17a2b8;
+      background: #f0f9ff;
+    }
+
+    /* Stats Dashboard */
+    .stats-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-      gap: 20px;
-      margin-bottom: 40px;
-    }
-
-    .account-card {
-      background: white;
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      padding: 20px;
-      transition: box-shadow 0.3s, transform 0.3s;
-      cursor: pointer;
-    }
-
-    .account-card:hover {
-      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-      transform: translateY(-2px);
-    }
-
-    .account-card.active {
-      border-color: #667eea;
-      background: #f0f4ff;
-    }
-
-    .account-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: start;
-      margin-bottom: 15px;
-    }
-
-    .account-name {
-      font-size: 18px;
-      font-weight: 600;
-      color: #333;
-      margin: 0;
-    }
-
-    .account-status {
-      display: inline-block;
-      padding: 4px 12px;
-      border-radius: 20px;
-      font-size: 12px;
-      font-weight: 600;
-    }
-
-    .status-active {
-      background: #dcfce7;
-      color: #166534;
-    }
-
-    .status-syncing {
-      background: #fef3c7;
-      color: #92400e;
-    }
-
-    .status-error {
-      background: #fee2e2;
-      color: #991b1b;
-    }
-
-    .account-info {
-      font-size: 13px;
-      color: #666;
-      line-height: 1.8;
-      margin-bottom: 15px;
-    }
-
-    .account-info-item {
-      display: flex;
-      justify-content: space-between;
-      padding: 8px 0;
-      border-bottom: 1px solid #f0f0f0;
-    }
-
-    .account-info-label {
-      font-weight: 500;
-      color: #333;
-    }
-
-    .account-info-value {
-      color: #666;
-      word-break: break-all;
-    }
-
-    .account-actions {
-      display: flex;
-      gap: 10px;
-      margin-top: 15px;
-    }
-
-    .account-actions .btn-danger {
-      flex: 1;
-    }
-
-    .metrics-section {
-      background: white;
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      padding: 20px;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 15px;
       margin-bottom: 30px;
-    }
-
-    .metrics-section h2 {
-      font-size: 20px;
-      color: #333;
-      margin: 0 0 20px 0;
-    }
-
-    .metrics-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 20px;
-    }
-
-    .metric-card {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      padding: 20px;
-      border-radius: 8px;
-      text-align: center;
-    }
-
-    .metric-card.alt1 {
-      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-    }
-
-    .metric-card.alt2 {
-      background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-    }
-
-    .metric-card.alt3 {
-      background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
-    }
-
-    .metric-label {
-      font-size: 12px;
-      opacity: 0.9;
-      margin-bottom: 10px;
-    }
-
-    .metric-value {
-      font-size: 28px;
-      font-weight: 700;
-    }
-
-    .no-accounts {
-      text-align: center;
-      padding: 60px 20px;
-      background: white;
-      border-radius: 8px;
-      border: 2px dashed #e5e7eb;
-    }
-
-    .no-accounts-icon {
-      font-size: 64px;
-      margin-bottom: 20px;
-    }
-
-    .no-accounts-text {
-      font-size: 18px;
-      color: #666;
-      margin-bottom: 30px;
-    }
-
-    .sync-status {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-size: 12px;
-      color: #666;
-      margin-top: 10px;
-    }
-
-    .spinner {
-      width: 14px;
-      height: 14px;
-      border: 2px solid #e5e7eb;
-      border-top-color: #667eea;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-    }
-
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-
-    .loading {
-      display: flex;
-      justify-content: center;
-      padding: 40px;
-    }
-
-    .success-message {
-      background: #dcfce7;
-      border: 1px solid #86efac;
-      color: #166534;
-      padding: 15px;
-      border-radius: 6px;
-      margin-bottom: 20px;
     }
 
     @media (max-width: 768px) {
-      .ml-header {
-        flex-direction: column;
-        gap: 15px;
-      }
-
-      .accounts-grid {
+      .stats-grid {
         grid-template-columns: 1fr;
       }
+    }
 
-      .metrics-grid {
-        grid-template-columns: 1fr;
+    .stat-card {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      text-align: center;
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+    }
+
+    .stat-card h3 {
+      color: #999;
+      font-size: 0.9em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+
+    .stat-card .number {
+      font-size: 2.5em;
+      color: #667eea;
+      font-weight: 700;
+    }
+
+    /* Logs */
+    .logs-container {
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 15px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .log-item {
+      padding: 8px 0;
+      border-bottom: 1px solid #e9ecef;
+      font-size: 0.9em;
+    }
+
+    .log-item:last-child {
+      border-bottom: none;
+    }
+
+    .log-time {
+      color: #999;
+      font-size: 0.85em;
+    }
+
+    .log-message {
+      color: #333;
+      margin: 3px 0;
+    }
+
+    .log-info { color: #17a2b8; }
+    .log-success { color: #28a745; }
+    .log-error { color: #dc3545; }
+
+    /* Empty State */
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: #999;
+    }
+
+    .empty-state-icon {
+      font-size: 3em;
+      margin-bottom: 10px;
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(102, 126, 234, 0.3);
+      border-top-color: #667eea;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
       }
     }
   </style>
 </head>
 <body>
-  <div class="ml-container">
+  <div class="container">
     <!-- Header -->
-    <div class="ml-header">
-      <h1>💰 Mercado Livre - Gerenciar Contas</h1>
-      <div class="ml-header-actions">
-        <button class="btn-primary" id="addAccountBtn">+ Conectar Conta</button>
-        <button class="btn-secondary" id="syncBtn">↻ Sincronizar Agora</button>
+    <div class="header">
+      <h1>🎯 Gerenciador de Contas</h1>
+      <p>Gerencie múltiplas contas do Mercado Livre com sincronização automática</p>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <h3>Contas Conectadas</h3>
+        <div class="number" id="totalAccounts">0</div>
+      </div>
+      <div class="stat-card">
+        <h3>Total de Produtos</h3>
+        <div class="number" id="totalProducts">0</div>
+      </div>
+      <div class="stat-card">
+        <h3>Total de Pedidos</h3>
+        <div class="number" id="totalOrders">0</div>
       </div>
     </div>
 
-    <!-- Success Message -->
-    <div id="successMessage" class="success-message" style="display: none;"></div>
+    <!-- Main Content -->
+    <div class="main-content">
+      <!-- Adicionar Conta -->
+      <div class="card">
+        <div class="card-title">
+          <div class="card-icon">➕</div>
+          Adicionar Nova Conta
+        </div>
+        <button class="btn-add-account" id="addAccountBtn">
+          Conectar Conta Mercado Livre
+        </button>
+        <p style="margin-top: 15px; color: #666; font-size: 0.9em;">
+          Clique no botão para iniciar o processo de autenticação com o Mercado Livre. 
+          Você será redirecionado para fazer login em sua conta.
+        </p>
+      </div>
 
-    <!-- Accounts Section -->
-    <div id="accountsSection">
-      <h2 style="margin-bottom: 20px;">Suas Contas Conectadas</h2>
-      <div id="accountsList" class="accounts-grid"></div>
+      <!-- Sincronização -->
+      <div class="card">
+        <div class="card-title">
+          <div class="card-icon">🔄</div>
+          Sincronização
+        </div>
+        <div style="margin-bottom: 15px;">
+          <p style="color: #666; margin-bottom: 10px;">
+            Status: <strong id="syncStatus">Aguardando...</strong>
+          </p>
+          <p style="color: #999; font-size: 0.9em;">
+            Última sincronização: <strong id="lastSyncTime">Nunca</strong>
+          </p>
+        </div>
+        <button class="btn-add-account" id="syncAllBtn" style="background: #28a745;">
+          🔄 Sincronizar Todas as Contas
+        </button>
+        <div style="margin-top: 15px; padding: 10px; background: #f0f1fa; border-radius: 6px;">
+          <p style="color: #666; font-size: 0.85em; margin-bottom: 5px;">
+            ℹ️ As contas sincronizam automaticamente a cada 5 minutos
+          </p>
+          <p style="color: #666; font-size: 0.85em;">
+            Você pode clicar no botão acima para sincronizar imediatamente
+          </p>
+        </div>
+      </div>
     </div>
 
-    <!-- Metrics Section -->
-    <div id="metricsSection" class="metrics-section" style="display: none;">
-      <h2>📊 Métricas Consolidadas</h2>
-      <div class="metrics-grid" id="metricsGrid"></div>
+    <!-- Contas -->
+    <div class="card">
+      <div class="card-title">
+        <div class="card-icon">📱</div>
+        Minhas Contas (<span id="accountCount">0</span>)
+      </div>
+      <div id="accountsList" class="accounts-list">
+        <div class="empty-state">
+          <div class="empty-state-icon">📭</div>
+          <p>Nenhuma conta conectada</p>
+          <p style="font-size: 0.9em; margin-top: 10px;">Clique em "Conectar Conta Mercado Livre" para adicionar uma</p>
+        </div>
+      </div>
     </div>
 
-    <!-- Details Section -->
-    <div id="detailsSection" style="display: none;">
-      <h2 style="margin-bottom: 20px;">Detalhes da Conta</h2>
-      <div id="detailsContent"></div>
+    <!-- Logs -->
+    <div class="card" style="margin-top: 20px;">
+      <div class="card-title">
+        <div class="card-icon">📋</div>
+        Logs de Sincronização
+      </div>
+      <div id="logsList" class="logs-container">
+        <div style="text-align: center; color: #999;">
+          <p>Nenhum log ainda</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Adicionar Conta -->
+  <div class="modal" id="addAccountModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <span>Conectar Conta Mercado Livre</span>
+        <button class="close-btn" id="closeModal">&times;</button>
+      </div>
+      <form id="addAccountForm">
+        <div class="form-group">
+          <label>Selecione como conectar</label>
+          <div style="display: flex; gap: 10px; margin-top: 10px;">
+            <button type="button" id="oauthBtn" class="btn-primary" style="flex: 1;">
+              🔐 OAuth (Recomendado)
+            </button>
+            <button type="button" id="manualBtn" class="btn-primary" style="flex: 1; background: #6c757d;">
+              ⚙️ Manual
+            </button>
+          </div>
+        </div>
+
+        <!-- OAuth Section -->
+        <div id="oauthSection" style="display: none; margin-top: 20px;">
+          <p style="color: #666; margin-bottom: 15px;">
+            Você será redirecionado para fazer login no Mercado Livre. 
+            Depois, autorizará este aplicativo a acessar sua conta.
+          </p>
+          <button type="button" id="startOAuthBtn" class="btn-primary">
+            Iniciar Autenticação OAuth
+          </button>
+        </div>
+
+        <!-- Manual Section -->
+        <div id="manualSection" style="display: none;">
+          <div class="form-group">
+            <label>Nickname/Email</label>
+            <input type="text" id="manualNickname" placeholder="seu-email@example.com" required>
+          </div>
+          <div class="form-group">
+            <label>Token de Acesso</label>
+            <textarea id="manualAccessToken" placeholder="Cole seu token de acesso aqui" required></textarea>
+          </div>
+          <div class="form-group">
+            <label>Token de Refresh (opcional)</label>
+            <textarea id="manualRefreshToken" placeholder="Cole seu token de refresh aqui"></textarea>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary">Conectar</button>
+            <button type="button" class="btn-secondary" id="cancelManual">Cancelar</button>
+          </div>
+        </div>
+      </form>
     </div>
   </div>
 
   <!-- Scripts -->
-  <script src="../../src/scripts/mercado-livre/secure-storage.js"></script>
-  <script src="../../src/scripts/mercado-livre/auth.js"></script>
-  <script src="../../src/scripts/mercado-livre/api-client.js"></script>
-  <script src="../../src/scripts/mercado-livre/sync-manager.js"></script>
-
+  <script src="accounts-manager.js"></script>
+  <script src="oauth-handler.js"></script>
   <script>
-    class MLAccountsPanel {
-      constructor() {
-        this.storage = new SecureTokenStorage();
-        this.auth = new MercadoLivreAuth();
-        this.syncManager = null;
-        this.init();
-      }
+    // Instância do gerenciador
+    let accountsManager;
 
-      async init() {
-        try {
-          // Inicializar sincronizador
-          this.syncManager = new MLSyncManager();
-          await this.syncManager.initialize();
+    // Inicializar
+    function init() {
+      accountsManager = new MLAccountsManager({
+        apiBaseUrl: 'http://localhost:3000/api',
+        syncInterval: 5 * 60 * 1000, // 5 minutos
+      });
 
-          // Setup event listeners
-          document.getElementById('addAccountBtn').addEventListener('click', 
-            () => this.connectNewAccount());
-          document.getElementById('syncBtn').addEventListener('click', 
-            () => this.syncNow());
+      setupEventListeners();
+      setupManagerListeners();
+      updateUI();
 
-          // Exibir contas
-          await this.displayAccounts();
+      // Verificar se voltamos de OAuth
+      checkOAuthCallback();
+    }
 
-          // Exibir métricas
-          this.displayMetrics();
+    /**
+     * Configurar listeners da UI
+     */
+    function setupEventListeners() {
+      document.getElementById('addAccountBtn').addEventListener('click', showAddModal);
+      document.getElementById('closeModal').addEventListener('click', closeModal);
+      document.getElementById('syncAllBtn').addEventListener('click', syncAll);
+      document.getElementById('oauthBtn').addEventListener('click', () => showOAuthSection());
+      document.getElementById('manualBtn').addEventListener('click', () => showManualSection());
+      document.getElementById('startOAuthBtn').addEventListener('click', startOAuth);
+      document.getElementById('addAccountForm').addEventListener('submit', handleManualSubmit);
+      document.getElementById('cancelManual').addEventListener('click', closeModal);
 
-          // Verificar sucesso na URL
-          this.checkSuccessMessage();
-
-          // Auto-sync a cada 5 minutos
-          this.syncManager.enableAutoSync(5);
-
-        } catch (error) {
-          console.error('Erro ao inicializar painel:', error);
+      // Fechar modal ao clicar fora
+      document.getElementById('addAccountModal').addEventListener('click', (e) => {
+        if (e.target.id === 'addAccountModal') {
+          closeModal();
         }
-      }
+      });
+    }
 
-      async displayAccounts() {
-        const accounts = this.storage.getAllAccounts();
-        const container = document.getElementById('accountsList');
+    /**
+     * Configurar listeners do gerenciador
+     */
+    function setupManagerListeners() {
+      accountsManager.on('accountAdded', (account) => {
+        showNotification(`Conta "${account.nickname}" adicionada com sucesso!`, 'success');
+        updateUI();
+      });
 
-        if (accounts.length === 0) {
-          container.innerHTML = `
-            <div style="grid-column: 1 / -1;">
-              <div class="no-accounts">
-                <div class="no-accounts-icon">📱</div>
-                <div class="no-accounts-text">Nenhuma conta conectada</div>
-                <p>Clique em "Conectar Conta" para adicionar sua primeira conta do Mercado Livre</p>
-              </div>
-            </div>
-          `;
-          document.getElementById('metricsSection').style.display = 'none';
+      accountsManager.on('accountRemoved', (account) => {
+        showNotification(`Conta "${account.nickname}" removida`, 'info');
+        updateUI();
+      });
+
+      accountsManager.on('syncStarted', ({ accountId }) => {
+        updateUI();
+      });
+
+      accountsManager.on('syncCompleted', ({ accountId, data }) => {
+        showNotification(`Sincronização concluída para conta`, 'success');
+        updateUI();
+      });
+
+      accountsManager.on('syncError', ({ accountId, message }) => {
+        showNotification(`Erro ao sincronizar: ${message}`, 'error');
+        updateUI();
+      });
+    }
+
+    /**
+     * Mostrar modal de adicionar conta
+     */
+    function showAddModal() {
+      document.getElementById('addAccountModal').classList.add('active');
+      document.getElementById('oauthSection').style.display = 'none';
+      document.getElementById('manualSection').style.display = 'none';
+    }
+
+    /**
+     * Fechar modal
+     */
+    function closeModal() {
+      document.getElementById('addAccountModal').classList.remove('active');
+      document.getElementById('addAccountForm').reset();
+    }
+
+    /**
+     * Mostrar seção OAuth
+     */
+    function showOAuthSection() {
+      document.getElementById('oauthSection').style.display = 'block';
+      document.getElementById('manualSection').style.display = 'none';
+    }
+
+    /**
+     * Mostrar seção Manual
+     */
+    function showManualSection() {
+      document.getElementById('oauthSection').style.display = 'none';
+      document.getElementById('manualSection').style.display = 'block';
+    }
+
+    /**
+     * Iniciar OAuth
+     */
+    function startOAuth() {
+      const oauthHandler = new MLOAuthHandler({
+        clientId: 'YOUR_CLIENT_ID', // Será configurado via backend
+        redirectUri: `${window.location.origin}/examples/dashboard/mercado-livre-accounts.html`,
+      });
+      oauthHandler.startAuthentication();
+    }
+
+    /**
+     * Verificar callback de OAuth
+     */
+    function checkOAuthCallback() {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('code');
+      const state = params.get('state');
+
+      if (code && state) {
+        // Validar state
+        const savedState = sessionStorage.getItem('oauth_state');
+        if (state !== savedState) {
+          showNotification('Erro de autenticação: estado inválido', 'error');
           return;
         }
 
-        container.innerHTML = accounts.map(acc => {
-          const status = this.syncManager.getSyncStatus(acc.id);
-          const statusClass = status.status === 'error' ? 'status-error' : 
-                            status.status === 'syncing' ? 'status-syncing' : 'status-active';
-          
-          return `
-            <div class="account-card ${acc.active ? 'active' : ''}">
-              <div class="account-header">
-                <h3 class="account-name">${acc.nickname}</h3>
-                <span class="account-status ${statusClass}">
-                  ${status.status === 'syncing' ? '⟳' : '●'} 
-                  ${status.status === 'syncing' ? 'Sincronizando' :
-                    status.status === 'success' ? 'Conectada' : 'Erro'}
-                </span>
-              </div>
-
-              <div class="account-info">
-                <div class="account-info-item">
-                  <span class="account-info-label">ID:</span>
-                  <span class="account-info-value">${acc.id}</span>
-                </div>
-                <div class="account-info-item">
-                  <span class="account-info-label">Email:</span>
-                  <span class="account-info-value">${acc.email || '-'}</span>
-                </div>
-                <div class="account-info-item">
-                  <span class="account-info-label">Conectada:</span>
-                  <span class="account-info-value">${this.formatDate(acc.created_at)}</span>
-                </div>
-                <div class="account-info-item">
-                  <span class="account-info-label">Progresso:</span>
-                  <span class="account-info-value">${status.progress || 0}%</span>
-                </div>
-              </div>
-
-              ${status.lastSync ? `
-                <div class="sync-status">
-                  <span>✓ Última sincronização: ${this.formatTime(status.lastSync)}</span>
-                </div>
-              ` : ''}
-
-              <div class="account-actions">
-                <button class="btn-danger" onclick="panel.disconnectAccount(${acc.id})">
-                  Desconectar
-                </button>
-              </div>
-            </div>
-          `;
-        }).join('');
-
-        document.getElementById('metricsSection').style.display = 'block';
+        // Trocar código por tokens
+        exchangeCodeForTokens(code).then(account => {
+          if (account) {
+            accountsManager.addAccount(account);
+            closeModal();
+          }
+        });
       }
+    }
 
-      displayMetrics() {
-        if (!this.syncManager) return;
+    /**
+     * Trocar código por tokens
+     */
+    async function exchangeCodeForTokens(code) {
+      try {
+        const response = await fetch('http://localhost:3000/api/auth/ml/exchange-token', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ code }),
+        });
 
-        const metrics = this.syncManager.getAggregatedMetrics();
-        const metricsGrid = document.getElementById('metricsGrid');
+        if (!response.ok) {
+          throw new Error('Falha ao trocar código por tokens');
+        }
 
-        metricsGrid.innerHTML = `
-          <div class="metric-card">
-            <div class="metric-label">📦 Produtos Totais</div>
-            <div class="metric-value">${metrics.totalProducts}</div>
-          </div>
-          <div class="metric-card alt1">
-            <div class="metric-label">🛍️ Vendas (30d)</div>
-            <div class="metric-value">${metrics.totalSales}</div>
-          </div>
-          <div class="metric-card alt2">
-            <div class="metric-label">💰 Faturamento</div>
-            <div class="metric-value">R$ ${metrics.totalRevenue.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>
-          </div>
-          <div class="metric-card alt3">
-            <div class="metric-label">📊 Ticket Médio</div>
-            <div class="metric-value">R$ ${metrics.averageOrderValue.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>
+        const data = await response.json();
+        return {
+          userId: data.userId,
+          nickname: data.nickname,
+          email: data.email,
+          accessToken: data.accessToken,
+          refreshToken: data.refreshToken,
+          tokenExpiresAt: data.tokenExpiresAt,
+        };
+      } catch (error) {
+        console.error('Erro ao trocar código:', error);
+        showNotification(`Erro: ${error.message}`, 'error');
+        return null;
+      }
+    }
+
+    /**
+     * Lidar com envio manual do formulário
+     */
+    async function handleManualSubmit(e) {
+      e.preventDefault();
+
+      const nickname = document.getElementById('manualNickname').value;
+      const accessToken = document.getElementById('manualAccessToken').value;
+      const refreshToken = document.getElementById('manualRefreshToken').value;
+
+      try {
+        const account = {
+          nickname,
+          accessToken,
+          refreshToken: refreshToken || null,
+          tokenExpiresAt: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
+        };
+
+        await accountsManager.addAccount(account);
+        closeModal();
+      } catch (error) {
+        showNotification(`Erro: ${error.message}`, 'error');
+      }
+    }
+
+    /**
+     * Sincronizar todas as contas
+     */
+    async function syncAll() {
+      const btn = document.getElementById('syncAllBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Sincronizando...';
+
+      try {
+        const results = await accountsManager.syncAll();
+        const successful = results.filter(r => r.success).length;
+        showNotification(`${successful}/${results.length} contas sincronizadas`, 'success');
+      } catch (error) {
+        showNotification(`Erro ao sincronizar: ${error.message}`, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '🔄 Sincronizar Todas as Contas';
+        updateUI();
+      }
+    }
+
+    /**
+     * Atualizar UI
+     */
+    function updateUI() {
+      const accounts = accountsManager.getAccounts();
+
+      // Atualizar contadores
+      document.getElementById('accountCount').textContent = accounts.length;
+      document.getElementById('totalAccounts').textContent = accounts.length;
+
+      const totalProducts = accounts.reduce((sum, acc) => sum + (acc.products || 0), 0);
+      const totalOrders = accounts.reduce((sum, acc) => sum + (acc.orders || 0), 0);
+
+      document.getElementById('totalProducts').textContent = totalProducts.toLocaleString('pt-BR');
+      document.getElementById('totalOrders').textContent = totalOrders.toLocaleString('pt-BR');
+
+      // Atualizar lista de contas
+      const accountsList = document.getElementById('accountsList');
+      if (accounts.length === 0) {
+        accountsList.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">📭</div>
+            <p>Nenhuma conta conectada</p>
+            <p style="font-size: 0.9em; margin-top: 10px;">Clique em "Conectar Conta Mercado Livre" para adicionar uma</p>
           </div>
         `;
+      } else {
+        accountsList.innerHTML = accounts.map(account => `
+          <div class="account-card">
+            <div class="account-header">
+              <div class="account-info">
+                <h3>📦 ${escapeHtml(account.nickname)}</h3>
+                <p>${escapeHtml(account.email)}</p>
+              </div>
+              <span class="account-status status-${account.status}">
+                ${account.isSyncing ? '<span class="spinner"></span>' : getStatusLabel(account.status)}
+              </span>
+            </div>
+
+            <div class="account-stats">
+              <div class="stat-item">
+                <div class="stat-value">${account.products || 0}</div>
+                <div class="stat-label">Produtos</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-value">${account.orders || 0}</div>
+                <div class="stat-label">Pedidos</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-value">${account.issues || 0}</div>
+                <div class="stat-label">Problemas</div>
+              </div>
+            </div>
+
+            <div style="font-size: 0.85em; color: #999;">
+              ${account.lastSync ? `Última sincronização: ${new Date(account.lastSync).toLocaleString('pt-BR')}` : 'Nunca sincronizado'}
+            </div>
+
+            <div class="account-actions">
+              <button class="btn-small btn-sync" onclick="syncAccount('${account.id}')">
+                Sincronizar
+              </button>
+              <button class="btn-small btn-toggle" onclick="toggleSync('${account.id}')">
+                ${account.syncEnabled ? 'Pausar' : 'Retomar'}
+              </button>
+              <button class="btn-small btn-remove" onclick="removeAccount('${account.id}')">
+                Remover
+              </button>
+            </div>
+          </div>
+        `).join('');
       }
 
-      async connectNewAccount() {
-        this.auth.connectAccount();
-      }
+      // Atualizar logs
+      updateLogs();
+      updateSyncStatus();
+    }
 
-      async syncNow() {
-        try {
-          const btn = document.getElementById('syncBtn');
-          btn.disabled = true;
-          btn.textContent = '⟳ Sincronizando...';
-
-          await this.syncManager.syncAllAccounts();
-
-          btn.textContent = '✓ Sincronizado!';
-          setTimeout(() => {
-            btn.disabled = false;
-            btn.textContent = '↻ Sincronizar Agora';
-          }, 2000);
-
-          // Atualizar displays
-          await this.displayAccounts();
-          this.displayMetrics();
-
-        } catch (error) {
-          console.error('Erro ao sincronizar:', error);
-          alert('Erro na sincronização: ' + error.message);
-        }
-      }
-
-      async disconnectAccount(userId) {
-        if (!confirm('Tem certeza que deseja desconectar esta conta?')) {
-          return;
-        }
-
-        try {
-          await this.syncManager.disconnectAccount(userId);
-          await this.displayAccounts();
-          this.displayMetrics();
-        } catch (error) {
-          console.error('Erro ao desconectar:', error);
-          alert('Erro: ' + error.message);
-        }
-      }
-
-      checkSuccessMessage() {
-        const params = new URLSearchParams(window.location.search);
-        if (params.get('success') === 'true') {
-          const account = params.get('account');
-          const msg = document.getElementById('successMessage');
-          msg.textContent = `✓ Conta ${account} conectada com sucesso!`;
-          msg.style.display = 'block';
-
-          // Limpar URL
-          window.history.replaceState({}, document.title, window.location.pathname);
-
-          // Atualizar em 2 segundos
-          setTimeout(() => this.displayAccounts(), 2000);
-        }
-      }
-
-      formatDate(dateString) {
-        return new Date(dateString).toLocaleDateString('pt-BR');
-      }
-
-      formatTime(dateString) {
-        const date = new Date(dateString);
-        const now = new Date();
-        const diff = now - date;
-
-        if (diff < 60000) return 'agora mesmo';
-        if (diff < 3600000) return `há ${Math.floor(diff / 60000)} minutos`;
-        if (diff < 86400000) return `há ${Math.floor(diff / 3600000)} horas`;
-        return date.toLocaleDateString('pt-BR');
+    /**
+     * Sincronizar conta individual
+     */
+    async function syncAccount(accountId) {
+      try {
+        await accountsManager.sync(accountId);
+      } catch (error) {
+        showNotification(`Erro ao sincronizar: ${error.message}`, 'error');
       }
     }
 
-    // Inicializar painel
-    let panel;
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', () => {
-        panel = new MLAccountsPanel();
-      });
-    } else {
-      panel = new MLAccountsPanel();
+    /**
+     * Ativar/desativar sincronização
+     */
+    function toggleSync(accountId) {
+      accountsManager.toggleSyncEnabled(accountId);
+      updateUI();
     }
+
+    /**
+     * Remover conta
+     */
+    function removeAccount(accountId) {
+      const account = accountsManager.getAccount(accountId);
+      if (confirm(`Tem certeza que deseja remover a conta "${account.nickname}"?`)) {
+        accountsManager.removeAccount(accountId);
+        updateUI();
+      }
+    }
+
+    /**
+     * Atualizar logs
+     */
+    function updateLogs() {
+      const logs = accountsManager.getLogs().reverse().slice(0, 20);
+      const logsList = document.getElementById('logsList');
+
+      if (logs.length === 0) {
+        logsList.innerHTML = '<div style="text-align: center; color: #999;"><p>Nenhum log ainda</p></div>';
+        return;
+      }
+
+      logsList.innerHTML = logs.map(log => `
+        <div class="log-item">
+          <div class="log-time">${new Date(log.timestamp).toLocaleTimeString('pt-BR')}</div>
+          <div class="log-message log-${log.level}">${escapeHtml(log.message)}</div>
+        </div>
+      `).join('');
+    }
+
+    /**
+     * Atualizar status de sincronização
+     */
+    function updateSyncStatus() {
+      const accounts = accountsManager.getAccounts();
+      const syncing = accounts.some(acc => acc.isSyncing);
+      const statusEl = document.getElementById('syncStatus');
+
+      if (syncing) {
+        statusEl.textContent = '🔄 Sincronizando...';
+      } else {
+        statusEl.textContent = '✅ Pronto';
+      }
+
+      const lastSyncTimes = accounts
+        .filter(acc => acc.lastSync)
+        .map(acc => new Date(acc.lastSync).getTime());
+
+      if (lastSyncTimes.length > 0) {
+        const lastSync = new Date(Math.max(...lastSyncTimes));
+        document.getElementById('lastSyncTime').textContent = lastSync.toLocaleString('pt-BR');
+      }
+    }
+
+    /**
+     * Obter label de status
+     */
+    function getStatusLabel(status) {
+      const labels = {
+        connected: '🟢 Conectado',
+        syncing: '🟡 Sincronizando',
+        error: '🔴 Erro',
+        token_expired: '⏰ Token Expirado',
+      };
+      return labels[status] || '❓ Desconhecido';
+    }
+
+    /**
+     * Mostrar notificação
+     */
+    function showNotification(message, type = 'info') {
+      const notification = document.createElement('div');
+      notification.className = `notification ${type}`;
+      notification.textContent = message;
+
+      document.body.appendChild(notification);
+
+      setTimeout(() => {
+        notification.remove();
+      }, 5000);
+    }
+
+    /**
+     * Escapar HTML
+     */
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Inicializar quando DOM estiver pronto
+    document.addEventListener('DOMContentLoaded', init);
   </script>
 </body>
 </html>

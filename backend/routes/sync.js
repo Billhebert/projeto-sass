@@ -1,263 +1,319 @@
 /**
- * Sync Routes
+ * Sync Routes - Sincronização de Contas Mercado Livre
  * 
- * POST /api/sync/account/:accountId   - Sync single account
- * POST /api/sync/all                  - Sync all accounts
- * GET  /api/sync/status/:accountId    - Get sync status
+ * GET  /api/sync/account/:accountId      - Get account data
+ * POST /api/sync/account/:accountId      - Trigger sync
+ * POST /api/sync/all                     - Sync all accounts
+ * GET  /api/sync/status/:accountId       - Get sync status
  */
 
 const express = require('express');
 const axios = require('axios');
+const logger = require('../logger');
+const { authenticateToken } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Database functions
-const { 
-  getAccount,
-  getAllAccounts,
-  updateAccount
-} = require('../db/accounts');
-
 const ML_API_BASE = 'https://api.mercadolibre.com';
+const ML_SANDBOX_BASE = 'https://api.mercadolibre.com'; // Usar sandbox em dev se necessário
+
+/**
+ * GET /api/sync/account/:accountId
+ * Obter dados atuais da conta
+ */
+router.get('/account/:accountId', authenticateToken, async (req, res) => {
+  try {
+    const { accountId } = req.params;
+    const accessToken = req.headers['x-access-token'] || req.body.accessToken;
+
+    if (!accessToken) {
+      return res.status(400).json({
+        success: false,
+        message: 'Access token is required',
+        code: 'MISSING_TOKEN',
+      });
+    }
+
+    // Buscar dados da conta no Mercado Livre
+    const accountData = await fetchMLAccountData(accountId, accessToken);
+
+    res.json({
+      success: true,
+      data: {
+        products: accountData.products,
+        orders: accountData.orders,
+        issues: accountData.issues,
+        lastUpdate: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    logger.error({
+      action: 'SYNC_ACCOUNT_ERROR',
+      accountId: req.params.accountId,
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch account data',
+      code: 'SYNC_ERROR',
+      error: error.message,
+    });
+  }
+});
 
 /**
  * POST /api/sync/account/:accountId
- * 
- * Trigger sync for a single account
- * Fetches products, orders, and metrics from Mercado Livre
+ * Disparar sincronização para uma conta
  */
-router.post('/account/:accountId', async (req, res, next) => {
+router.post('/account/:accountId', authenticateToken, async (req, res) => {
   try {
     const { accountId } = req.params;
+    const accessToken = req.headers['x-access-token'] || req.body.accessToken;
 
-    const account = await getAccount(accountId);
-
-    if (!account) {
-      return res.status(404).json({ 
-        error: 'Account not found'
+    if (!accessToken) {
+      return res.status(400).json({
+        success: false,
+        message: 'Access token is required',
+        code: 'MISSING_TOKEN',
       });
     }
 
-    if (account.status !== 'connected' || !account.accessToken) {
-      return res.status(401).json({ 
-        error: 'Account not connected'
-      });
-    }
-
-    // Start sync asynchronously
-    res.json({
-      status: 'syncing',
-      message: 'Sync started for account',
-      accountId
+    logger.info({
+      action: 'SYNC_STARTED',
+      accountId,
+      userId: req.user.userId,
+      timestamp: new Date().toISOString(),
     });
 
-    // Process sync in background
-    syncAccountData(account)
-      .catch(error => console.error('Sync error:', error));
+    // Buscar dados da conta
+    const accountData = await fetchMLAccountData(accountId, accessToken);
 
+    logger.info({
+      action: 'SYNC_COMPLETED',
+      accountId,
+      products: accountData.products,
+      orders: accountData.orders,
+      timestamp: new Date().toISOString(),
+    });
+
+    res.json({
+      success: true,
+      message: 'Sync completed successfully',
+      data: {
+        products: accountData.products,
+        orders: accountData.orders,
+        issues: accountData.issues,
+        lastSync: new Date().toISOString(),
+      },
+    });
   } catch (error) {
-    console.error('Error starting sync:', error.message);
-    next(error);
+    logger.error({
+      action: 'SYNC_ERROR',
+      accountId: req.params.accountId,
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+
+    res.status(500).json({
+      success: false,
+      message: 'Sync failed',
+      code: 'SYNC_ERROR',
+      error: error.message,
+    });
   }
 });
 
 /**
  * POST /api/sync/all
- * 
- * Trigger sync for all connected accounts
+ * Sincronizar todas as contas do usuário
  */
-router.post('/all', async (req, res, next) => {
+router.post('/all', authenticateToken, async (req, res) => {
   try {
-    const accounts = await getAllAccounts();
-    const connectedAccounts = accounts.filter(a => a.status === 'connected' && a.accessToken);
+    const { accounts } = req.body;
 
-    res.json({
-      status: 'syncing',
-      message: `Sync started for ${connectedAccounts.length} accounts`,
-      count: connectedAccounts.length
+    if (!Array.isArray(accounts)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Accounts array is required',
+        code: 'INVALID_INPUT',
+      });
+    }
+
+    logger.info({
+      action: 'SYNC_ALL_STARTED',
+      accountCount: accounts.length,
+      userId: req.user.userId,
+      timestamp: new Date().toISOString(),
     });
 
-    // Process syncs in background
-    Promise.all(
-      connectedAccounts.map(account => syncAccountData(account))
-    ).catch(error => console.error('Bulk sync error:', error));
+    // Sincronizar todas as contas em paralelo
+    const results = await Promise.allSettled(
+      accounts.map(account =>
+        fetchMLAccountData(account.id, account.accessToken)
+          .then(data => ({
+            accountId: account.id,
+            success: true,
+            data,
+          }))
+          .catch(error => ({
+            accountId: account.id,
+            success: false,
+            error: error.message,
+          }))
+      )
+    );
 
+    const syncResults = results.map(r => r.value);
+    const successful = syncResults.filter(r => r.success).length;
+
+    logger.info({
+      action: 'SYNC_ALL_COMPLETED',
+      totalAccounts: accounts.length,
+      successfulSyncs: successful,
+      userId: req.user.userId,
+      timestamp: new Date().toISOString(),
+    });
+
+    res.json({
+      success: true,
+      message: `Synchronized ${successful}/${accounts.length} accounts`,
+      data: {
+        results: syncResults,
+        summary: {
+          total: accounts.length,
+          successful,
+          failed: accounts.length - successful,
+        },
+      },
+    });
   } catch (error) {
-    console.error('Error starting bulk sync:', error.message);
-    next(error);
+    logger.error({
+      action: 'SYNC_ALL_ERROR',
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+
+    res.status(500).json({
+      success: false,
+      message: 'Bulk sync failed',
+      code: 'BULK_SYNC_ERROR',
+      error: error.message,
+    });
   }
 });
 
 /**
  * GET /api/sync/status/:accountId
- * 
- * Get sync status for an account
+ * Obter status de sincronização
  */
-router.get('/status/:accountId', async (req, res, next) => {
+router.get('/status/:accountId', authenticateToken, async (req, res) => {
   try {
     const { accountId } = req.params;
 
-    const account = await getAccount(accountId);
-
-    if (!account) {
-      return res.status(404).json({ 
-        error: 'Account not found'
-      });
-    }
+    // Aqui você buscaria o status do banco de dados
+    // Por enquanto, retornamos um status simulado
+    const status = {
+      accountId,
+      syncing: false,
+      lastSync: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+      nextSync: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      syncInterval: '5 minutos',
+    };
 
     res.json({
-      accountId: account.id,
-      syncStatus: account.lastSyncStatus || 'never',
-      lastSyncTime: account.lastSyncTime || null,
-      accountStatus: account.status
+      success: true,
+      data: status,
+    });
+  } catch (error) {
+    logger.error({
+      action: 'STATUS_CHECK_ERROR',
+      accountId: req.params.accountId,
+      error: error.message,
+      timestamp: new Date().toISOString(),
     });
 
-  } catch (error) {
-    console.error('Error fetching sync status:', error.message);
-    next(error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get sync status',
+      code: 'STATUS_ERROR',
+    });
   }
 });
 
-// ============================================
-// SYNC IMPLEMENTATION
-// ============================================
-
 /**
- * Sync account data from Mercado Livre
+ * Buscar dados da conta no Mercado Livre
+ * @param {string} userId - ID do usuário no Mercado Livre
+ * @param {string} accessToken - Token de acesso
  */
-async function syncAccountData(account) {
-  const startTime = Date.now();
-  console.log(`Starting sync for account: ${account.id}`);
-
+async function fetchMLAccountData(userId, accessToken) {
   try {
-    // Update sync status
-    account.lastSyncStatus = 'in_progress';
-    account.lastSyncTime = new Date().toISOString();
-    await updateAccount(account.id, account);
-
-    // Fetch data in parallel for better performance
-    const [itemsData, ordersData, userMetrics] = await Promise.all([
-      fetchAccountItems(account.accessToken, account.userId),
-      fetchAccountOrders(account.accessToken),
-      fetchUserMetrics(account.accessToken, account.userId)
-    ]);
-
-    // Prepare sync summary
-    const syncData = {
-      itemsCount: itemsData.length,
-      ordersCount: ordersData.length,
-      metrics: userMetrics,
-      syncedAt: new Date().toISOString()
+    // Headers padrão para requisições ao ML
+    const headers = {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
     };
 
-    // Update account with sync results
-    account.lastSyncStatus = 'success';
-    account.lastSyncData = syncData;
-    account.updatedAt = new Date().toISOString();
-    await updateAccount(account.id, account);
+    // Buscar informações do usuário
+    const userResponse = await axios.get(`${ML_API_BASE}/users/me`, { headers });
+    const user = userResponse.data;
 
-    const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-    console.log(`Sync completed for account ${account.id} (${duration}s) - Items: ${itemsData.length}, Orders: ${ordersData.length}`);
+    // Buscar produtos
+    const productsResponse = await axios.get(
+      `${ML_API_BASE}/users/${user.id}/items/search`,
+      { headers }
+    );
+    const productsCount = productsResponse.data.total || 0;
 
-    // Notify WebSocket clients
-    const notifyAccountUpdate = require('../server').app.locals.notifyAccountUpdate;
-    notifyAccountUpdate(account.id, {
-      type: 'sync-complete',
-      status: 'success',
-      data: syncData
+    // Buscar pedidos
+    const ordersResponse = await axios.get(
+      `${ML_API_BASE}/orders/search?seller=${user.id}&sort=date_desc&limit=1`,
+      { headers }
+    );
+    const ordersCount = ordersResponse.data.total || 0;
+
+    // Buscar questões/problemas
+    let issuesCount = 0;
+    try {
+      const issuesResponse = await axios.get(
+        `${ML_API_BASE}/questions/search?seller_id=${user.id}`,
+        { headers }
+      );
+      issuesCount = issuesResponse.data.total || 0;
+    } catch (error) {
+      // Se falhar ao buscar questões, continua sem contar
+      logger.warn({
+        action: 'FETCH_ISSUES_FAILED',
+        userId,
+        error: error.message,
+      });
+    }
+
+    return {
+      userId: user.id,
+      nickname: user.nickname,
+      email: user.email,
+      products: productsCount,
+      orders: ordersCount,
+      issues: issuesCount,
+      lastUpdate: new Date().toISOString(),
+    };
+  } catch (error) {
+    logger.error({
+      action: 'FETCH_ML_DATA_ERROR',
+      userId,
+      error: error.message,
+      statusCode: error.response?.status,
+      timestamp: new Date().toISOString(),
     });
 
-  } catch (error) {
-    console.error(`Sync failed for account ${account.id}:`, error.message);
+    // Se for erro de autenticação
+    if (error.response?.status === 401) {
+      throw new Error('Token expirado ou inválido');
+    }
 
-    // Update account with error status
-    account.lastSyncStatus = 'failed';
-    account.lastSyncError = error.message;
-    account.updatedAt = new Date().toISOString();
-    await updateAccount(account.id, account);
-
-    // Notify WebSocket clients of error
-    const notifyAccountUpdate = require('../server').app.locals.notifyAccountUpdate;
-    notifyAccountUpdate(account.id, {
-      type: 'sync-error',
-      status: 'failed',
-      error: error.message
-    });
-  }
-}
-
-/**
- * Fetch user's items/products from Mercado Livre
- */
-async function fetchAccountItems(accessToken, userId) {
-  try {
-    const response = await axios.get(
-      `${ML_API_BASE}/users/${userId}/items/search?search_type=active`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        },
-        params: {
-          limit: 100,
-          offset: 0
-        },
-        timeout: 20000
-      }
-    );
-
-    return response.data.results || [];
-  } catch (error) {
-    console.error('Error fetching items:', error.message);
-    return [];
-  }
-}
-
-/**
- * Fetch user's orders from Mercado Livre
- */
-async function fetchAccountOrders(accessToken) {
-  try {
-    const response = await axios.get(
-      `${ML_API_BASE}/orders/search`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        },
-        params: {
-          limit: 100,
-          offset: 0,
-          sort: 'date_desc'
-        },
-        timeout: 20000
-      }
-    );
-
-    return response.data.results || [];
-  } catch (error) {
-    console.error('Error fetching orders:', error.message);
-    return [];
-  }
-}
-
-/**
- * Fetch user metrics from Mercado Livre
- */
-async function fetchUserMetrics(accessToken, userId) {
-  try {
-    const response = await axios.get(
-      `${ML_API_BASE}/users/${userId}/reputation`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`
-        },
-        timeout: 15000
-      }
-    );
-
-    return response.data || {};
-  } catch (error) {
-    console.error('Error fetching metrics:', error.message);
-    return {};
+    throw new Error(`Falha ao buscar dados do Mercado Livre: ${error.message}`);
   }
 }
 
