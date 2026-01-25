@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Conectando com Mercado Livre...</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+        'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      padding: 40px;
+      text-align: center;
+      max-width: 400px;
+      width: 100%;
+    }
+
+    .logo {
+      font-size: 48px;
+      margin-bottom: 20px;
+    }
+
+    h1 {
+      color: #333;
+      margin-bottom: 10px;
+      font-size: 24px;
+    }
+
+    p {
+      color: #666;
+      margin-bottom: 30px;
+      line-height: 1.6;
+    }
+
+    .loader {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #667eea;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 30px auto;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .steps {
+      text-align: left;
+      background: #f5f5f5;
+      padding: 20px;
+      border-radius: 8px;
+      margin: 20px 0;
+      font-size: 14px;
+    }
+
+    .step {
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+    }
+
+    .step-number {
+      background: #667eea;
+      color: white;
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-right: 12px;
+      font-weight: bold;
+      flex-shrink: 0;
+    }
+
+    .step-text {
+      color: #666;
+    }
+
+    .success {
+      color: #22c55e;
+    }
+
+    .error {
+      color: #ef4444;
+      background: #fee2e2;
+      padding: 15px;
+      border-radius: 8px;
+      border-left: 4px solid #ef4444;
+      display: none;
+    }
+
+    .error.show {
+      display: block;
+    }
+
+    .error-message {
+      margin-bottom: 10px;
+    }
+
+    .back-link {
+      display: inline-block;
+      margin-top: 20px;
+      padding: 10px 20px;
+      background: #667eea;
+      color: white;
+      text-decoration: none;
+      border-radius: 6px;
+      transition: background 0.3s;
+    }
+
+    .back-link:hover {
+      background: #5568d3;
+    }
+
+    .status-message {
+      font-size: 14px;
+      color: #666;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">🔗</div>
+    <h1>Conectando com Mercado Livre</h1>
+    <p id="description">Estamos processando sua autorização...</p>
+
+    <div class="loader"></div>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-number step-1">1</div>
+        <div class="step-text">Validando código de autorização</div>
+      </div>
+      <div class="step">
+        <div class="step-number step-2">2</div>
+        <div class="step-text">Trocando código por token</div>
+      </div>
+      <div class="step">
+        <div class="step-number step-3">3</div>
+        <div class="step-text">Buscando dados da conta</div>
+      </div>
+      <div class="step">
+        <div class="step-number step-4">4</div>
+        <div class="step-text">Salvando conta conectada</div>
+      </div>
+    </div>
+
+    <div id="errorContainer" class="error">
+      <div class="error-message" id="errorMessage"></div>
+      <a href="/examples/dashboard/index.html" class="back-link">Voltar para Dashboard</a>
+    </div>
+
+    <p class="status-message" id="statusMessage">Por favor aguarde...</p>
+  </div>
+
+  <!-- Scripts -->
+  <script src="../../src/scripts/mercado-livre/secure-storage.js"></script>
+  <script src="../../src/scripts/mercado-livre/auth.js"></script>
+  <script>
+    // Atualizar steps com animação
+    function updateStep(stepNumber, status = 'loading') {
+      const step = document.querySelector(`.step-${stepNumber}`);
+      if (status === 'complete') {
+        step.textContent = '✓';
+        step.classList.add('success');
+      }
+    }
+
+    async function handleCallback() {
+      try {
+        // Marcar step 1 como completo
+        updateStep(1, 'complete');
+
+        // Validar parâmetros
+        const params = new URLSearchParams(window.location.search);
+        const code = params.get('code');
+        const error = params.get('error');
+
+        if (error) {
+          throw new Error(`Erro de autorização: ${error}`);
+        }
+
+        if (!code) {
+          throw new Error('Código de autorização não recebido');
+        }
+
+        // Marcar step 2 como completo
+        updateStep(2, 'complete');
+        document.getElementById('statusMessage').textContent = 
+          'Buscando dados da conta...';
+
+        // Inicializar autenticação
+        const auth = new MercadoLivreAuth();
+
+        // Processar callback
+        const result = await auth.handleCallback();
+
+        if (!result.success) {
+          throw new Error(result.error || 'Erro desconhecido');
+        }
+
+        // Marcar step 3 como completo
+        updateStep(3, 'complete');
+
+        // Marcar step 4 como completo
+        updateStep(4, 'complete');
+
+        // Exibir sucesso
+        document.querySelector('.loader').style.display = 'none';
+        document.getElementById('description').textContent = 
+          '✓ Conta conectada com sucesso!';
+        document.getElementById('statusMessage').textContent = 
+          `Bem-vindo, ${result.account.nickname}!`;
+
+        // Redirecionar em 2 segundos
+        setTimeout(() => {
+          window.location.href = '/examples/dashboard/index.html?success=true&account=' + 
+            encodeURIComponent(result.account.nickname);
+        }, 2000);
+
+      } catch (error) {
+        console.error('Erro no callback:', error);
+
+        // Exibir erro
+        document.querySelector('.loader').style.display = 'none';
+        document.getElementById('description').textContent = '✗ Erro na conexão';
+        
+        const errorContainer = document.getElementById('errorContainer');
+        document.getElementById('errorMessage').textContent = error.message;
+        errorContainer.classList.add('show');
+
+        document.getElementById('statusMessage').textContent = 
+          'Por favor, volte e tente novamente.';
+      }
+    }
+
+    // Executar quando página carregar
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', handleCallback);
+    } else {
+      handleCallback();
+    }
+  </script>
+</body>
+</html>
