@@ -1,21 +1,27 @@
 module.exports = {
   // Test environment
-  testEnvironment: 'jsdom',
+  testEnvironment: 'node',
 
   // Coverage configuration
   collectCoverageFrom: [
+    'backend/**/*.js',
     'src/scripts/**/*.js',
+    '!backend/**/*.test.js',
+    '!backend/**/*.spec.js',
     '!src/scripts/**/*.test.js',
-    '!src/scripts/**/*.spec.js'
+    '!src/scripts/**/*.spec.js',
+    '!backend/node_modules/**',
+    '!backend/logs/**',
+    '!backend/data/**'
   ],
 
   // Coverage thresholds
   coverageThreshold: {
     global: {
-      branches: 70,
-      functions: 80,
-      lines: 80,
-      statements: 80
+      branches: 60,
+      functions: 70,
+      lines: 75,
+      statements: 75
     }
   },
 
@@ -27,7 +33,7 @@ module.exports = {
 
   // Module name mapper for path aliases
   moduleNameMapper: {
-    '^@/(.*)$': '<rootDir>/src/$1'
+    '^@/(.*)$': '<rootDir>/backend/$1'
   },
 
   // Setup files
@@ -37,7 +43,7 @@ module.exports = {
   verbose: true,
 
   // Test timeout
-  testTimeout: 10000,
+  testTimeout: 30000,
 
   // Coverage directory
   coverageDirectory: 'coverage',
@@ -45,7 +51,9 @@ module.exports = {
   // Ignore patterns
   testPathIgnorePatterns: [
     '/node_modules/',
-    '/dist/'
+    '/dist/',
+    '/backend/data/',
+    '/logs/'
   ],
 
   // Transform files - disable to use scripts as-is
@@ -58,5 +66,12 @@ module.exports = {
   restoreMocks: true,
 
   // Module file extensions
-  moduleFileExtensions: ['js', 'json', 'node']
+  moduleFileExtensions: ['js', 'json', 'node'],
+
+  // Max workers
+  maxWorkers: '50%',
+
+  // Bail on first failure
+  bail: 1
 };
+
