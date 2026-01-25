@@ -144,12 +144,14 @@ const authRoutes = require('./routes/auth');
 const webhookRoutes = require('./routes/webhooks');
 const accountRoutes = require('./routes/accounts');
 const syncRoutes = require('./routes/sync');
+const mlAccountRoutes = require('./routes/ml-accounts');
 
 // Register routes
 app.use('/api/auth', authRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/accounts', accountRoutes);
 app.use('/api/sync', syncRoutes);
+app.use('/api/ml-accounts', mlAccountRoutes);
 
 // ============================================
 // WEBSOCKET SETUP
@@ -300,6 +302,13 @@ async function startServer() {
     // Connect to MongoDB
     await connectDB();
 
+    // Initialize ML Accounts background job
+    const { initializeSchedules: initMLSchedules } = require('./jobs/ml-accounts-sync');
+    await initMLSchedules().catch(error => {
+      logger.warn('Failed to initialize ML accounts sync job:', { error: error.message });
+      // Don't exit - let server continue without background jobs
+    });
+
     // Start HTTP server
     server.listen(PORT, () => {
       logger.info(`╔════════════════════════════════════════════════════════════════╗`);
@@ -314,8 +323,14 @@ async function startServer() {
       logger.info(`║    • POST   /api/auth/ml-callback     - OAuth token exchange  ║`);
       logger.info(`║    • POST   /api/auth/ml-refresh      - Token refresh         ║`);
       logger.info(`║    • GET    /api/accounts             - List accounts         ║`);
+      logger.info(`║    • GET    /api/ml-accounts          - List ML accounts      ║`);
       logger.info(`║    • POST   /api/sync/account/:id     - Sync account          ║`);
       logger.info(`║    • POST   /api/webhooks/ml          - ML webhook events     ║`);
+      logger.info(`║                                                                ║`);
+      logger.info(`║  Background Jobs:                                             ║`);
+      logger.info(`║    • ML Accounts sync (every 5 minutes)                       ║`);
+      logger.info(`║    • Token refresh (every 30 minutes)                         ║`);
+      logger.info(`║    • Health check (every 15 minutes)                          ║`);
       logger.info(`║                                                                ║`);
       logger.info(`╚════════════════════════════════════════════════════════════════╝`);
     });
