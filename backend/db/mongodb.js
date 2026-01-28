@@ -14,7 +14,7 @@ const MONGODB_OPTIONS = {
   minPoolSize: 5,
   serverSelectionTimeoutMS: 5000,
   socketTimeoutMS: 45000,
-  retryWrites: true,
+  retryWrites: false, // Disable for in-memory
   w: 'majority',
 };
 
@@ -25,10 +25,16 @@ async function connectDB() {
   try {
     // Use in-memory MongoDB for testing if NODE_ENV is test
     if (process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID) {
-      const { MongoMemoryServer } = require('mongodb-memory-server');
-      mongoMemoryServer = await MongoMemoryServer.create();
-      MONGODB_URI = mongoMemoryServer.getUri();
-      logger.info('✓ Using MongoDB Memory Server for testing');
+      try {
+        const { MongoMemoryServer } = require('mongodb-memory-server');
+        mongoMemoryServer = await MongoMemoryServer.create();
+        MONGODB_URI = mongoMemoryServer.getUri();
+        logger.info('✓ Using MongoDB Memory Server for testing');
+      } catch (memError) {
+        // Fallback to local MongoDB if memory server not available
+        logger.warn('MongoDB Memory Server not available, using local MongoDB');
+        MONGODB_URI = 'mongodb://localhost:27017/projeto-sass-test';
+      }
     }
 
     await mongoose.connect(MONGODB_URI, MONGODB_OPTIONS);
