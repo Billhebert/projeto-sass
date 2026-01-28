@@ -5,8 +5,9 @@
   "main": "backend/server.js",
   "type": "commonjs",
   "scripts": {
-    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
-    "dev:backend": "nodemon backend/server.js",
+    "validate-env": "node validate-env.js",
+    "dev": "npm run validate-env && concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "npm run validate-env && nodemon backend/server.js",
     "dev:frontend": "cd frontend && vite",
     "backend:start": "node backend/server.js",
     "frontend:build": "cd frontend && vite build",
