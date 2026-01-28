@@ -154,6 +154,24 @@ app.use('/api/sync', syncRoutes);
 app.use('/api/ml-accounts', mlAccountRoutes);
 
 // ============================================
+// STATIC FILE SERVER (React Frontend)
+// ============================================
+
+// In production, serve React frontend from dist folder
+if (NODE_ENV === 'production') {
+  const frontendPath = path.join(__dirname, '../frontend/dist');
+  app.use(express.static(frontendPath));
+  
+  // Fallback to index.html for client-side routing
+  app.get('*', (req, res) => {
+    // Don't interfere with API routes
+    if (!req.path.startsWith('/api') && !req.path.startsWith('/ws')) {
+      res.sendFile(path.join(frontendPath, 'index.html'));
+    }
+  });
+}
+
+// ============================================
 // WEBSOCKET SETUP
 // ============================================
 

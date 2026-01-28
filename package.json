@@ -1,28 +1,33 @@
 {
   "name": "projeto-sass",
   "version": "1.0.0",
-  "description": "Production-ready Dashboard SASS with Mercado Livre Integration",
+  "description": "Production-ready Dashboard SASS with Mercado Livre Integration - Full Stack",
   "main": "backend/server.js",
+  "type": "commonjs",
   "scripts": {
-    "start": "node backend/server.js",
-    "dev": "nodemon backend/server.js",
+    "dev": "concurrently \"npm run backend:dev\" \"npm run frontend:dev\"",
+    "backend:dev": "nodemon backend/server.js",
+    "frontend:dev": "cd frontend && vite",
+    "backend:start": "node backend/server.js",
+    "frontend:build": "cd frontend && vite build",
+    "frontend:preview": "cd frontend && vite preview",
     "test": "node test-endpoints.js",
-    "lint": "eslint backend/ src/",
-    "format": "prettier --write \"backend/**/*.js\" \"src/**/*.js\"",
     "verify": "node test-endpoints.js",
-    "logs": "tail -f logs/app.log",
-    "health-check": "curl http://localhost:3000/health"
+    "build": "npm run frontend:build",
+    "build:production": "npm run frontend:build && echo '✓ Frontend built successfully' && npm run backend:start",
+    "start": "node backend/server.js",
+    "preview": "cd frontend && vite preview"
   },
   "keywords": [
     "dashboard",
     "saas",
     "mercado-livre",
     "ecommerce",
-    "production"
+    "production",
+    "react"
   ],
   "author": "",
   "license": "MIT",
-  "type": "commonjs",
   "engines": {
     "node": ">=16.0.0",
     "npm": ">=8.0.0"
@@ -43,11 +48,11 @@
     "pino": "^8.16.0",
     "pino-http": "^8.4.0",
     "pino-pretty": "^10.2.0",
-    "sass": "^1.97.3",
     "uuid": "^9.0.1",
     "ws": "^8.15.0"
   },
   "devDependencies": {
+    "concurrently": "^8.2.2",
     "mongodb-memory-server": "^9.3.0",
     "nodemon": "^3.0.2",
     "prettier": "^3.1.0"

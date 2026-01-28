@@ -1,32 +1,55 @@
+FROM node:18-alpine as builder
+
+# Build stage for React frontend
+WORKDIR /app/frontend
+
+COPY frontend/package*.json ./
+
+RUN npm ci
+
+COPY frontend . .
+
+RUN npm run build
+
+# ============================================
+# Final stage - Production image
+# ============================================
+
 FROM node:18-alpine
 
-# Definir diretório de trabalho
+# Set working directory
 WORKDIR /app
 
-# Instalar dependências do sistema
-RUN apk add --no-cache dumb-init
+# Install system dependencies
+RUN apk add --no-cache dumb-init curl
 
-# Copiar package files
+# Copy package files
 COPY package*.json ./
 
-# Instalar dependências
+# Install production dependencies only
 RUN npm ci --only=production
 
-# Copiar aplicação
-COPY . .
+# Copy backend application
+COPY backend ./backend
 
-# Criar diretórios de logs
+# Copy built frontend from builder stage
+COPY --from=builder /app/frontend/dist ./frontend/dist
+
+# Create necessary directories
 RUN mkdir -p logs data
 
-# Expor porta
+# Expose port
 EXPOSE 3000
+
+# Set environment to production
+ENV NODE_ENV=production
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3000/health', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"
+  CMD curl -f http://localhost:3000/health || exit 1
 
-# Usar dumb-init para gerenciar sinais
+# Use dumb-init to handle signals properly
 ENTRYPOINT ["/sbin/dumb-init", "--"]
 
-# Iniciar aplicação
+# Start application
 CMD ["node", "backend/server.js"]
