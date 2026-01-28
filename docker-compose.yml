@@ -7,7 +7,7 @@ services:
     container_name: projeto-sass-api
     restart: unless-stopped
     ports:
-      - "3000:3000"
+       - "3011:3000"
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       MONGODB_URI: mongodb://mongo:27017/projeto-sass
@@ -21,11 +21,11 @@ services:
     volumes:
       - ./logs:/app/logs
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 5s
+       test: ["CMD", "curl", "-f", "http://localhost:3011/health"]
+       interval: 30s
+       timeout: 10s
+       retries: 3
+       start_period: 5s
     networks:
       - projeto-sass-network
 
