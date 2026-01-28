@@ -65,13 +65,10 @@ router.post('/register', async (req, res) => {
       });
     }
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Create user
+    // Create user (password will be hashed by pre-save middleware)
     const user = new User({
       email: email.toLowerCase(),
-      password: hashedPassword,
+      password, // Pre-save hook will hash this
       firstName,
       lastName
     });
