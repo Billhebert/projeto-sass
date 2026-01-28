@@ -1,14 +1,19 @@
 FROM node:18-alpine as builder
 
 # Build stage for React frontend
-WORKDIR /app/frontend
+WORKDIR /app
 
-COPY frontend/package*.json ./
+# Copy root package files
+COPY package*.json ./
 
+# Copy frontend files
+COPY frontend ./frontend
+
+# Install all dependencies (including frontend)
 RUN npm ci
 
-COPY frontend . .
-
+# Change to frontend directory and build
+WORKDIR /app/frontend
 RUN npm run build
 
 # ============================================
@@ -31,6 +36,9 @@ RUN npm ci --only=production
 
 # Copy backend application
 COPY backend ./backend
+
+# Create frontend dist directory
+RUN mkdir -p frontend/dist
 
 # Copy built frontend from builder stage
 COPY --from=builder /app/frontend/dist ./frontend/dist
