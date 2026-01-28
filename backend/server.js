@@ -182,7 +182,6 @@ app.use('/api/ml-accounts', mlAccountRoutes);
 // ============================================
 
 const healthCheck = require('./health-check');
-const metrics = require('./metrics');
 
 /**
  * Health check endpoint
