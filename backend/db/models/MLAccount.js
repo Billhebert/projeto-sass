@@ -19,7 +19,7 @@ const mlAccountSchema = new mongoose.Schema(
 
     // User Link
     userId: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: String,
       ref: 'User',
       required: [true, 'userId is required'],
       index: true,
