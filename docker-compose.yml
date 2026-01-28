@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # API Server
   api:
@@ -33,7 +31,7 @@ services:
 
   # MongoDB
   mongo:
-    image: mongo:7.0-alpine
+    image: mongo:7.0
     container_name: projeto-sass-mongo
     restart: unless-stopped
     ports:
@@ -46,7 +44,7 @@ services:
       - mongo-data:/data/db
       - mongo-config:/data/configdb
     healthcheck:
-      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -75,7 +73,7 @@ services:
 
   # Nginx Reverse Proxy
   nginx:
-    image: nginx:alpine
+    image: nginx:latest
     container_name: projeto-sass-nginx
     restart: unless-stopped
     ports:
