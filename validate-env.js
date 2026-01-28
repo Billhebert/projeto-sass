@@ -7,6 +7,10 @@
 
 const fs = require('fs');
 const path = require('path');
+const dotenv = require('dotenv');
+
+// Load .env file first
+dotenv.config({ path: path.resolve('.env') });
 
 // ANSI color codes for terminal output
 const colors = {
