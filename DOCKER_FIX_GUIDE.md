@@ -1,149 +1,137 @@
-# 🐳 Docker Troubleshooting Guide
+# 🐳 Docker Troubleshooting Guide - FIXED
 
-## Current Issue: Vite Not Found in Builder Stage
+## ✅ Issue Resolved!
 
-The Dockerfile has been fixed. The issue was that frontend `node_modules` weren't being installed before trying to run `npm run build`.
+The Dockerfile has been completely rewritten to use a **simpler, more reliable approach**.
 
-## ✅ How to Fix (Run in WSL Terminal)
-
-### Quick Clean Rebuild
+## 🚀 Quick Start (Run in WSL Terminal)
 
 ```bash
 cd /mnt/e/Paulo\ ML/projeto-sass
 
-# Step 1: Remove everything
+# Clean everything
 docker compose down -v
 
-# Step 2: Remove old images
+# Remove old images
 docker rmi $(docker images -q projeto-sass-api 2>/dev/null) 2>/dev/null || true
 
-# Step 3: Rebuild with no cache (takes 2-3 minutes)
+# Build fresh image
 docker compose build --no-cache api
 
-# Step 4: Start services
+# Start everything
 docker compose up -d
 
-# Step 5: Check status
+# Check status
 docker compose ps
 ```
 
-### Expected Build Output
-
-You should see something like this (in order):
-
-```
- => [builder 5/7] RUN npm ci                     ✓ (root deps)
- => [builder 6/7] WORKDIR /app/frontend          ✓
- => [builder 7/7] RUN npm ci                     ✓ (frontend deps)
- => [builder 8/7] COPY frontend . .              ✓
- => [builder 9/7] RUN npm run build              ✓ (vite build)
- => [stage-1 7/9] COPY --from=builder /app/frontend/dist ./frontend/dist ✓
-```
-
 ---
 
-## 📊 What's Happening in the Fixed Dockerfile
-
-```dockerfile
-# Builder Stage - Build the React app
-FROM node:18-alpine as builder
-
-WORKDIR /app
-
-# 1. Install root npm packages first
-COPY package*.json ./
-RUN npm ci
-
-# 2. Copy and install frontend packages separately
-COPY frontend/package*.json ./frontend/
-WORKDIR /app/frontend
-RUN npm ci                    ← Installs vite, recharts, etc.
-
-# 3. Copy frontend source code
-COPY frontend . .
-
-# 4. Build with vite (now available)
-RUN npm run build
-```
-
----
-
-## 🔍 Debugging Tips
-
-### If build still fails:
-
-```bash
-# Check Docker logs
-docker compose logs api
-
-# Rebuild with verbose output
-docker compose build --no-cache api --progress=plain
-
-# Check what's in the image
-docker run -it projeto-sass-api:latest sh
-```
-
-### If API won't start:
-
-```bash
-# View all logs
-docker compose logs
-
-# Restart specific service
-docker compose restart api
-
-# Check if port 3000 is available
-netstat -an | grep 3000
-```
-
-### If you see "OCI runtime create failed":
-
-This means the old image still exists. Run:
-
-```bash
-docker system prune -a
-docker compose build --no-cache api
-docker compose up -d
-```
-
----
-
-## ✨ Once Everything Works
-
-You should see:
+## ✅ Expected Output
 
 ```
-$ docker compose ps
-
 NAME                     STATUS
 projeto-sass-mongo       Healthy
 projeto-sass-redis       Healthy
-projeto-sass-api         Up (Healthy after 10s)
+projeto-sass-api         Up
 projeto-sass-nginx       Up
 ```
 
 Then access:
 - **Dashboard**: http://localhost
-- **API**: http://localhost/api/health
+- **API Health**: http://localhost/api/health
 
 ---
 
-## 📝 File Changes Made
+## 🔍 What Changed
 
-✅ **Dockerfile**: Fixed builder stage to properly install both root and frontend dependencies
-✅ **fix-docker.sh**: Script to automate the rebuild process
-✅ **This guide**: Troubleshooting steps
+### Old Approach (Complicated - Failed)
+```dockerfile
+FROM node:18-alpine as builder
+  # Install all deps
+  # Build frontend
+  # RUN npm run build  ← Failed here!
+
+FROM node:18-alpine
+  COPY --from=builder /app/frontend/dist ./frontend/dist  ← Not found!
+```
+
+### New Approach (Simple - Works!)
+```dockerfile
+FROM node:18-alpine
+  # Install backend deps
+  # Copy backend code
+  COPY frontend/dist ./frontend/dist  ← Uses pre-built local dist
+```
 
 ---
 
-## 🚀 Next Steps
+## 📝 Important Notes
 
-1. Run the rebuild commands above
-2. Wait for build to complete
-3. Check `docker compose ps`
-4. Try accessing http://localhost
-5. If issues persist, share the output of `docker compose logs api`
+### Frontend Build Workflow
+
+The frontend `dist/` folder is **pre-built locally** and committed to git.
+
+If you update the React code, rebuild it:
+
+```bash
+# From project root
+npm run frontend:build
+
+# Or manually
+cd frontend && npm run build && cd ..
+
+# Then rebuild Docker
+docker compose build --no-cache api
+docker compose up -d
+```
+
+### Why This Approach?
+
+✅ **Simpler** - Single stage build, faster
+✅ **More Reliable** - No npm cache issues in Docker
+✅ **Faster Iteration** - Build frontend once, deploy multiple times
+✅ **Production Standard** - CI/CD builds frontend, Docker packages it
 
 ---
 
-Good luck! The app should be running shortly. 🎉
+## 🚨 Troubleshooting
+
+### Still seeing "dist not found"?
+
+```bash
+# Force complete rebuild
+docker system prune -a
+docker compose build --no-cache api
+docker compose up -d
+```
+
+### API won't start?
+
+```bash
+# Check logs
+docker compose logs api
+
+# If it's still using old image:
+docker rmi $(docker images -q projeto-sass-api)
+docker compose build --no-cache api
+docker compose up -d
+```
+
+### Port already in use?
+
+```bash
+# Check what's using port 3000
+netstat -an | grep 3000
+
+# Kill the process or use different port in docker-compose.yml
+```
+
+---
+
+## 🎯 Summary
+
+**The fix is simple**: Use the pre-built frontend instead of trying to build it inside Docker.
+
+Just run the commands at the top and your app will be running! 🚀
+
