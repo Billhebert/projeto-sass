@@ -15,22 +15,23 @@ Seu aplicativo está **100% funcionando**:
 
 ## 🎯 O Que Fazer Agora
 
-### 1️⃣ **Iniciar o Frontend** (em novo terminal)
+### ✨ **Iniciar TUDO Em Um Terminal Só**
 
 ```bash
-# Abra um novo terminal e execute:
-cd frontend
 npm run dev
 ```
 
-Ou use o comando npx diretamente:
-```bash
-cd frontend && npx vite
-```
+Isso vai iniciar:
+- ✅ Backend na porta **3011**
+- ✅ Frontend na porta **5173** (ou **5174** se 5173 estiver em uso)
+- ✅ Validação automática do ambiente
 
-O frontend estará disponível em: **http://localhost:5173**
+**Pronto!** Abra no navegador:
+- **http://localhost:5173** - Frontend
+- **http://localhost:3011** - API
+- **http://localhost:3011/api-docs** - Documentação
 
-### 2️⃣ **Verificar se Tudo Está Funcionando**
+### ✅ **Verificar se Tudo Está Funcionando**
 
 #### Backend Health Check
 ```bash
@@ -52,7 +53,7 @@ Abra no navegador: **http://localhost:3011/api-docs**
 #### Frontend
 Abra no navegador: **http://localhost:5173**
 
-### 3️⃣ **Testar os Endpoints**
+### 🧪 **Testar os Endpoints**
 
 #### Listar Contas ML
 ```bash
@@ -93,14 +94,14 @@ projeto-sass/
 
 ### **Desenvolvimento**
 ```bash
-# Iniciar tudo (backend + frontend)
+# Iniciar tudo (backend + frontend) - EM UM TERMINAL SÓ!
 npm run dev
 
 # Apenas backend
 npm run dev:backend
 
 # Apenas frontend
-cd frontend && npm run dev
+cd frontend && npx vite
 ```
 
 ### **Testes**
@@ -272,3 +273,74 @@ cat .env
 - Consulte `GETTING_STARTED.md` para mais detalhes
 
 **Divirta-se desenvolvendo!** 🚀
+
+---
+
+## 🚀 **SOLUÇÃO ÚNICA - UM COMANDO**
+
+### **O Comando Que Você Precisa**
+
+```bash
+npm run dev
+```
+
+### **O Que Ele Faz**
+
+1. ✅ Valida o ambiente (.env)
+2. ✅ Inicia o Backend (porta 3011)
+3. ✅ Inicia o Frontend (porta 5173)
+4. ✅ **Tudo em UM terminal só!**
+
+### **Como Usar**
+
+```bash
+# Na raiz do projeto, execute:
+npm run dev
+
+# Espere aparecer as mensagens:
+# ✓ MongoDB connected
+# ✓ VITE ready in XXX ms
+# ✓ Local: http://localhost:5173
+```
+
+### **Depois Abra no Navegador**
+
+- Frontend: **http://localhost:5173**
+- API Docs: **http://localhost:3011/api-docs**
+- Health: **http://localhost:3011/health**
+
+---
+
+## ⚠️ **Processos Antigos Rodando?**
+
+Se receber erro `address already in use`, mate os processos:
+
+### **Windows - PowerShell (como Admin)**
+```powershell
+Get-Process node | Stop-Process -Force
+```
+
+### **Windows - CMD (como Admin)**
+```cmd
+taskkill /F /IM node.exe
+```
+
+### **Depois Tente Novamente**
+```bash
+npm run dev
+```
+
+---
+
+## 🎯 **RESUMO FINAL**
+
+**Você só precisa fazer isso:**
+
+```bash
+npm run dev
+```
+
+**E acessar:**
+- http://localhost:5173
+
+**Pronto! Tudo rodando em um terminal.**

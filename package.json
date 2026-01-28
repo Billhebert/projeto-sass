@@ -8,7 +8,7 @@
     "validate-env": "node validate-env.js",
     "dev": "npm run validate-env && concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "npm run validate-env && nodemon backend/server.js",
-    "dev:frontend": "cd frontend && vite",
+    "dev:frontend": "cd frontend && npx vite",
     "backend:start": "node backend/server.js",
     "frontend:build": "cd frontend && vite build",
     "frontend:preview": "cd frontend && vite preview",
