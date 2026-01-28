@@ -1,17 +1,24 @@
 /**
  * OAuth 2.0 Authentication Routes for Mercado Livre Integration
  * 
- * POST /api/auth/ml-callback     - Trade authorization code for tokens
- * POST /api/auth/ml-refresh      - Refresh expired tokens
- * POST /api/auth/ml-logout       - Logout (revoke tokens)
+ * POST /api/auth/register            - Register new user
+ * POST /api/auth/login               - Login user
+ * POST /api/auth/ml-callback         - Trade authorization code for tokens
+ * POST /api/auth/ml-refresh          - Refresh expired tokens
+ * POST /api/auth/ml-logout           - Logout (revoke tokens)
  */
 
 const express = require('express');
 const axios = require('axios');
 const crypto = require('crypto');
 const path = require('path');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 
 const router = express.Router();
+
+// Models
+const User = require('../db/models/User');
 
 // ML API Endpoints
 const ML_AUTH_URL = 'https://auth.mercadolibre.com/authorization';
@@ -25,6 +32,141 @@ const {
   updateAccount,
   getAccountByUserId 
 } = require('../db/accounts');
+
+/**
+ * POST /api/auth/register
+ * Register a new user
+ */
+router.post('/register', async (req, res) => {
+  try {
+    const { email, password, firstName, lastName } = req.body;
+
+    // Validation
+    if (!email || !password || !firstName || !lastName) {
+      return res.status(400).json({
+        success: false,
+        error: 'Email, password, firstName, and lastName are required'
+      });
+    }
+
+    if (password.length < 8) {
+      return res.status(400).json({
+        success: false,
+        error: 'Password must be at least 8 characters'
+      });
+    }
+
+    // Check if user exists
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    if (existingUser) {
+      return res.status(409).json({
+        success: false,
+        error: 'User with this email already exists'
+      });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create user
+    const user = new User({
+      email: email.toLowerCase(),
+      password: hashedPassword,
+      firstName,
+      lastName
+    });
+
+    await user.save();
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { userId: user.id, email: user.email },
+      process.env.JWT_SECRET || 'your-secret-key',
+      { expiresIn: '7d' }
+    );
+
+    // Remove password from response
+    const userResponse = user.toObject();
+    delete userResponse.password;
+
+    return res.status(201).json({
+      success: true,
+      data: {
+        user: userResponse,
+        token
+      }
+    });
+  } catch (error) {
+    console.error('Register error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to register user'
+    });
+  }
+});
+
+/**
+ * POST /api/auth/login
+ * Login user with email and password
+ */
+router.post('/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    // Validation
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        error: 'Email and password are required'
+      });
+    }
+
+    // Find user and include password for comparison
+    const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
+    
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid email or password'
+      });
+    }
+
+    // Compare passwords
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid email or password'
+      });
+    }
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { userId: user.id, email: user.email },
+      process.env.JWT_SECRET || 'your-secret-key',
+      { expiresIn: '7d' }
+    );
+
+    // Remove password from response
+    const userResponse = user.toObject();
+    delete userResponse.password;
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        user: userResponse,
+        token
+      }
+    });
+  } catch (error) {
+    console.error('Login error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to login'
+    });
+  }
+});
 
 /**
  * POST /api/auth/ml-callback
