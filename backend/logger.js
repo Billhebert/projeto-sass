@@ -28,18 +28,22 @@ const pinoConfig = {
 };
 
 // Transport options
-const pinoTransport = isDevelopment ? {
-  target: 'pino-pretty',
-  options: {
-    colorize: true,
-    translateTime: 'SYS:standard',
-    ignore: 'pid,hostname',
-    singleLine: false
-  }
-} : undefined;
+const pinoTransport = isDevelopment 
+  ? pino.transport({
+      target: 'pino-pretty',
+      options: {
+        colorize: true,
+        translateTime: 'SYS:standard',
+        ignore: 'pid,hostname',
+        singleLine: false
+      }
+    })
+  : undefined;
 
 // Criar logger
-const logger = pino(pinoConfig, pinoTransport);
+const logger = pinoTransport 
+  ? pino(pinoConfig, pinoTransport)
+  : pino(pinoConfig);
 
 /**
  * Wrapper para logging com contexto
