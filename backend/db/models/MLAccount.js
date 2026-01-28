@@ -193,13 +193,11 @@ const mlAccountSchema = new mongoose.Schema(
   }
 );
 
-// Indexes for performance
+// Indexes for performance (additional, non-duplicated)
 mlAccountSchema.index({ userId: 1, status: 1 });
 mlAccountSchema.index({ userId: 1, isPrimary: 1 });
-mlAccountSchema.index({ mlUserId: 1 });
 mlAccountSchema.index({ lastSync: -1 });
 mlAccountSchema.index({ nextSync: 1 });
-mlAccountSchema.index({ createdAt: -1 });
 
 // Check if token is expired
 mlAccountSchema.methods.isTokenExpired = function () {

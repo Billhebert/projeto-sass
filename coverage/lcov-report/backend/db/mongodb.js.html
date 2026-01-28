@@ -25,14 +25,14 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/21</span>
+                <span class='fraction'>0/30</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/2</span>
+                <span class='fraction'>0/8</span>
             </div>
         
             
@@ -46,7 +46,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/21</span>
+                <span class='fraction'>0/30</span>
             </div>
         
             
@@ -136,7 +136,21 @@
 <a name='L71'></a><a href='#L71'>71</a>
 <a name='L72'></a><a href='#L72'>72</a>
 <a name='L73'></a><a href='#L73'>73</a>
-<a name='L74'></a><a href='#L74'>74</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L74'></a><a href='#L74'>74</a>
+<a name='L75'></a><a href='#L75'>75</a>
+<a name='L76'></a><a href='#L76'>76</a>
+<a name='L77'></a><a href='#L77'>77</a>
+<a name='L78'></a><a href='#L78'>78</a>
+<a name='L79'></a><a href='#L79'>79</a>
+<a name='L80'></a><a href='#L80'>80</a>
+<a name='L81'></a><a href='#L81'>81</a>
+<a name='L82'></a><a href='#L82'>82</a>
+<a name='L83'></a><a href='#L83'>83</a>
+<a name='L84'></a><a href='#L84'>84</a>
+<a name='L85'></a><a href='#L85'>85</a>
+<a name='L86'></a><a href='#L86'>86</a>
+<a name='L87'></a><a href='#L87'>87</a>
+<a name='L88'></a><a href='#L88'>88</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -147,6 +161,7 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -158,6 +173,11 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -172,6 +192,10 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -184,6 +208,10 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -217,7 +245,9 @@
 const mongoose = <span class="cstat-no" title="statement not covered" >require('mongoose');</span>
 const logger = <span class="cstat-no" title="statement not covered" >require('../logger');</span>
 &nbsp;
-const MONGODB_URI = <span class="cstat-no" title="statement not covered" >process.env.MONGODB_URI || 'mongodb://localhost:27017/projeto-sass';</span>
+let mongoMemoryServer = <span class="cstat-no" title="statement not covered" >null;</span>
+let MONGODB_URI = <span class="cstat-no" title="statement not covered" >process.env.MONGODB_URI || 'mongodb://localhost:27017/projeto-sass';</span>
+&nbsp;
 const MONGODB_OPTIONS = <span class="cstat-no" title="statement not covered" >{</span>
   maxPoolSize: 20,
   minPoolSize: 5,
@@ -232,6 +262,14 @@ const MONGODB_OPTIONS = <span class="cstat-no" title="statement not covered" >{<
  */
 async function <span class="fstat-no" title="function not covered" >connectDB(</span>) {
 <span class="cstat-no" title="statement not covered" >  try {</span>
+    // Use in-memory MongoDB for testing if NODE_ENV is test
+<span class="cstat-no" title="statement not covered" >    if (process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID) {</span>
+      const { MongoMemoryServer } = <span class="cstat-no" title="statement not covered" >require('mongodb-memory-server');</span>
+<span class="cstat-no" title="statement not covered" >      mongoMemoryServer = await MongoMemoryServer.create();</span>
+<span class="cstat-no" title="statement not covered" >      MONGODB_URI = mongoMemoryServer.getUri();</span>
+<span class="cstat-no" title="statement not covered" >      logger.info('✓ Using MongoDB Memory Server for testing');</span>
+    }
+&nbsp;
 <span class="cstat-no" title="statement not covered" >    await mongoose.connect(MONGODB_URI, MONGODB_OPTIONS);</span>
 <span class="cstat-no" title="statement not covered" >    logger.info('✓ MongoDB connected successfully');</span>
     
@@ -257,6 +295,10 @@ async function <span class="fstat-no" title="function not covered" >connectDB(</
 async function <span class="fstat-no" title="function not covered" >disconnectDB(</span>) {
 <span class="cstat-no" title="statement not covered" >  try {</span>
 <span class="cstat-no" title="statement not covered" >    await mongoose.disconnect();</span>
+<span class="cstat-no" title="statement not covered" >    if (mongoMemoryServer) {</span>
+<span class="cstat-no" title="statement not covered" >      await mongoMemoryServer.stop();</span>
+<span class="cstat-no" title="statement not covered" >      logger.info('✓ MongoDB Memory Server stopped');</span>
+    }
 <span class="cstat-no" title="statement not covered" >    logger.info('✓ MongoDB disconnected');</span>
   } catch (error) {
 <span class="cstat-no" title="statement not covered" >    logger.error('Error disconnecting from MongoDB:', error);</span>
@@ -289,7 +331,7 @@ function <span class="fstat-no" title="function not covered" >getConnectionStatu
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-01-28T03:32:00.737Z
+                at 2026-01-28T04:09:52.299Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

@@ -101,9 +101,8 @@ const accountSchema = new mongoose.Schema({
   collection: 'accounts'
 });
 
-// Índices para performance
+// Índices para performance (additional, non-duplicated)
 accountSchema.index({ userId: 1, status: 1 });
-accountSchema.index({ createdAt: -1 });
 accountSchema.index({ lastSyncTime: -1 });
 
 // Middleware: atualizar updatedAt

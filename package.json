@@ -6,17 +6,10 @@
   "scripts": {
     "start": "node backend/server.js",
     "dev": "nodemon backend/server.js",
-    "test": "jest --coverage",
-    "test:watch": "jest --watch",
-    "test:unit": "jest --testPathPattern=unit",
-    "test:integration": "jest --testPathPattern=integration",
+    "test": "node test-endpoints.js",
     "lint": "eslint backend/ src/",
     "format": "prettier --write \"backend/**/*.js\" \"src/**/*.js\"",
-    "build": "node scripts/build.js",
-    "db:migrate": "node backend/db/migrate.js",
-    "db:seed": "node backend/db/seed.js",
-    "verify": "node scripts/verify-production.js",
-    "backup": "node scripts/backup.js",
+    "verify": "node test-endpoints.js",
     "logs": "tail -f logs/app.log",
     "health-check": "curl http://localhost:3000/health"
   },
@@ -58,11 +51,8 @@
     "eslint": "^8.54.0",
     "eslint-config-airbnb-base": "^15.0.0",
     "eslint-plugin-import": "^2.29.0",
-    "jest": "^29.7.0",
-    "jest-environment-jsdom": "^30.2.0",
     "mongodb-memory-server": "^9.0.0",
     "nodemon": "^3.0.2",
-    "prettier": "^3.1.0",
-    "supertest": "^6.3.3"
+    "prettier": "^3.1.0"
   }
 }

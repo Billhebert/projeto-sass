@@ -257,10 +257,7 @@ const userSchema = new mongoose.Schema(
   }
 );
 
-// Indexes for performance
-userSchema.index({ email: 1 });
-userSchema.index({ id: 1 });
-userSchema.index({ status: 1 });
+// Indexes for performance (additional, non-duplicated)
 userSchema.index({ createdAt: -1 });
 userSchema.index({ 'mlAccounts.accountId': 1 });
 
