@@ -1,28 +1,3 @@
-FROM node:18-alpine as builder
-
-WORKDIR /app
-
-# Copy root and frontend package files
-COPY package*.json ./
-COPY frontend/package*.json ./frontend/
-
-# Install all dependencies
-RUN npm ci
-
-# Install frontend dependencies
-WORKDIR /app/frontend
-RUN npm ci
-
-# Copy entire frontend source
-COPY frontend . .
-
-# Build frontend
-RUN npm run build
-
-# ============================================
-# Final stage - Production image
-# ============================================
-
 FROM node:18-alpine
 
 WORKDIR /app
@@ -30,18 +5,17 @@ WORKDIR /app
 # Install system dependencies
 RUN apk add --no-cache curl tini
 
-# Copy root package files and install backend only
+# Copy root package files
 COPY package*.json ./
+
+# Install production dependencies only
 RUN npm ci --only=production
 
 # Copy backend
 COPY backend ./backend
 
-# Create frontend dist directory
-RUN mkdir -p frontend/dist
-
-# Copy built frontend from builder
-COPY --from=builder /app/frontend/dist ./frontend/dist
+# Copy pre-built frontend dist folder
+COPY frontend/dist ./frontend/dist
 
 # Create logs directory
 RUN mkdir -p logs data
