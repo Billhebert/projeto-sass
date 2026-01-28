@@ -21,7 +21,7 @@ FROM node:18-alpine
 WORKDIR /app
 
 # Install system dependencies
-RUN apk add --no-cache dumb-init curl
+RUN apk add --no-cache curl tini
 
 # Copy package files
 COPY package*.json ./
@@ -48,8 +48,8 @@ ENV NODE_ENV=production
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:3000/health || exit 1
 
-# Use dumb-init to handle signals properly
-ENTRYPOINT ["/sbin/dumb-init", "--"]
+# Use tini as PID 1 to handle signals properly (Alpine alternative to dumb-init)
+ENTRYPOINT ["/sbin/tini", "--"]
 
 # Start application
 CMD ["node", "backend/server.js"]
