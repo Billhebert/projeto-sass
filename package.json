@@ -12,7 +12,12 @@
     "frontend:build": "cd frontend && vite build",
     "frontend:preview": "cd frontend && vite preview",
     "test": "node test-endpoints.js",
+    "test:frontend": "cd frontend && npm run test",
+    "test:frontend:coverage": "cd frontend && npm run test:coverage",
     "verify": "node test-endpoints.js",
+    "cypress:open": "cypress open",
+    "cypress:run": "cypress run",
+    "e2e": "concurrently \"npm run dev\" \"cypress run --wait-on http://localhost:5173 --wait-on http://localhost:3000\" --kill-others",
     "build": "npm run frontend:build",
     "build:production": "npm run frontend:build && echo '✓ Frontend built successfully' && npm run backend:start",
     "start": "node backend/server.js",
@@ -38,6 +43,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
+    "express-mongo-sanitize": "^2.2.0",
     "express-rate-limit": "^7.0.0",
     "helmet": "^7.0.0",
     "ioredis": "^5.3.0",
@@ -48,11 +54,15 @@
     "pino": "^8.16.0",
     "pino-http": "^8.4.0",
     "pino-pretty": "^10.2.0",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1",
     "uuid": "^9.0.1",
-    "ws": "^8.15.0"
+    "ws": "^8.15.0",
+    "xss-clean": "^0.1.4"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
+    "cypress": "^15.9.0",
     "mongodb-memory-server": "^9.3.0",
     "nodemon": "^3.0.2",
     "prettier": "^3.1.0"

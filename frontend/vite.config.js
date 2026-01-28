@@ -17,4 +17,18 @@ export default defineConfig({
     sourcemap: false,
     minify: 'terser',
   },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: './vitest.setup.js',
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html'],
+      exclude: [
+        'node_modules/',
+        'dist/',
+        '**/*.config.js',
+      ],
+    },
+  },
 })

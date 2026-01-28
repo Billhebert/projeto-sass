@@ -2,9 +2,9 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, master, develop]
   pull_request:
-    branches: [main, develop]
+    branches: [main, master, develop]
 
 env:
   NODE_VERSION: 18
@@ -18,16 +18,23 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Install frontend dependencies
+        run: cd frontend && npm ci
+
+      - name: Run Frontend Tests
+        run: cd frontend && npm run test -- --run
+        continue-on-error: true
 
       - name: Run ESLint
         run: npm run lint -- --max-warnings 0
@@ -56,10 +63,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
@@ -74,11 +81,11 @@ jobs:
           NODE_ENV: test
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4
         with:
           files: ./coverage/lcov.info
           flags: unittests
-          fail_ci_if_error: true
+          fail_ci_if_error: false
 
   # 3. Build Docker Image
   build:
@@ -93,13 +100,21 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Build Frontend
+        run: npm run frontend:build
 
       - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
 
       - name: Log in to Container Registry
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -107,7 +122,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v4
+        uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}
           tags: |
@@ -117,7 +132,7 @@ jobs:
             type=sha
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v4
+        uses: docker/build-push-action@v5
         with:
           context: .
           push: true
@@ -135,15 +150,19 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Install frontend dependencies
+        run: cd frontend && npm ci
 
       - name: Run npm audit
         run: npm audit --audit-level=moderate

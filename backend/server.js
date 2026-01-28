@@ -87,6 +87,8 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // REQUEST CONTEXT MIDDLEWARE
 // ============================================
 
+const metrics = require('./metrics');
+
 app.use((req, res, next) => {
   // Gerar ID único para cada requisição
   req.id = uuidv4();
@@ -95,11 +97,15 @@ app.use((req, res, next) => {
   // Logger
   req.logger = new logger.Logger(`${req.method} ${req.path}`);
 
-  // Interceptar response para logging
+  // Interceptar response para logging e métricas
   const originalJson = res.json;
   res.json = function(data) {
     const duration = Date.now() - req.startTime;
     req.logger.logRequest(req, res, duration);
+    
+    // Registrar métrica de requisição
+    metrics.recordRequest(duration, res.statusCode);
+    
     return originalJson.call(this, data);
   };
 
@@ -146,12 +152,98 @@ const accountRoutes = require('./routes/accounts');
 const syncRoutes = require('./routes/sync');
 const mlAccountRoutes = require('./routes/ml-accounts');
 
+// Import Swagger/OpenAPI
+const swaggerUi = require('swagger-ui-express');
+const swaggerSpecs = require('./swagger');
+
+// Register Swagger documentation
+app.use('/api-docs', swaggerUi.serve);
+app.get('/api-docs', swaggerUi.setup(swaggerSpecs, {
+  swaggerOptions: {
+    url: '/api-docs/swagger.json',
+  },
+}));
+
+// Serve Swagger spec as JSON
+app.get('/api-docs/swagger.json', (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.send(swaggerSpecs);
+});
+
 // Register routes
 app.use('/api/auth', authRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/accounts', accountRoutes);
 app.use('/api/sync', syncRoutes);
 app.use('/api/ml-accounts', mlAccountRoutes);
+
+// ============================================
+// HEALTH CHECK & METRICS ROUTES
+// ============================================
+
+const healthCheck = require('./health-check');
+const metrics = require('./metrics');
+
+/**
+ * Health check endpoint
+ * GET /health
+ */
+app.get('/health', async (req, res) => {
+  try {
+    const status = await healthCheck.runAll();
+    const statusCode = status.status === 'healthy' ? 200 : 503;
+    res.status(statusCode).json(status);
+  } catch (error) {
+    logger.logError(error, { endpoint: '/health' });
+    res.status(503).json({
+      status: 'unhealthy',
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+/**
+ * Liveness probe (Kubernetes)
+ * GET /live
+ */
+app.get('/live', (req, res) => {
+  res.status(200).json({ status: 'alive' });
+});
+
+/**
+ * Readiness probe (Kubernetes)
+ * GET /ready
+ */
+app.get('/ready', async (req, res) => {
+  try {
+    const health = await healthCheck.runAll();
+    const isReady = health.status === 'healthy';
+    res.status(isReady ? 200 : 503).json({
+      ready: isReady,
+      health,
+    });
+  } catch (error) {
+    res.status(503).json({ ready: false, error: error.message });
+  }
+});
+
+/**
+ * Metrics endpoint
+ * GET /metrics
+ */
+app.get('/metrics', (req, res) => {
+  try {
+    const currentMetrics = metrics.getMetrics();
+    res.status(200).json({
+      timestamp: new Date().toISOString(),
+      metrics: currentMetrics,
+    });
+  } catch (error) {
+    logger.logError(error, { endpoint: '/metrics' });
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // ============================================
 // STATIC FILE SERVER (React Frontend)
