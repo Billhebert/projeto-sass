@@ -5,9 +5,9 @@
   "main": "backend/server.js",
   "type": "commonjs",
   "scripts": {
-    "dev": "concurrently \"npm run backend:dev\" \"npm run frontend:dev\"",
-    "backend:dev": "nodemon backend/server.js",
-    "frontend:dev": "cd frontend && vite",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "nodemon backend/server.js",
+    "dev:frontend": "cd frontend && vite",
     "backend:start": "node backend/server.js",
     "frontend:build": "cd frontend && vite build",
     "frontend:preview": "cd frontend && vite preview",
@@ -17,11 +17,15 @@
     "verify": "node test-endpoints.js",
     "cypress:open": "cypress open",
     "cypress:run": "cypress run",
-    "e2e": "concurrently \"npm run dev\" \"cypress run --wait-on http://localhost:5173 --wait-on http://localhost:3000\" --kill-others",
+    "e2e": "concurrently \"npm run dev\" \"cypress run --wait-on http://localhost:5173 --wait-on http://localhost:3011\" --kill-others",
     "build": "npm run frontend:build",
     "build:production": "npm run frontend:build && echo '✓ Frontend built successfully' && npm run backend:start",
     "start": "node backend/server.js",
-    "preview": "cd frontend && vite preview"
+    "preview": "cd frontend && vite preview",
+    "db:start": "docker compose -f docker-compose.dev.yml up -d",
+    "db:stop": "docker compose -f docker-compose.dev.yml down",
+    "db:logs": "docker compose -f docker-compose.dev.yml logs -f",
+    "db:clean": "docker compose -f docker-compose.dev.yml down -v"
   },
   "keywords": [
     "dashboard",
