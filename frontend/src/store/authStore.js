@@ -19,13 +19,22 @@ export const useAuthStore = create((set) => ({
     set({ loading: true, error: null })
     try {
       const response = await api.post('/auth/login', { email, password })
-      const { token, user } = response.data
-      localStorage.setItem('token', token)
-      localStorage.setItem('user', JSON.stringify(user))
-      set({ token, user, loading: false })
+      const { data, token, user } = response.data
+      
+      // Handle both response formats
+      const actualToken = token || data?.token
+      const actualUser = user || data?.user
+      
+      if (!actualToken || !actualUser) {
+        throw new Error('Invalid response format: missing token or user')
+      }
+      
+      localStorage.setItem('token', actualToken)
+      localStorage.setItem('user', JSON.stringify(actualUser))
+      set({ token: actualToken, user: actualUser, loading: false })
       return true
     } catch (error) {
-      const message = error.response?.data?.error || 'Login failed'
+      const message = error.response?.data?.error || error.message || 'Login failed'
       set({ error: message, loading: false })
       return false
     }
@@ -35,13 +44,22 @@ export const useAuthStore = create((set) => ({
     set({ loading: true, error: null })
     try {
       const response = await api.post('/auth/register', data)
-      const { token, user } = response.data
-      localStorage.setItem('token', token)
-      localStorage.setItem('user', JSON.stringify(user))
-      set({ token, user, loading: false })
+      const { data: responseData, token, user } = response.data
+      
+      // Handle both response formats
+      const actualToken = token || responseData?.token
+      const actualUser = user || responseData?.user
+      
+      if (!actualToken || !actualUser) {
+        throw new Error('Invalid response format: missing token or user')
+      }
+      
+      localStorage.setItem('token', actualToken)
+      localStorage.setItem('user', JSON.stringify(actualUser))
+      set({ token: actualToken, user: actualUser, loading: false })
       return true
     } catch (error) {
-      const message = error.response?.data?.error || 'Registration failed'
+      const message = error.response?.data?.error || error.message || 'Registration failed'
       set({ error: message, loading: false })
       return false
     }
