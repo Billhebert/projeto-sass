@@ -14,6 +14,7 @@ const express = require('express');
 const axios = require('axios');
 const logger = require('../logger');
 const { authenticateToken } = require('../middleware/auth');
+const { validateMLToken } = require('../middleware/ml-token-validation');
 const Product = require('../db/models/Product');
 const MLAccount = require('../db/models/MLAccount');
 
@@ -168,32 +169,17 @@ router.get('/:accountId/:productId', authenticateToken, async (req, res) => {
 /**
  * POST /api/products/:accountId/sync
  * Sync products from Mercado Livre usando access token do usuário
+ * 
+ * Middleware validateMLToken:
+ * - Verifies token is not expired
+ * - Auto-refreshes if about to expire (if refreshToken available)
+ * - Returns error if token is invalid/expired
  */
-router.post('/:accountId/sync', authenticateToken, async (req, res) => {
+router.post('/:accountId/sync', authenticateToken, validateMLToken('accountId'), async (req, res) => {
   try {
     const { accountId } = req.params;
-
-    // Verify account exists
-    const account = await MLAccount.findOne({
-      id: accountId,
-      userId: req.user.userId,
-    });
-
-    if (!account) {
-      return res.status(404).json({
-        success: false,
-        message: 'Account not found',
-      });
-    }
-
-    // Verificar se token não está expirado
-    if (account.isTokenExpired()) {
-      return res.status(401).json({
-        success: false,
-        message: 'Access token has expired. Please reconnect your account.',
-        code: 'TOKEN_EXPIRED',
-      });
-    }
+    // Use account from middleware instead of fetching again
+    const account = req.mlAccount;
 
     logger.info({
       action: 'PRODUCTS_SYNC_STARTED',

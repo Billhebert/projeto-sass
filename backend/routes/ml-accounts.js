@@ -18,6 +18,7 @@ const express = require('express');
 const axios = require('axios');
 const logger = require('../logger');
 const { authenticateToken } = require('../middleware/auth');
+const { validateMLToken } = require('../middleware/ml-token-validation');
 const MLAccount = require('../db/models/MLAccount');
 const MLTokenManager = require('../utils/ml-token-manager');
 const User = require('../db/models/User');
@@ -368,29 +369,15 @@ router.delete('/:accountId', authenticateToken, async (req, res) => {
 /**
  * POST /api/ml-accounts/:accountId/sync
  * Sincronizar uma conta específica
+ * 
+ * Middleware validateMLToken:
+ * - Verifies token is not expired
+ * - Auto-refreshes if about to expire (if refreshToken available)
+ * - Returns error if token is invalid/expired
  */
-router.post('/:accountId/sync', authenticateToken, async (req, res) => {
+router.post('/:accountId/sync', authenticateToken, validateMLToken('accountId'), async (req, res) => {
   try {
-    const account = await MLAccount.findOne({
-      id: req.params.accountId,
-      userId: req.user.userId,
-    });
-
-    if (!account) {
-      return res.status(404).json({
-        success: false,
-        message: 'Account not found',
-      });
-    }
-
-    // Verificar se token está expirado
-    if (account.isTokenExpired()) {
-      return res.status(401).json({
-        success: false,
-        message: 'Account token has expired. Please reconnect the account.',
-        code: 'TOKEN_EXPIRED',
-      });
-    }
+    const account = req.mlAccount; // From middleware
 
     await account.updateSyncStatus('in_progress');
 
