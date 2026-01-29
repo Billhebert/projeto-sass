@@ -8,7 +8,9 @@ function Accounts() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [showModal, setShowModal] = useState(false)
+  const [showMLLoginModal, setShowMLLoginModal] = useState(false)
   const [editingId, setEditingId] = useState(null)
+  const [mlLoginLoading, setMLLoginLoading] = useState(false)
   const [formData, setFormData] = useState({
     nickname: '',
     email: '',
@@ -147,6 +149,23 @@ function Accounts() {
     }
   }
 
+  const handleMLLogin = async () => {
+    try {
+      setMLLoginLoading(true)
+      setError('')
+      
+      const response = await api.get('/auth/ml-login-url')
+      const { authUrl } = response.data.data
+      
+      // Redirect to Mercado Livre
+      window.location.href = authUrl
+    } catch (err) {
+      setError(err.response?.data?.error || 'Erro ao conectar com Mercado Livre')
+      console.error(err)
+      setMLLoginLoading(false)
+    }
+  }
+
   return (
     <div className="page">
       <div className="page-header">
@@ -160,12 +179,21 @@ function Accounts() {
       <div className="card">
         <div className="card-header">
           <h2 className="card-title">Contas Ativas</h2>
-          <button 
-            className="btn btn-primary"
-            onClick={() => openModal()}
-          >
-            + Adicionar Conta
-          </button>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button 
+              className="btn btn-primary"
+              onClick={handleMLLogin}
+              disabled={mlLoginLoading}
+            >
+              {mlLoginLoading ? 'Conectando...' : '🏪 Mercado Livre'}
+            </button>
+            <button 
+              className="btn btn-secondary"
+              onClick={() => openModal()}
+            >
+              + Adicionar
+            </button>
+          </div>
         </div>
 
         {loading ? (
@@ -176,12 +204,21 @@ function Accounts() {
         ) : accounts.length === 0 ? (
           <div className="empty-state">
             <p>Nenhuma conta conectada</p>
-            <button 
-              className="btn btn-primary mt-2"
-              onClick={() => openModal()}
-            >
-              Conectar Conta Mercado Livre
-            </button>
+            <div className="empty-state-buttons" style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem', justifyContent: 'center' }}>
+              <button 
+                className="btn btn-primary"
+                onClick={handleMLLogin}
+                disabled={mlLoginLoading}
+              >
+                {mlLoginLoading ? 'Conectando...' : '🏪 Conectar com Mercado Livre'}
+              </button>
+              <button 
+                className="btn btn-secondary"
+                onClick={() => openModal()}
+              >
+                ➕ Adicionar Manualmente
+              </button>
+            </div>
           </div>
         ) : (
           <div className="accounts-list">

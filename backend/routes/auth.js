@@ -166,6 +166,52 @@ router.post('/login', async (req, res) => {
 });
 
 /**
+ * GET /api/auth/ml-login-url
+ * 
+ * Get the Mercado Livre OAuth authorization URL
+ * User should be redirected to this URL to authorize the app
+ * 
+ * Response:
+ * {
+ *   authUrl: "https://auth.mercadolibre.com/authorization?..."
+ * }
+ */
+router.get('/ml-login-url', (req, res) => {
+  try {
+    const CLIENT_ID = process.env.ML_CLIENT_ID;
+    const REDIRECT_URI = process.env.ML_CALLBACK_URL || 'http://localhost:3011/api/auth/ml-callback';
+    
+    if (!CLIENT_ID) {
+      return res.status(500).json({
+        success: false,
+        error: 'ML_CLIENT_ID not configured'
+      });
+    }
+
+    // Generate random state for CSRF protection
+    const state = crypto.randomBytes(32).toString('hex');
+    
+    // Store state in a simple way (in production, use sessions or database)
+    // For now, we'll just pass it through
+
+    const authUrl = `${ML_AUTH_URL}?client_id=${CLIENT_ID}&response_type=code&platform_id=MLB&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&state=${state}`;
+
+    return res.json({
+      success: true,
+      data: {
+        authUrl
+      }
+    });
+  } catch (error) {
+    console.error('Error generating ML auth URL:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to generate authorization URL'
+    });
+  }
+});
+
+/**
  * POST /api/auth/ml-callback
  * 
  * Trade the authorization code for access and refresh tokens.
