@@ -167,8 +167,7 @@ router.get('/:accountId/:productId', authenticateToken, async (req, res) => {
 
 /**
  * POST /api/products/:accountId/sync
- * Sync products from Mercado Livre
- * Uses the ML app token (Client Credentials Flow)
+ * Sync products from Mercado Livre usando access token do usuário
  */
 router.post('/:accountId/sync', authenticateToken, async (req, res) => {
   try {
@@ -187,6 +186,15 @@ router.post('/:accountId/sync', authenticateToken, async (req, res) => {
       });
     }
 
+    // Verificar se token não está expirado
+    if (account.isTokenExpired()) {
+      return res.status(401).json({
+        success: false,
+        message: 'Access token has expired. Please reconnect your account.',
+        code: 'TOKEN_EXPIRED',
+      });
+    }
+
     logger.info({
       action: 'PRODUCTS_SYNC_STARTED',
       accountId,
@@ -194,18 +202,8 @@ router.post('/:accountId/sync', authenticateToken, async (req, res) => {
       timestamp: new Date().toISOString(),
     });
 
-    // Fetch app-level token (not user-specific)
-    const appToken = await getAppToken();
-
-    if (!appToken) {
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to obtain Mercado Livre app token',
-      });
-    }
-
-    // Fetch products from ML
-    const mlProducts = await fetchMLProducts(account.mlUserId, appToken);
+    // Fetch products from ML usando o token do usuário
+    const mlProducts = await fetchMLProducts(account.mlUserId, account.accessToken);
 
     // Store/update products in database
     const savedProducts = await saveProducts(accountId, req.user.userId, mlProducts);
@@ -421,29 +419,7 @@ router.get('/:accountId/stats', authenticateToken, async (req, res) => {
 // ============================================
 
 /**
- * Get app-level access token using Client Credentials Flow
- */
-async function getAppToken() {
-  try {
-    const response = await axios.post('https://api.mercadolibre.com/oauth/token', {
-      grant_type: 'client_credentials',
-      client_id: process.env.ML_CLIENT_ID,
-      client_secret: process.env.ML_CLIENT_SECRET,
-    });
-
-    return response.data.access_token;
-  } catch (error) {
-    logger.error({
-      action: 'GET_APP_TOKEN_ERROR',
-      error: error.response?.data || error.message,
-    });
-    return null;
-  }
-}
-
-/**
- * Fetch products from Mercado Livre API
- * Gets the user ID first, then their items
+ * Buscar produtos do Mercado Livre API usando token do usuário
  */
 async function fetchMLProducts(mlUserId, accessToken) {
   try {

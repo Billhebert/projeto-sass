@@ -14,10 +14,8 @@ function Accounts() {
   const [editingId, setEditingId] = useState(null)
   const [mlLoginLoading, setMLLoginLoading] = useState(false)
   const [formData, setFormData] = useState({
-    nickname: '',
-    email: '',
-    mlAccessToken: '',
-    mlRefreshToken: '',
+    accessToken: '',
+    accountName: '',
   })
   const [submitting, setSubmitting] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
@@ -47,18 +45,14 @@ function Accounts() {
     if (account) {
       setEditingId(account._id)
       setFormData({
-        nickname: account.nickname,
-        email: account.email,
-        mlAccessToken: '',
-        mlRefreshToken: '',
+        accessToken: '',
+        accountName: account.accountName || account.nickname,
       })
     } else {
       setEditingId(null)
       setFormData({
-        nickname: '',
-        email: '',
-        mlAccessToken: '',
-        mlRefreshToken: '',
+        accessToken: '',
+        accountName: '',
       })
     }
     setShowModal(true)
@@ -70,10 +64,8 @@ function Accounts() {
     setShowModal(false)
     setEditingId(null)
     setFormData({
-      nickname: '',
-      email: '',
-      mlAccessToken: '',
-      mlRefreshToken: '',
+      accessToken: '',
+      accountName: '',
     })
   }
 
@@ -88,8 +80,8 @@ function Accounts() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     
-    if (!formData.nickname || !formData.email) {
-      setError('Nome e email são obrigatórios')
+    if (!formData.accessToken) {
+      setError('Token de acesso é obrigatório')
       return
     }
 
@@ -98,26 +90,16 @@ function Accounts() {
       setError('')
 
       if (editingId) {
-        // Update existing account
-        await api.patch(`/ml-accounts/${editingId}`, {
-          nickname: formData.nickname,
-          email: formData.email,
-          ...(formData.mlAccessToken && { mlAccessToken: formData.mlAccessToken }),
-          ...(formData.mlRefreshToken && { mlRefreshToken: formData.mlRefreshToken }),
+        // Update existing account (nome apenas)
+        await api.put(`/ml-accounts/${editingId}`, {
+          accountName: formData.accountName,
         })
         setSuccess('Conta atualizada com sucesso!')
       } else {
-        // Create new account
-        if (!formData.mlAccessToken) {
-          setError('Token de acesso é obrigatório para nova conta')
-          setSubmitting(false)
-          return
-        }
+        // Create new account com access token
         await api.post('/ml-accounts', {
-          nickname: formData.nickname,
-          email: formData.email,
-          mlAccessToken: formData.mlAccessToken,
-          mlRefreshToken: formData.mlRefreshToken || '',
+          accessToken: formData.accessToken,
+          accountName: formData.accountName || '',
         })
         setSuccess('Conta criada com sucesso!')
       }
@@ -125,7 +107,7 @@ function Accounts() {
       await fetchAccounts()
       closeModal()
     } catch (err) {
-      setError(err.response?.data?.error || 'Erro ao salvar conta')
+      setError(err.response?.data?.message || 'Erro ao salvar conta')
       console.error(err)
     } finally {
       setSubmitting(false)
@@ -283,63 +265,50 @@ function Accounts() {
         <div className="modal-overlay" onClick={closeModal}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>{editingId ? 'Editar Conta' : 'Adicionar Conta'}</h2>
+              <h2>{editingId ? 'Editar Conta' : 'Conectar Conta Mercado Livre'}</h2>
               <button className="modal-close" onClick={closeModal}>×</button>
             </div>
 
             <form onSubmit={handleSubmit} className="modal-form">
               <div className="form-group">
-                <label htmlFor="nickname">Nome da Conta *</label>
+                <label htmlFor="accountName">Nome da Conta (opcional)</label>
                 <input
                   type="text"
-                  id="nickname"
-                  name="nickname"
-                  value={formData.nickname}
+                  id="accountName"
+                  name="accountName"
+                  value={formData.accountName}
                   onChange={handleFormChange}
                   placeholder="Ex: Loja Principal"
-                  required
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="email">Email *</label>
-                <input
-                  type="email"
-                  id="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleFormChange}
-                  placeholder="seu@email.com"
-                  required
                 />
               </div>
 
               {!editingId && (
-                <div className="form-group">
-                  <label htmlFor="mlAccessToken">Token de Acesso ML *</label>
-                  <input
-                    type="password"
-                    id="mlAccessToken"
-                    name="mlAccessToken"
-                    value={formData.mlAccessToken}
-                    onChange={handleFormChange}
-                    placeholder="Token da API Mercado Livre"
-                    required={!editingId}
-                  />
-                </div>
+                <>
+                  <div className="form-group">
+                    <label htmlFor="accessToken">Token de Acesso Mercado Livre *</label>
+                    <input
+                      type="password"
+                      id="accessToken"
+                      name="accessToken"
+                      value={formData.accessToken}
+                      onChange={handleFormChange}
+                      placeholder="Cole seu token de acesso aqui"
+                      required={!editingId}
+                    />
+                    <small style={{ color: '#666', marginTop: '0.5rem', display: 'block' }}>
+                      📌 Como obter o token?
+                      <br/>
+                      1. Vá para Mercado Livre Developer (developers.mercadolibre.com.br)
+                      <br/>
+                      2. Acesse Applications → Suas aplicações
+                      <br/>
+                      3. Procure por "Access Token" ou faça login com sua conta ML
+                      <br/>
+                      4. Cole o token aqui (ele expira em 6 horas)
+                    </small>
+                  </div>
+                </>
               )}
-
-              <div className="form-group">
-                <label htmlFor="mlRefreshToken">Token de Refresh ML</label>
-                <input
-                  type="password"
-                  id="mlRefreshToken"
-                  name="mlRefreshToken"
-                  value={formData.mlRefreshToken}
-                  onChange={handleFormChange}
-                  placeholder="Token de refresh (opcional)"
-                />
-              </div>
 
               <div className="modal-actions">
                 <button 

@@ -98,24 +98,50 @@ router.get('/:accountId', authenticateToken, async (req, res) => {
 /**
  * POST /api/ml-accounts
  * Adicionar nova conta ML
+ * Agora aceita apenas o access token
+ * Busca automaticamente as informações do usuário da API ML
  */
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    const { mlUserId, nickname, email, accessToken, refreshToken, tokenExpiresAt, accountName, accountType } = req.body;
+    const { accessToken, accountName, accountType } = req.body;
 
     // Validação
-    if (!mlUserId || !nickname || !email || !accessToken || !refreshToken || !tokenExpiresAt) {
+    if (!accessToken) {
       return res.status(400).json({
         success: false,
-        message: 'Missing required fields',
-        required: ['mlUserId', 'nickname', 'email', 'accessToken', 'refreshToken', 'tokenExpiresAt'],
+        message: 'Access token is required',
+        required: ['accessToken'],
+      });
+    }
+
+    // Buscar informações do usuário na API ML
+    let mlUserInfo;
+    try {
+      const response = await axios.get(`${ML_API_BASE}/users/me`, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 15000,
+      });
+      mlUserInfo = response.data;
+    } catch (error) {
+      logger.error({
+        action: 'GET_ML_USER_INFO_ERROR',
+        error: error.response?.data || error.message,
+      });
+
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid access token. Could not retrieve user information from Mercado Livre.',
+        error: error.response?.data?.message || error.message,
       });
     }
 
     // Verificar se usuário já tem essa conta
     const existingAccount = await MLAccount.findOne({
       userId: req.user.userId,
-      mlUserId,
+      mlUserId: mlUserInfo.id,
     });
 
     if (existingAccount) {
@@ -132,13 +158,13 @@ router.post('/', authenticateToken, async (req, res) => {
     // Criar nova conta
     const newAccount = new MLAccount({
       userId: req.user.userId,
-      mlUserId,
-      nickname,
-      email,
+      mlUserId: mlUserInfo.id,
+      nickname: mlUserInfo.nickname,
+      email: mlUserInfo.email,
       accessToken,
-      refreshToken,
-      tokenExpiresAt: new Date(tokenExpiresAt),
-      accountName: accountName || nickname,
+      refreshToken: null, // Sem refresh token, usuário fornece novo token quando expirar
+      tokenExpiresAt: new Date(Date.now() + 6 * 60 * 60 * 1000), // 6 horas (padrão do ML)
+      accountName: accountName || mlUserInfo.nickname,
       accountType: accountType || 'individual',
       isPrimary,
       status: 'active',
@@ -159,7 +185,8 @@ router.post('/', authenticateToken, async (req, res) => {
       action: 'ML_ACCOUNT_ADDED',
       userId: req.user.userId,
       accountId: newAccount.id,
-      mlUserId,
+      mlUserId: mlUserInfo.id,
+      nickname: mlUserInfo.nickname,
       timestamp: new Date().toISOString(),
     });
 
