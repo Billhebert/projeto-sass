@@ -45,13 +45,24 @@ const mlAccountSchema = new mongoose.Schema(
     },
 
     // OAuth Tokens (encrypted)
+    // accessToken: Used for API calls to Mercado Livre
+    // refreshToken: Used to get new accessToken when it expires
+    // 
+    // Lifecycle:
+    // 1. User provides accessToken (manual) or gets it via OAuth
+    // 2. If refreshToken is provided, system can auto-renew accessToken
+    // 3. When accessToken expires, use refreshToken to get new one
+    // 4. New refreshToken comes with the new accessToken
+    // 5. Both are stored for next refresh cycle
     accessToken: {
       type: String,
       required: [true, 'Access token is required'],
+      trim: true,
     },
     refreshToken: {
       type: String,
-      required: [true, 'Refresh token is required'],
+      default: null, // Will be null if user provided token manually (without OAuth)
+      trim: true,
     },
     tokenExpiresAt: {
       type: Date,
@@ -171,6 +182,19 @@ const mlAccountSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    nextTokenRefreshNeeded: {
+      type: Date,
+      default: null,
+    },
+    tokenRefreshStatus: {
+      type: String,
+      enum: ['pending', 'in_progress', 'success', 'failed', null],
+      default: null,
+    },
+    tokenRefreshError: {
+      type: String,
+      default: null,
+    },
 
     // Audit
     createdAt: {
@@ -276,6 +300,45 @@ mlAccountSchema.methods.addError = async function (error, statusCode = null) {
   }
   this.errorCount = (this.errorCount || 0) + 1;
   return this.save();
+};
+
+// Update token refresh status
+mlAccountSchema.methods.updateTokenRefreshStatus = async function (status, error = null) {
+  this.tokenRefreshStatus = status;
+  
+  if (status === 'success') {
+    this.lastTokenRefresh = new Date();
+    this.tokenRefreshError = null;
+    // Next refresh needed in ~5.5 hours (refresh when 5 min left)
+    this.nextTokenRefreshNeeded = new Date(this.tokenExpiresAt.getTime() - 5 * 60 * 1000);
+  } else if (status === 'failed' && error) {
+    this.tokenRefreshError = error;
+    // Retry refresh in 1 hour if it failed
+    this.nextTokenRefreshNeeded = new Date(Date.now() + 60 * 60 * 1000);
+  }
+  
+  return this.save();
+};
+
+// Mark tokens as refreshed (call this when new tokens are received)
+mlAccountSchema.methods.refreshedTokens = async function (newAccessToken, newRefreshToken, expiresInSeconds) {
+  this.accessToken = newAccessToken;
+  if (newRefreshToken) {
+    this.refreshToken = newRefreshToken;
+  }
+  this.tokenExpiresAt = new Date(Date.now() + expiresInSeconds * 1000);
+  this.lastTokenRefresh = new Date();
+  this.nextTokenRefreshNeeded = new Date(this.tokenExpiresAt.getTime() - 5 * 60 * 1000);
+  this.tokenRefreshStatus = 'success';
+  this.tokenRefreshError = null;
+  
+  return this.save();
+};
+
+// Check if token refresh is needed
+mlAccountSchema.methods.isTokenRefreshNeeded = function () {
+  if (!this.refreshToken) return false; // Can't refresh without refresh token
+  return new Date() >= (this.nextTokenRefreshNeeded || this.tokenExpiresAt);
 };
 
 // Disconnect account

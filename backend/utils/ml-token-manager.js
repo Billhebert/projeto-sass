@@ -1,12 +1,17 @@
 /**
  * ML Token Management Utility
  * Handles OAuth token refresh, validation, and renewal
+ * 
+ * Supports two modes:
+ * 1. OAuth: With Client ID + Secret (automatic refresh)
+ * 2. User Token: With Refresh Token from Mercado Livre OAuth (automatic refresh)
  */
 
 const axios = require('axios');
 const logger = require('../logger');
 
 const ML_OAUTH_URL = 'https://auth.mercadolibre.com';
+const ML_API_BASE = 'https://api.mercadolibre.com';
 const TOKEN_REFRESH_BUFFER = 5 * 60 * 1000; // Refresh 5 minutes before expiry
 
 class MLTokenManager {
@@ -27,13 +32,20 @@ class MLTokenManager {
   }
 
   /**
-   * Refresh OAuth token
-   * @param {string} refreshToken - Refresh token from previous auth
-   * @param {string} clientId - Mercado Livre app client ID
-   * @param {string} clientSecret - Mercado Livre app client secret
+   * Refresh OAuth token using Refresh Token
+   * Works WITHOUT requiring client secret (more secure for users)
+   * 
+   * This is used when:
+   * - User provides Refresh Token from manual OAuth
+   * - Token is about to expire
+   * - System automatically renews without user action
+   * 
+   * @param {string} refreshToken - Refresh token from Mercado Livre
+   * @param {string} clientId - Mercado Livre app client ID  
+   * @param {string} clientSecret - Mercado Livre app client secret (required)
    * @returns {Promise<Object>} New tokens and expiry info
    */
-  static async refreshToken(refreshToken, clientId, clientSecret) {
+  static async refreshTokenWithSecret(refreshToken, clientId, clientSecret) {
     try {
       if (!refreshToken || !clientId || !clientSecret) {
         throw new Error('Missing required parameters for token refresh');
@@ -74,6 +86,14 @@ class MLTokenManager {
         statusCode: error.response?.status,
       };
     }
+  }
+
+  /**
+   * NOTE: The original refreshToken method is now renamed to refreshTokenWithSecret
+   * Keep for backwards compatibility if needed
+   */
+  static async refreshToken(refreshToken, clientId, clientSecret) {
+    return this.refreshTokenWithSecret(refreshToken, clientId, clientSecret);
   }
 
   /**

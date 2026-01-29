@@ -98,12 +98,21 @@ router.get('/:accountId', authenticateToken, async (req, res) => {
 /**
  * POST /api/ml-accounts
  * Adicionar nova conta ML
- * Agora aceita apenas o access token
- * Busca automaticamente as informações do usuário da API ML
+ * 
+ * Aceita dois formatos:
+ * 1. Token Manual: { accessToken, accountName? }
+ *    - Usuário forneceu token manualmente
+ *    - Sistema não pode renovar (sem refreshToken)
+ * 
+ * 2. OAuth: { accessToken, refreshToken, expiresIn, accountName? }
+ *    - Usuário fez OAuth/login autorizado
+ *    - Sistema pode renovar automaticamente com refreshToken
+ * 
+ * Sistema automaticamente busca info do usuário e salva tudo
  */
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    const { accessToken, accountName, accountType } = req.body;
+    const { accessToken, refreshToken, expiresIn, accountName, accountType } = req.body;
 
     // Validação
     if (!accessToken) {
@@ -155,6 +164,13 @@ router.post('/', authenticateToken, async (req, res) => {
     const existingAccounts = await MLAccount.findByUserId(req.user.userId);
     const isPrimary = existingAccounts.length === 0;
 
+    // Calcular expiração do token
+    // Se vem do OAuth, tem expiresIn
+    // Se vem manual, assume 6 horas (padrão ML para user tokens)
+    const tokenExpiresAtTime = expiresIn 
+      ? Date.now() + expiresIn * 1000
+      : Date.now() + 6 * 60 * 60 * 1000; // 6 horas como fallback
+
     // Criar nova conta
     const newAccount = new MLAccount({
       userId: req.user.userId,
@@ -162,12 +178,16 @@ router.post('/', authenticateToken, async (req, res) => {
       nickname: mlUserInfo.nickname,
       email: mlUserInfo.email,
       accessToken,
-      refreshToken: null, // Sem refresh token, usuário fornece novo token quando expirar
-      tokenExpiresAt: new Date(Date.now() + 6 * 60 * 60 * 1000), // 6 horas (padrão do ML)
+      refreshToken: refreshToken || null, // OAuth tem refreshToken, manual não
+      tokenExpiresAt: new Date(tokenExpiresAtTime),
       accountName: accountName || mlUserInfo.nickname,
       accountType: accountType || 'individual',
       isPrimary,
       status: 'active',
+      // Setup token refresh tracking
+      lastTokenRefresh: refreshToken ? new Date() : null, // Marca como "já renovado" se tem refreshToken
+      nextTokenRefreshNeeded: new Date(tokenExpiresAtTime - 5 * 60 * 1000), // 5 min antes de expirar
+      tokenRefreshStatus: refreshToken ? 'success' : null, // Sucesso se veio do OAuth
     });
 
     await newAccount.save();
@@ -187,13 +207,17 @@ router.post('/', authenticateToken, async (req, res) => {
       accountId: newAccount.id,
       mlUserId: mlUserInfo.id,
       nickname: mlUserInfo.nickname,
+      hasRefreshToken: !!refreshToken,
       timestamp: new Date().toISOString(),
     });
 
     res.status(201).json({
       success: true,
       message: 'Account added successfully',
-      data: newAccount.getSummary(),
+      data: {
+        ...newAccount.getSummary(),
+        canAutoRefresh: !!refreshToken, // Frontend sabe se pode renovar automaticamente
+      },
     });
   } catch (error) {
     logger.error({
@@ -827,5 +851,116 @@ async function fetchMLAccountData(mlUserId, accessToken) {
     throw new Error(`Falha ao buscar dados do Mercado Livre: ${error.message}`);
   }
 }
+
+/**
+ * PUT /api/ml-accounts/:accountId/refresh-token
+ * Renovar token manualmente
+ * 
+ * Usado quando:
+ * - Usuário clica botão "Renovar Token" no painel
+ * - Sistema pode chamar para garantir renovação antes de operação crítica
+ * - Token expirou e precisa renovar urgentemente
+ * 
+ * Funciona APENAS se conta tem refreshToken
+ */
+router.put('/:accountId/refresh-token', authenticateToken, async (req, res) => {
+  try {
+    const account = await MLAccount.findOne({
+      id: req.params.accountId,
+      userId: req.user.userId,
+    });
+
+    if (!account) {
+      return res.status(404).json({
+        success: false,
+        message: 'Account not found',
+      });
+    }
+
+    // Verificar se tem refresh token
+    if (!account.refreshToken) {
+      return res.status(400).json({
+        success: false,
+        message: 'This account does not have automatic token refresh capability. You need to reconnect using OAuth or provide a new token.',
+        code: 'NO_REFRESH_TOKEN',
+        solution: 'Reconnect account using OAuth or paste a new access token',
+      });
+    }
+
+    logger.info({
+      action: 'MANUAL_TOKEN_REFRESH_START',
+      accountId: account.id,
+      mlUserId: account.mlUserId,
+      userId: req.user.userId,
+    });
+
+    // Call Mercado Livre to refresh token
+    const result = await MLTokenManager.refreshToken(
+      account.refreshToken,
+      process.env.ML_APP_CLIENT_ID || '1706187223829083',
+      process.env.ML_APP_CLIENT_SECRET || 'vjEgzPD85Ehwe6aefX3TGij4xGdRV0jG'
+    );
+
+    if (!result.success) {
+      logger.error({
+        action: 'MANUAL_TOKEN_REFRESH_FAILED',
+        accountId: account.id,
+        error: result.error,
+      });
+
+      // Mark account as needing reconnection
+      account.status = 'error';
+      account.tokenRefreshError = result.error;
+      await account.save();
+
+      return res.status(401).json({
+        success: false,
+        message: 'Failed to refresh token. You may need to reconnect your account.',
+        code: 'TOKEN_REFRESH_FAILED',
+        error: result.error,
+        solution: 'Try reconnecting your Mercado Livre account',
+      });
+    }
+
+    // Update account with new tokens
+    await account.refreshedTokens(
+      result.accessToken,
+      result.refreshToken,
+      result.expiresIn
+    );
+
+    logger.info({
+      action: 'MANUAL_TOKEN_REFRESH_SUCCESS',
+      accountId: account.id,
+      mlUserId: account.mlUserId,
+      expiresIn: result.expiresIn,
+      newTokenExpiresAt: account.tokenExpiresAt,
+    });
+
+    res.json({
+      success: true,
+      message: 'Token refreshed successfully',
+      data: {
+        accountId: account.id,
+        tokenExpiresAt: account.tokenExpiresAt,
+        expiresIn: result.expiresIn,
+        refreshedAt: account.lastTokenRefresh,
+      },
+    });
+  } catch (error) {
+    logger.error({
+      action: 'MANUAL_TOKEN_REFRESH_ERROR',
+      accountId: req.params.accountId,
+      userId: req.user.userId,
+      error: error.message,
+    });
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to refresh token',
+      error: error.message,
+    });
+  }
+});
 
 module.exports = router;

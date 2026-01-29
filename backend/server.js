@@ -420,6 +420,16 @@ async function startServer() {
       // Don't exit - let server continue without background jobs
     });
 
+    // Initialize Token Refresh background job
+    const { startTokenRefreshJob } = require('./jobs/token-refresh');
+    try {
+      startTokenRefreshJob();
+      logger.info('Token refresh job initialized successfully');
+    } catch (error) {
+      logger.warn('Failed to initialize token refresh job:', { error: error.message });
+      // Don't exit - let server continue without background jobs
+    }
+
     // Start HTTP server
     server.listen(PORT, () => {
       logger.info(`╔════════════════════════════════════════════════════════════════╗`);
@@ -440,8 +450,8 @@ async function startServer() {
       logger.info(`║                                                                ║`);
       logger.info(`║  Background Jobs:                                             ║`);
       logger.info(`║    • ML Accounts sync (every 5 minutes)                       ║`);
-      logger.info(`║    • Token refresh (every 30 minutes)                         ║`);
-      logger.info(`║    • Health check (every 15 minutes)                          ║`);
+      logger.info(`║    • Token refresh (every 1 hour)                            ║`);
+      logger.info(`║    • Health check (every 15 minutes)                         ║`);
       logger.info(`║                                                                ║`);
       logger.info(`╚════════════════════════════════════════════════════════════════╝`);
     });
