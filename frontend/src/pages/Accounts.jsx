@@ -26,10 +26,13 @@ function Accounts() {
     try {
       setLoading(true)
       const response = await api.get('/ml-accounts')
-      setAccounts(response.data.data || [])
+      // Handle the API response structure: { success, data: { accounts: [], total } }
+      const accountsList = response.data.data?.accounts || response.data.data || response.data || []
+      setAccounts(Array.isArray(accountsList) ? accountsList : [])
       setError('')
     } catch (err) {
       setError('Erro ao carregar contas')
+      setAccounts([])
       console.error(err)
     } finally {
       setLoading(false)

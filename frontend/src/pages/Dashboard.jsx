@@ -13,14 +13,18 @@ function Dashboard() {
   })
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
+   useEffect(() => {
     const fetchStats = async () => {
       try {
         const response = await api.get('/ml-accounts')
-        if (response.data.data && response.data.data.length > 0) {
-          const account = response.data.data[0]
+        // Handle the API response structure: { success, data: { accounts: [], total } }
+        const accountsList = response.data.data?.accounts || response.data.data || []
+        const accounts = Array.isArray(accountsList) ? accountsList : []
+        
+        if (accounts && accounts.length > 0) {
+          const account = accounts[0]
           setStats({
-            accounts: response.data.data.length,
+            accounts: accounts.length,
             orders: account.cachedData?.orders || 0,
             products: account.cachedData?.products || 0,
             issues: account.cachedData?.issues || 0,
@@ -35,6 +39,12 @@ function Dashboard() {
         }
       } catch (error) {
         console.error('Error fetching stats:', error)
+        setStats({
+          accounts: 0,
+          orders: 0,
+          products: 0,
+          issues: 0,
+        })
       } finally {
         setLoading(false)
       }
