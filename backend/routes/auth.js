@@ -212,6 +212,66 @@ router.get('/ml-login-url', (req, res) => {
 });
 
 /**
+ * GET /api/auth/ml-app-token
+ * 
+ * Get access token using Client Credentials Flow (Server-to-Server)
+ * This uses the app credentials (ID + Secret) to get a token
+ * 
+ * Response:
+ * {
+ *   accessToken: "token_xxx",
+ *   expiresIn: 21600,
+ *   tokenType: "Bearer"
+ * }
+ */
+router.get('/ml-app-token', async (req, res) => {
+  try {
+    const CLIENT_ID = process.env.ML_CLIENT_ID;
+    const CLIENT_SECRET = process.env.ML_CLIENT_SECRET;
+
+    if (!CLIENT_ID || !CLIENT_SECRET) {
+      return res.status(500).json({
+        success: false,
+        error: 'ML_CLIENT_ID or ML_CLIENT_SECRET not configured'
+      });
+    }
+
+    // Request token using Client Credentials flow
+    const response = await axios.post(ML_TOKEN_URL, {
+      grant_type: 'client_credentials',
+      client_id: CLIENT_ID,
+      client_secret: CLIENT_SECRET,
+    });
+
+    const { access_token, expires_in, token_type } = response.data;
+
+    if (!access_token) {
+      return res.status(400).json({
+        success: false,
+        error: 'Failed to obtain access token from Mercado Livre'
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        accessToken: access_token,
+        expiresIn: expires_in, // usually 21600 seconds (6 hours)
+        tokenType: token_type,
+        obtainedAt: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    console.error('Error getting ML app token:', error.response?.data || error.message);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to get access token from Mercado Livre',
+      details: error.response?.data?.message || error.message
+    });
+  }
+});
+
+/**
  * POST /api/auth/ml-callback
  * 
  * Trade the authorization code for access and refresh tokens.

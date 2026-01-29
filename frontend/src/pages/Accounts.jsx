@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import './Pages.css'
 
 function Accounts() {
+  const navigate = useNavigate()
   const [accounts, setAccounts] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -250,6 +252,12 @@ function Accounts() {
                 </div>
 
                 <div className="account-actions">
+                  <button 
+                    className="btn btn-primary btn-sm"
+                    onClick={() => navigate(`/accounts/${account._id}/products`)}
+                  >
+                    📦 Produtos
+                  </button>
                   <button 
                     className="btn btn-secondary btn-sm"
                     onClick={() => openModal(account)}

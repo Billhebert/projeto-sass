@@ -5,6 +5,7 @@ import Login from './pages/Login'
 import Register from './pages/Register'
 import Dashboard from './pages/Dashboard'
 import Accounts from './pages/Accounts'
+import Products from './pages/Products'
 import Reports from './pages/Reports'
 import Settings from './pages/Settings'
 import Layout from './components/Layout'
@@ -29,6 +30,7 @@ function App() {
           <Route element={<Layout />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/accounts" element={<Accounts />} />
+            <Route path="/accounts/:accountId/products" element={<Products />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/" />} />

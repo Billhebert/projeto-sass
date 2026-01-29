@@ -151,6 +151,7 @@ const webhookRoutes = require('./routes/webhooks');
 const accountRoutes = require('./routes/accounts');
 const syncRoutes = require('./routes/sync');
 const mlAccountRoutes = require('./routes/ml-accounts');
+const productsRoutes = require('./routes/products');
 
 // Import Swagger/OpenAPI
 const swaggerUi = require('swagger-ui-express');
@@ -176,6 +177,7 @@ app.use('/api/webhooks', webhookRoutes);
 app.use('/api/accounts', accountRoutes);
 app.use('/api/sync', syncRoutes);
 app.use('/api/ml-accounts', mlAccountRoutes);
+app.use('/api/products', productsRoutes);
 
 // ============================================
 // HEALTH CHECK & METRICS ROUTES
