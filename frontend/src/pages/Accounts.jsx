@@ -12,11 +12,18 @@ function Accounts() {
   const [success, setSuccess] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [showMLLoginModal, setShowMLLoginModal] = useState(false)
+  const [showOAuthModal, setShowOAuthModal] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [mlLoginLoading, setMLLoginLoading] = useState(false)
+  const [oauthLoading, setOAuthLoading] = useState(false)
   const [formData, setFormData] = useState({
     accessToken: '',
     accountName: '',
+  })
+  const [oauthFormData, setOAuthFormData] = useState({
+    appId: '',
+    appSecret: '',
+    redirectUrl: '',
   })
   const [submitting, setSubmitting] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
@@ -134,21 +141,70 @@ function Accounts() {
     }
   }
 
-  const handleMLLogin = async () => {
+  const handleMLLogin = () => {
+    // Open OAuth configuration modal instead of redirecting immediately
+    setShowOAuthModal(true)
+    setError('')
+    setOAuthFormData({
+      appId: '',
+      appSecret: '',
+      redirectUrl: 'http://localhost:5173/auth/callback', // Default value
+    })
+  }
+
+  const handleOAuthFormChange = (e) => {
+    const { name, value } = e.target
+    setOAuthFormData(prev => ({
+      ...prev,
+      [name]: value
+    }))
+  }
+
+  const handleOAuthSubmit = async (e) => {
+    e.preventDefault()
+    
+    if (!oauthFormData.appId || !oauthFormData.appSecret || !oauthFormData.redirectUrl) {
+      setError('App ID, App Secret e Redirect URL são obrigatórios')
+      return
+    }
+
     try {
-      setMLLoginLoading(true)
+      setOAuthLoading(true)
       setError('')
       
-      const response = await api.get('/auth/ml-login-url')
+      // Call backend to generate OAuth URL with credentials
+      const response = await api.post('/auth/ml-oauth-url', {
+        clientId: oauthFormData.appId,
+        clientSecret: oauthFormData.appSecret,
+        redirectUri: oauthFormData.redirectUrl,
+      })
+      
       const { authUrl } = response.data.data
       
-      // Redirect to Mercado Livre
+      // Store credentials in session storage for callback to use
+      sessionStorage.setItem('ml_oauth_config', JSON.stringify({
+        clientId: oauthFormData.appId,
+        clientSecret: oauthFormData.appSecret,
+        redirectUri: oauthFormData.redirectUrl,
+      }))
+      
+      // Redirect to Mercado Livre OAuth
       window.location.href = authUrl
     } catch (err) {
-      setError(err.response?.data?.error || 'Erro ao conectar com Mercado Livre')
+      setError(err.response?.data?.message || 'Erro ao gerar link de autenticação')
       console.error(err)
-      setMLLoginLoading(false)
+    } finally {
+      setOAuthLoading(false)
     }
+  }
+
+  const closeOAuthModal = () => {
+    setShowOAuthModal(false)
+    setOAuthFormData({
+      appId: '',
+      appSecret: '',
+      redirectUrl: '',
+    })
   }
 
   return (
@@ -335,6 +391,116 @@ function Accounts() {
                 >
                   {submitting ? 'Salvando...' : 'Salvar'}
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* OAuth Configuration Modal */}
+      {showOAuthModal && (
+        <div className="modal-overlay" onClick={closeOAuthModal}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>🔐 Autenticação OAuth 2.0</h2>
+              <button className="modal-close" onClick={closeOAuthModal}>×</button>
+            </div>
+
+            <form onSubmit={handleOAuthSubmit} className="modal-form">
+              <p style={{ marginBottom: '1.5rem', color: '#666', fontSize: '0.95rem' }}>
+                Forneça suas credenciais da aplicação Mercado Livre para fazer a autenticação OAuth.
+              </p>
+
+              <div className="form-group">
+                <label htmlFor="appId">App ID (Client ID) *</label>
+                <input
+                  type="text"
+                  id="appId"
+                  name="appId"
+                  value={oauthFormData.appId}
+                  onChange={handleOAuthFormChange}
+                  placeholder="Ex: 1706187223829083"
+                  required
+                />
+                <small style={{ color: '#999' }}>
+                  Encontre em: https://developers.mercadolibre.com.br → Minhas aplicações
+                </small>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="appSecret">App Secret *</label>
+                <input
+                  type="password"
+                  id="appSecret"
+                  name="appSecret"
+                  value={oauthFormData.appSecret}
+                  onChange={handleOAuthFormChange}
+                  placeholder="Sua chave secreta"
+                  required
+                />
+                <small style={{ color: '#999' }}>
+                  Guarde este valor com segurança. Será usado apenas para autenticação.
+                </small>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="redirectUrl">Redirect URL *</label>
+                <input
+                  type="url"
+                  id="redirectUrl"
+                  name="redirectUrl"
+                  value={oauthFormData.redirectUrl}
+                  onChange={handleOAuthFormChange}
+                  placeholder="Ex: http://localhost:5173/auth/callback"
+                  required
+                />
+                <small style={{ color: '#999' }}>
+                  Deve corresponder exatamente à URL configurada em suas aplicações Mercado Livre.
+                  <br/>
+                  Use HTTPS em produção.
+                </small>
+              </div>
+
+              {error && (
+                <div className="alert alert-error" style={{ marginTop: '1rem' }}>
+                  {error}
+                </div>
+              )}
+
+              <div className="modal-actions" style={{ marginTop: '2rem' }}>
+                <button 
+                  type="button" 
+                  className="btn btn-secondary"
+                  onClick={closeOAuthModal}
+                  disabled={oauthLoading}
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn btn-primary"
+                  disabled={oauthLoading}
+                >
+                  {oauthLoading ? 'Conectando...' : '🔐 Conectar com OAuth'}
+                </button>
+              </div>
+
+              <div style={{ 
+                marginTop: '1.5rem', 
+                padding: '1rem', 
+                backgroundColor: '#f0f8ff', 
+                borderRadius: '4px',
+                fontSize: '0.9rem',
+                color: '#333',
+                borderLeft: '4px solid #2196F3'
+              }}>
+                <strong>ℹ️ O que acontece após enviar?</strong>
+                <ol style={{ margin: '0.5rem 0 0 1.5rem', paddingLeft: 0 }}>
+                  <li>Você será redirecionado para o Mercado Livre</li>
+                  <li>Authorize a aplicação na sua conta</li>
+                  <li>Retornará automáticamente com o token de acesso</li>
+                  <li>Sua conta estará conectada e pronta</li>
+                </ol>
               </div>
             </form>
           </div>

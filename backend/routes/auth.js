@@ -212,6 +212,131 @@ router.get('/ml-login-url', (req, res) => {
 });
 
 /**
+ * POST /api/auth/ml-oauth-url
+ * 
+ * Generate OAuth authorization URL using user-provided credentials.
+ * This allows users to provide their own App ID, Secret, and Redirect URI.
+ * 
+ * Request body:
+ * {
+ *   clientId: string,      // User's Mercado Livre App ID
+ *   clientSecret: string,  // User's Mercado Livre App Secret
+ *   redirectUri: string    // OAuth redirect URI (e.g., http://localhost:5173/auth/callback)
+ * }
+ * 
+ * Response:
+ * {
+ *   success: true,
+ *   data: {
+ *     authUrl: "https://auth.mercadolibre.com/authorization?..."
+ *   }
+ * }
+ */
+router.post('/ml-oauth-url', (req, res) => {
+  try {
+    const { clientId, clientSecret, redirectUri } = req.body;
+
+    // Validation
+    if (!clientId || !clientSecret || !redirectUri) {
+      return res.status(400).json({
+        success: false,
+        error: 'clientId, clientSecret, and redirectUri are required'
+      });
+    }
+
+    // Generate random state for CSRF protection
+    const state = crypto.randomBytes(32).toString('hex');
+    
+    const authUrl = `${ML_AUTH_URL}?client_id=${encodeURIComponent(clientId)}&response_type=code&platform_id=MLB&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
+
+    return res.json({
+      success: true,
+      data: {
+        authUrl,
+        state  // Return state so client can verify callback
+      }
+    });
+  } catch (error) {
+    console.error('Error generating ML OAuth URL:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to generate authorization URL'
+    });
+  }
+});
+
+/**
+ * POST /api/auth/ml-token-exchange
+ * 
+ * Exchange authorization code for access and refresh tokens.
+ * This is called from the OAuth callback page with user-provided credentials.
+ * 
+ * Request body:
+ * {
+ *   code: string,          // Authorization code from Mercado Livre
+ *   clientId: string,      // User's Mercado Livre App ID
+ *   clientSecret: string,  // User's Mercado Livre App Secret
+ *   redirectUri: string    // OAuth redirect URI (must match what was used for authUrl)
+ * }
+ * 
+ * Response:
+ * {
+ *   success: true,
+ *   data: {
+ *     accessToken: string,
+ *     refreshToken: string,
+ *     expiresIn: number
+ *   }
+ * }
+ */
+router.post('/ml-token-exchange', async (req, res) => {
+  try {
+    const { code, clientId, clientSecret, redirectUri } = req.body;
+
+    if (!code || !clientId || !clientSecret || !redirectUri) {
+      return res.status(400).json({
+        success: false,
+        error: 'code, clientId, clientSecret, and redirectUri are required'
+      });
+    }
+
+    // Exchange code for tokens using user-provided credentials
+    const tokenResponse = await exchangeCodeForTokenWithCredentials(
+      code,
+      clientId,
+      clientSecret,
+      redirectUri
+    );
+
+    if (!tokenResponse.access_token) {
+      return res.status(400).json({
+        success: false,
+        error: 'Failed to exchange code for token',
+        details: 'Mercado Livre did not return an access token'
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        accessToken: tokenResponse.access_token,
+        refreshToken: tokenResponse.refresh_token,
+        expiresIn: tokenResponse.expires_in,
+        tokenType: tokenResponse.token_type || 'Bearer',
+        obtainedAt: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    console.error('Token exchange error:', error.message);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to exchange code for token',
+      details: error.message
+    });
+  }
+});
+
+/**
  * GET /api/auth/ml-app-token
  * 
  * Get access token using Client Credentials Flow (Server-to-Server)
@@ -277,10 +402,17 @@ router.get('/ml-app-token', async (req, res) => {
  * Trade the authorization code for access and refresh tokens.
  * This is called after user authorizes the app on Mercado Livre.
  * 
+ * Can be used in two ways:
+ * 1. With environment variables (default app credentials)
+ * 2. With user-provided credentials (App ID, Secret, Redirect URI)
+ * 
  * Request body:
  * {
- *   code: string,           // Authorization code from ML
- *   state: string          // State parameter to verify integrity
+ *   code: string,            // Authorization code from ML
+ *   state: string,           // State parameter to verify integrity
+ *   clientId?: string,       // Optional: User's App ID
+ *   clientSecret?: string,   // Optional: User's App Secret
+ *   redirectUri?: string     // Optional: User's Redirect URI
  * }
  * 
  * Response:
@@ -299,7 +431,7 @@ router.get('/ml-app-token', async (req, res) => {
  */
 router.post('/ml-callback', async (req, res, next) => {
   try {
-    const { code, state } = req.body;
+    const { code, state, clientId, clientSecret, redirectUri } = req.body;
 
     if (!code) {
       return res.status(400).json({ 
@@ -313,7 +445,18 @@ router.post('/ml-callback', async (req, res, next) => {
     console.log(`Processing ML callback with code: ${code.substring(0, 10)}...`);
 
     // Step 1: Exchange code for tokens
-    const tokenResponse = await exchangeCodeForToken(code);
+    // Use provided credentials if available, otherwise use environment variables
+    let tokenResponse;
+    if (clientId && clientSecret && redirectUri) {
+      tokenResponse = await exchangeCodeForTokenWithCredentials(
+        code,
+        clientId,
+        clientSecret,
+        redirectUri
+      );
+    } else {
+      tokenResponse = await exchangeCodeForToken(code);
+    }
     
     if (!tokenResponse.access_token) {
       return res.status(400).json({ 
@@ -523,7 +666,7 @@ router.post('/ml-logout', async (req, res, next) => {
 // ============================================
 
 /**
- * Exchange authorization code for tokens
+ * Exchange authorization code for tokens using environment variables
  */
 async function exchangeCodeForToken(code) {
   try {
@@ -533,6 +676,31 @@ async function exchangeCodeForToken(code) {
       client_secret: process.env.ML_CLIENT_SECRET,
       code: code,
       redirect_uri: process.env.ML_REDIRECT_URI
+    }, {
+      headers: {
+        'Accept': 'application/json'
+      }
+    });
+
+    return response.data;
+  } catch (error) {
+    console.error('Token exchange failed:', error.response?.data || error.message);
+    throw new Error(`Failed to exchange code for token: ${error.message}`);
+  }
+}
+
+/**
+ * Exchange authorization code for tokens using provided credentials
+ * Used when user provides their own App ID, Secret, and Redirect URI
+ */
+async function exchangeCodeForTokenWithCredentials(code, clientId, clientSecret, redirectUri) {
+  try {
+    const response = await axios.post(ML_TOKEN_URL, {
+      grant_type: 'authorization_code',
+      client_id: clientId,
+      client_secret: clientSecret,
+      code: code,
+      redirect_uri: redirectUri
     }, {
       headers: {
         'Accept': 'application/json'

@@ -8,6 +8,7 @@ import Accounts from './pages/Accounts'
 import Products from './pages/Products'
 import Reports from './pages/Reports'
 import Settings from './pages/Settings'
+import OAuthCallback from './pages/OAuthCallback'
 import Layout from './components/Layout'
 
 function App() {
@@ -20,6 +21,9 @@ function App() {
   return (
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Routes>
+        {/* OAuth Callback - accessible without authentication */}
+        <Route path="/auth/callback" element={<OAuthCallback />} />
+
         {!token ? (
           <>
             <Route path="/login" element={<Login />} />
