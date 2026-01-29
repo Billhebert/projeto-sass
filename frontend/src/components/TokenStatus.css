@@ -1,0 +1,175 @@
+/**
+ * TokenStatus Component Styles
+ */
+
+.token-status {
+  border-left: 4px solid #ccc;
+  padding: 1rem;
+  margin: 1rem 0;
+  border-radius: 4px;
+  background-color: #f9f9f9;
+  font-size: 0.9rem;
+  transition: all 0.3s ease;
+}
+
+.token-status-loading {
+  color: #666;
+  border-left-color: #999;
+}
+
+.token-status-ok {
+  border-left-color: #4CAF50;
+  background-color: #f1f8f4;
+}
+
+.token-status-warning {
+  border-left-color: #FF9800;
+  background-color: #fff8f0;
+}
+
+.token-status-expired {
+  border-left-color: #f44336;
+  background-color: #fef1f0;
+}
+
+/* Header with icon and info */
+.token-status-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.token-status-icon {
+  font-size: 1.5rem;
+  font-weight: bold;
+  min-width: 2rem;
+  text-align: center;
+}
+
+.token-status-info {
+  flex: 1;
+}
+
+.token-status-text {
+  margin: 0;
+  font-weight: 600;
+  color: #333;
+  font-size: 1rem;
+}
+
+/* Health bar */
+.token-health-bar {
+  height: 6px;
+  background-color: #ddd;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 0.5rem;
+  width: 100%;
+}
+
+.token-health-fill {
+  height: 100%;
+  background-color: #4CAF50;
+  transition: width 0.3s ease;
+  border-radius: 3px;
+}
+
+/* Auto-refresh status */
+.token-status-auto-refresh {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.35rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.badge-success {
+  background-color: #d4edda;
+  color: #155724;
+}
+
+.token-status-auto-refresh .text-small {
+  margin: 0.25rem 0 0 0;
+  font-size: 0.85rem;
+}
+
+/* Manual refresh section */
+.token-status-manual {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.token-status-manual .text-small {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.token-refresh-btn {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Alerts */
+.alert {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  border: 1px solid;
+}
+
+.alert-error {
+  background-color: #ffebee;
+  color: #c62828;
+  border-color: #ef5350;
+}
+
+.alert-success {
+  background-color: #e8f5e9;
+  color: #2e7d32;
+  border-color: #66bb6a;
+}
+
+/* Text utilities */
+.text-small {
+  font-size: 0.85rem;
+}
+
+.text-muted {
+  color: #666;
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+  .token-status-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .token-status-icon {
+    min-width: auto;
+  }
+
+  .token-status-manual {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .token-refresh-btn {
+    width: 100%;
+  }
+}

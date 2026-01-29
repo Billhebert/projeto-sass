@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
+import TokenStatus from '../components/TokenStatus'
 import './Pages.css'
 
 function Accounts() {
@@ -232,6 +234,14 @@ function Accounts() {
                     <span className="stat-value">{account.cachedData?.issues || 0}</span>
                   </div>
                 </div>
+
+                {/* Token Status */}
+                <TokenStatus 
+                  accountId={account.id}
+                  canAutoRefresh={account.canAutoRefresh}
+                  tokenExpiresAt={account.tokenExpiresAt}
+                  onRefreshSuccess={() => fetchAccounts()}
+                />
 
                 <div className="account-actions">
                   <button 
