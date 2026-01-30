@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { cacheService } from './cache'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3011/api',
@@ -30,6 +31,58 @@ api.interceptors.response.use(
     return Promise.reject(error)
   }
 )
+
+/**
+ * Helper function to make cached GET requests
+ * @param {string} endpoint - API endpoint
+ * @param {object} config - Axios config (params, headers, etc)
+ * @param {number} cacheTTL - Cache time-to-live in milliseconds (default 5 minutes)
+ */
+export const apiGet = async (endpoint, config = {}, cacheTTL = 5 * 60 * 1000) => {
+  const { params = {} } = config
+  
+  // Check cache for GET requests
+  const cached = cacheService.get(endpoint, params, cacheTTL)
+  if (cached) {
+    return { ...cached, _cached: true }
+  }
+  
+  // If not cached, fetch from API
+  const response = await api.get(endpoint, config)
+  
+  // Cache the response
+  if (response.status === 200) {
+    cacheService.set(endpoint, params, response, cacheTTL)
+  }
+  
+  return response
+}
+
+/**
+ * Helper function for POST/PUT/DELETE (invalidates cache)
+ */
+export const apiPost = async (endpoint, data, config = {}) => {
+  const response = await api.post(endpoint, data, config)
+  // Invalidate related caches
+  cacheService.invalidate(endpoint.split('/')[0])
+  return response
+}
+
+export const apiPut = async (endpoint, data, config = {}) => {
+  const response = await api.put(endpoint, data, config)
+  // Invalidate related caches
+  const basePath = endpoint.split('/').slice(0, 2).join('/')
+  cacheService.invalidate(basePath)
+  return response
+}
+
+export const apiDelete = async (endpoint, config = {}) => {
+  const response = await api.delete(endpoint, config)
+  // Invalidate related caches
+  const basePath = endpoint.split('/').slice(0, 2).join('/')
+  cacheService.invalidate(basePath)
+  return response
+}
 
 // ============================================
 // USERS ENDPOINTS
@@ -299,34 +352,6 @@ export const reportsAPI = {
 // ============================================
 
 /**
- * Generic GET request handler
- */
-export const apiGet = (endpoint, params = {}) => {
-  return api.get(endpoint, { params })
-}
-
-/**
- * Generic POST request handler
- */
-export const apiPost = (endpoint, data = {}) => {
-  return api.post(endpoint, data)
-}
-
-/**
- * Generic PUT request handler
- */
-export const apiPut = (endpoint, data = {}) => {
-  return api.put(endpoint, data)
-}
-
-/**
- * Generic DELETE request handler
- */
-export const apiDelete = (endpoint) => {
-  return api.delete(endpoint)
-}
-
-/**
  * Handle API errors with user-friendly messages
  */
 export const handleAPIError = (error) => {
@@ -360,5 +385,10 @@ export const handleAPIError = (error) => {
 export const formatResponse = (response) => {
   return response.data
 }
+
+/**
+ * Export cache service for cache management
+ */
+export { cacheService } from './cache'
 
 export default api

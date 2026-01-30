@@ -1,5 +1,6 @@
 import { Outlet } from 'react-router-dom'
 import Sidebar from './Sidebar'
+import CacheManager from './CacheManager'
 import { useSidebarStore } from '../store/sidebarStore'
 import './Layout.css'
 
@@ -14,6 +15,7 @@ function Layout() {
           <Outlet />
         </div>
       </main>
+      <CacheManager />
     </div>
   )
 }
