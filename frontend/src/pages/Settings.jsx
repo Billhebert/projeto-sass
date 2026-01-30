@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../store/authStore'
+import { toast } from '../store/toastStore'
 import api from '../services/api'
 import './Pages.css'
 
@@ -8,8 +9,6 @@ function Settings() {
   const [activeTab, setActiveTab] = useState('profile')
   const [loading, setLoading] = useState(false)
   const [loadingProfile, setLoadingProfile] = useState(true)
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
 
   // Profile form state
   const [profileData, setProfileData] = useState({
@@ -98,6 +97,7 @@ function Settings() {
         [key]: typeof prev[key] === 'boolean' ? !prev[key] : prev[key],
       }
       localStorage.setItem('preferences', JSON.stringify(updated))
+      toast.success('Preferência salva')
       return updated
     })
   }
@@ -106,7 +106,6 @@ function Settings() {
     e.preventDefault()
     try {
       setLoading(true)
-      setError('')
       
       const response = await api.put('/user/profile', {
         firstName: profileData.firstName,
@@ -120,11 +119,10 @@ function Settings() {
         if (updateUser) {
           updateUser(response.data.data.user)
         }
-        setSuccess('Perfil atualizado com sucesso!')
-        setTimeout(() => setSuccess(''), 3000)
+        toast.success('Perfil atualizado com sucesso!')
       }
     } catch (err) {
-      setError(err.response?.data?.message || 'Erro ao atualizar perfil')
+      toast.error(err.response?.data?.message || 'Erro ao atualizar perfil')
     } finally {
       setLoading(false)
     }
@@ -134,18 +132,17 @@ function Settings() {
     e.preventDefault()
     
     if (passwordData.newPassword !== passwordData.confirmPassword) {
-      setError('As senhas não conferem')
+      toast.error('As senhas não conferem')
       return
     }
 
     if (passwordData.newPassword.length < 8) {
-      setError('A nova senha deve ter no mínimo 8 caracteres')
+      toast.error('A nova senha deve ter no mínimo 8 caracteres')
       return
     }
 
     try {
       setLoading(true)
-      setError('')
 
       const response = await api.post('/user/change-password', {
         currentPassword: passwordData.currentPassword,
@@ -158,11 +155,10 @@ function Settings() {
           newPassword: '',
           confirmPassword: '',
         })
-        setSuccess('Senha alterada com sucesso!')
-        setTimeout(() => setSuccess(''), 3000)
+        toast.success('Senha alterada com sucesso!')
       }
     } catch (err) {
-      setError(err.response?.data?.message || 'Erro ao alterar senha')
+      toast.error(err.response?.data?.message || 'Erro ao alterar senha')
     } finally {
       setLoading(false)
     }
@@ -180,9 +176,6 @@ function Settings() {
         <h1>Configurações</h1>
         <p>Gerencie sua conta e preferências</p>
       </div>
-
-      {error && <div className="alert alert-error">{error}</div>}
-      {success && <div className="alert alert-success">{success}</div>}
 
       <div className="settings-container">
         {/* Sidebar Navigation */}

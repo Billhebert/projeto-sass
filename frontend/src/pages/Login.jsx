@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
+import { toast } from '../store/toastStore'
 import './Auth.css'
 
 function Login() {
@@ -10,7 +11,6 @@ function Login() {
     email: '',
     password: '',
   })
-  const [formError, setFormError] = useState('')
 
   const handleChange = (e) => {
     setFormData({
@@ -21,18 +21,18 @@ function Login() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    setFormError('')
 
     if (!formData.email || !formData.password) {
-      setFormError('Email and password are required')
+      toast.error('Email e senha são obrigatórios')
       return
     }
 
     const success = await login(formData.email, formData.password)
     if (success) {
+      toast.success('Login realizado com sucesso!')
       navigate('/')
     } else {
-      setFormError('Invalid email or password')
+      toast.error('Email ou senha inválidos')
     }
   }
 
@@ -46,12 +46,6 @@ function Login() {
 
         <form onSubmit={handleSubmit} className="auth-form">
           <h2>Login</h2>
-
-          {(error || formError) && (
-            <div className="alert alert-error">
-              {error || formError}
-            </div>
-          )}
 
           <div className="form-group">
             <label className="form-label">Email</label>

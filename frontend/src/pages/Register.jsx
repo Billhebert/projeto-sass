@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
+import { toast } from '../store/toastStore'
 import './Auth.css'
 
 function Register() {
   const navigate = useNavigate()
-  const { register, loading, error } = useAuthStore()
+  const { register, loading } = useAuthStore()
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -13,7 +14,6 @@ function Register() {
     password: '',
     confirmPassword: '',
   })
-  const [formError, setFormError] = useState('')
 
   const handleChange = (e) => {
     setFormData({
@@ -24,20 +24,19 @@ function Register() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    setFormError('')
 
     if (!formData.firstName || !formData.lastName || !formData.email || !formData.password) {
-      setFormError('Todos os campos são obrigatórios')
+      toast.error('Todos os campos são obrigatórios')
       return
     }
 
     if (formData.password !== formData.confirmPassword) {
-      setFormError('As senhas não conferem')
+      toast.error('As senhas não conferem')
       return
     }
 
     if (formData.password.length < 8) {
-      setFormError('A senha deve ter no mínimo 8 caracteres')
+      toast.error('A senha deve ter no mínimo 8 caracteres')
       return
     }
 
@@ -49,7 +48,10 @@ function Register() {
     })
 
     if (success) {
+      toast.success('Conta criada com sucesso!')
       navigate('/')
+    } else {
+      toast.error('Erro ao criar conta. Verifique os dados e tente novamente.')
     }
   }
 
@@ -63,12 +65,6 @@ function Register() {
 
         <form onSubmit={handleSubmit} className="auth-form">
           <h2>Criar Conta</h2>
-
-          {(error || formError) && (
-            <div className="alert alert-error">
-              {error || formError}
-            </div>
-          )}
 
           <div className="form-group">
             <label className="form-label">Primeiro Nome</label>

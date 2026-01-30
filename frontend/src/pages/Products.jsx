@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
+import { toast } from '../store/toastStore';
 import './Products.css';
 
 export default function Products() {
@@ -11,7 +12,6 @@ export default function Products() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [error, setError] = useState(null);
   const [account, setAccount] = useState(null);
   const [filterStatus, setFilterStatus] = useState('active');
   const [searchTerm, setSearchTerm] = useState('');
@@ -28,7 +28,6 @@ export default function Products() {
     if (!accountId) return;
 
     setLoading(true);
-    setError(null);
 
     try {
       const query = new URLSearchParams({
@@ -54,7 +53,7 @@ export default function Products() {
         }));
       }
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to fetch products');
+      toast.error(err.response?.data?.message || 'Failed to fetch products');
       console.error('Error fetching products:', err);
     } finally {
       setLoading(false);
@@ -79,7 +78,6 @@ export default function Products() {
     if (!accountId) return;
 
     setSyncing(true);
-    setError(null);
 
     try {
       const response = await api.post(`/products/${accountId}/sync`);
@@ -87,10 +85,10 @@ export default function Products() {
       if (response.data.success) {
         setProducts(response.data.data.products);
         fetchStats();
-        alert('Products synced successfully!');
+        toast.success('Products synced successfully!');
       }
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to sync products');
+      toast.error(err.response?.data?.message || 'Failed to sync products');
       console.error('Error syncing products:', err);
     } finally {
       setSyncing(false);
@@ -107,9 +105,9 @@ export default function Products() {
     try {
       await api.delete(`/products/${accountId}/${productId}`);
       setProducts(products.filter(p => p.id !== productId));
-      alert('Product removed successfully');
+      toast.success('Product removed successfully');
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to remove product');
+      toast.error(err.response?.data?.message || 'Failed to remove product');
     }
   };
 
@@ -136,8 +134,6 @@ export default function Products() {
           {syncing ? '⏳ Syncing...' : '🔄 Sync Products'}
         </button>
       </div>
-
-      {error && <div className="alert alert-error">{error}</div>}
 
       {/* Statistics Cards */}
       {stats && (

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
+import { toast } from '../store/toastStore'
 import TokenStatus from '../components/TokenStatus'
 import './Pages.css'
 
@@ -8,8 +9,6 @@ function Accounts() {
   const navigate = useNavigate()
   const [accounts, setAccounts] = useState([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [showMLLoginModal, setShowMLLoginModal] = useState(false)
   const [showOAuthModal, setShowOAuthModal] = useState(false)
@@ -40,9 +39,8 @@ function Accounts() {
       // Handle the API response structure: { success, data: { accounts: [], total } }
       const accountsList = response.data.data?.accounts || response.data.data || response.data || []
       setAccounts(Array.isArray(accountsList) ? accountsList : [])
-      setError('')
     } catch (err) {
-      setError('Erro ao carregar contas')
+      toast.error('Erro ao carregar contas')
       setAccounts([])
       console.error(err)
     } finally {
@@ -66,8 +64,6 @@ function Accounts() {
       })
     }
     setShowModal(true)
-    setError('')
-    setSuccess('')
   }
 
   const closeModal = () => {
@@ -92,20 +88,19 @@ function Accounts() {
     e.preventDefault()
     
     if (!formData.accessToken) {
-      setError('Token de acesso é obrigatório')
+      toast.error('Token de acesso é obrigatório')
       return
     }
 
     try {
       setSubmitting(true)
-      setError('')
 
       if (editingId) {
         // Update existing account (nome apenas)
         await api.put(`/ml-accounts/${editingId}`, {
           accountName: formData.accountName,
         })
-        setSuccess('Conta atualizada com sucesso!')
+        toast.success('Conta atualizada com sucesso!')
        } else {
          // Create new account com access token (e opcionalmente refresh token)
          await api.post('/ml-accounts', {
@@ -113,13 +108,13 @@ function Accounts() {
            refreshToken: formData.refreshToken || null,
            accountName: formData.accountName || '',
          })
-         setSuccess('Conta criada com sucesso!')
+         toast.success('Conta criada com sucesso!')
        }
 
       await fetchAccounts()
       closeModal()
     } catch (err) {
-      setError(err.response?.data?.message || 'Erro ao salvar conta')
+      toast.error(err.response?.data?.message || 'Erro ao salvar conta')
       console.error(err)
     } finally {
       setSubmitting(false)
@@ -133,17 +128,12 @@ function Accounts() {
 
      try {
        setDeletingId(accountId)
-       setError('')
-       const response = await api.delete(`/ml-accounts/${accountId}`)
-       setSuccess('Conta deletada com sucesso!')
-       // Clear any state and refresh
-       setTimeout(() => {
-         setSuccess('')
-         fetchAccounts()
-       }, 1500)
+       await api.delete(`/ml-accounts/${accountId}`)
+       toast.success('Conta deletada com sucesso!')
+       fetchAccounts()
      } catch (err) {
        const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message || 'Erro ao deletar conta'
-       setError(errorMsg)
+       toast.error(errorMsg)
        console.error('Delete error:', {
          status: err.response?.status,
          data: err.response?.data,
@@ -157,7 +147,6 @@ function Accounts() {
   const handleMLLogin = () => {
     // Open OAuth configuration modal instead of redirecting immediately
     setShowOAuthModal(true)
-    setError('')
     setOAuthFormData({
       appId: '',
       appSecret: '',
@@ -177,13 +166,12 @@ function Accounts() {
     e.preventDefault()
     
     if (!oauthFormData.appId || !oauthFormData.appSecret || !oauthFormData.redirectUrl) {
-      setError('App ID, App Secret e Redirect URL são obrigatórios')
+      toast.error('App ID, App Secret e Redirect URL são obrigatórios')
       return
     }
 
     try {
       setOAuthLoading(true)
-      setError('')
       
       // Call backend to generate OAuth URL with credentials
       const response = await api.post('/auth/ml-oauth-url', {
@@ -204,7 +192,7 @@ function Accounts() {
       // Redirect to Mercado Livre OAuth
       window.location.href = authUrl
     } catch (err) {
-      setError(err.response?.data?.message || 'Erro ao gerar link de autenticação')
+      toast.error(err.response?.data?.message || 'Erro ao gerar link de autenticação')
       console.error(err)
     } finally {
       setOAuthLoading(false)
@@ -226,9 +214,6 @@ function Accounts() {
         <h1>Contas Mercado Livre</h1>
         <p>Gerencie suas contas conectadas</p>
       </div>
-
-      {error && <div className="alert alert-error">{error}</div>}
-      {success && <div className="alert alert-success">{success}</div>}
 
       <div className="card">
         <div className="card-header">
@@ -489,12 +474,6 @@ function Accounts() {
                   Use HTTPS em produção.
                 </small>
               </div>
-
-              {error && (
-                <div className="alert alert-error" style={{ marginTop: '1rem' }}>
-                  {error}
-                </div>
-              )}
 
               <div className="modal-actions" style={{ marginTop: '2rem' }}>
                 <button 

@@ -10,6 +10,7 @@ import Reports from './pages/Reports'
 import Settings from './pages/Settings'
 import OAuthCallback from './pages/OAuthCallback'
 import Layout from './components/Layout'
+import Toast from './components/Toast'
 
 function App() {
   const { token, loadToken } = useAuthStore()
@@ -20,6 +21,7 @@ function App() {
 
   return (
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <Toast />
       <Routes>
         {/* OAuth Callback - accessible without authentication */}
         <Route path="/auth/callback" element={<OAuthCallback />} />
