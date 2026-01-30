@@ -16,6 +16,8 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import api from '../services/api'
+import { toast } from '../store/toastStore'
+import { exportToCSV, exportToPDF, prepareProductsForExport, prepareStatsForExport } from '../utils/export'
 import './Pages.css'
 
 function Reports() {
@@ -137,6 +139,48 @@ function Reports() {
       }))
   }
 
+  // Export handlers
+  const handleExportCSV = () => {
+    if (products.length === 0) {
+      toast.warning('Nenhum produto para exportar')
+      return
+    }
+    const data = prepareProductsForExport(products)
+    const accountName = accounts.find(a => a.id === selectedAccountId)?.nickname || 'conta'
+    exportToCSV(data, `produtos_${accountName}_${new Date().toISOString().split('T')[0]}`)
+    toast.success('Arquivo CSV exportado com sucesso!')
+  }
+
+  const handleExportPDF = () => {
+    if (products.length === 0) {
+      toast.warning('Nenhum produto para exportar')
+      return
+    }
+
+    const columns = [
+      { key: 'title', label: 'Produto' },
+      { key: 'price', label: 'Preço', format: 'currency' },
+      { key: 'quantity', label: 'Estoque', format: 'number' },
+      { key: 'salesCount', label: 'Vendas', format: 'number' },
+      { key: 'status', label: 'Status' },
+    ]
+
+    const accountName = accounts.find(a => a.id === selectedAccountId)?.nickname || 'Conta'
+    exportToPDF(`Relatório de Produtos - ${accountName}`, products, columns)
+    toast.info('PDF aberto em nova aba. Use Ctrl+P para salvar.')
+  }
+
+  const handleExportStats = () => {
+    if (!productStats) {
+      toast.warning('Nenhuma estatística para exportar')
+      return
+    }
+    const accountName = accounts.find(a => a.id === selectedAccountId)?.nickname || 'conta'
+    const stats = prepareStatsForExport(productStats, accountName)
+    exportToCSV([stats], `estatisticas_${accountName}_${new Date().toISOString().split('T')[0]}`)
+    toast.success('Estatísticas exportadas com sucesso!')
+  }
+
   if (loading) {
     return (
       <div className="page">
@@ -185,8 +229,35 @@ function Reports() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Relatorios e Analises</h1>
-        <p>Visualize o desempenho de suas vendas</p>
+        <div>
+          <h1>Relatorios e Analises</h1>
+          <p>Visualize o desempenho de suas vendas</p>
+        </div>
+        {products.length > 0 && (
+          <div className="export-buttons" style={{ display: 'flex', gap: '0.5rem' }}>
+            <button 
+              className="btn btn-secondary btn-sm"
+              onClick={handleExportStats}
+              title="Exportar estatísticas"
+            >
+              📊 Exportar Stats
+            </button>
+            <button 
+              className="btn btn-secondary btn-sm"
+              onClick={handleExportCSV}
+              title="Exportar para CSV"
+            >
+              📄 CSV
+            </button>
+            <button 
+              className="btn btn-secondary btn-sm"
+              onClick={handleExportPDF}
+              title="Exportar para PDF"
+            >
+              📑 PDF
+            </button>
+          </div>
+        )}
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}

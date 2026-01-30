@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { toast } from '../store/toastStore';
+import { exportToCSV, exportToPDF, prepareProductsForExport } from '../utils/export';
 import './Products.css';
 
 export default function Products() {
@@ -119,6 +120,37 @@ export default function Products() {
   const totalPages = Math.ceil((pagination.total || 0) / pagination.limit);
   const currentPage = pagination.offset / pagination.limit + 1;
 
+  // Export handlers
+  const handleExportCSV = () => {
+    if (products.length === 0) {
+      toast.warning('No products to export');
+      return;
+    }
+    const data = prepareProductsForExport(products);
+    const accountName = account?.nickname || 'account';
+    exportToCSV(data, `products_${accountName}_${new Date().toISOString().split('T')[0]}`);
+    toast.success('CSV file exported successfully!');
+  };
+
+  const handleExportPDF = () => {
+    if (products.length === 0) {
+      toast.warning('No products to export');
+      return;
+    }
+
+    const columns = [
+      { key: 'title', label: 'Product' },
+      { key: 'price', label: 'Price', format: 'currency' },
+      { key: 'quantity', label: 'Stock', format: 'number' },
+      { key: 'salesCount', label: 'Sales', format: 'number' },
+      { key: 'status', label: 'Status' },
+    ];
+
+    const accountName = account?.nickname || 'Account';
+    exportToPDF(`Products Report - ${accountName}`, products, columns);
+    toast.info('PDF opened in new tab. Use Ctrl+P to save.');
+  };
+
   return (
     <div className="products-container">
       <div className="products-header">
@@ -126,13 +158,33 @@ export default function Products() {
           <h1>🏪 Products</h1>
           {account && <p className="account-name">{account.nickname}</p>}
         </div>
-        <button
-          className={`btn btn-primary ${syncing ? 'loading' : ''}`}
-          onClick={handleSyncProducts}
-          disabled={syncing}
-        >
-          {syncing ? '⏳ Syncing...' : '🔄 Sync Products'}
-        </button>
+        <div className="header-actions" style={{ display: 'flex', gap: '0.5rem' }}>
+          {products.length > 0 && (
+            <>
+              <button
+                className="btn btn-secondary"
+                onClick={handleExportCSV}
+                title="Export to CSV"
+              >
+                📄 CSV
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={handleExportPDF}
+                title="Export to PDF"
+              >
+                📑 PDF
+              </button>
+            </>
+          )}
+          <button
+            className={`btn btn-primary ${syncing ? 'loading' : ''}`}
+            onClick={handleSyncProducts}
+            disabled={syncing}
+          >
+            {syncing ? '⏳ Syncing...' : '🔄 Sync Products'}
+          </button>
+        </div>
       </div>
 
       {/* Statistics Cards */}
