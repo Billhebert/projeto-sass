@@ -35,15 +35,15 @@ function QuestionsList() {
     }
   ]
 
-  const fetchQuestions = useCallback(async (offset = 0, filters = {}) => {
-    try {
-      setLoading(true)
-      setError(null)
-      const response = await questionsAPI.listMyQuestions({
-        limit: pagination.limit,
-        offset: offset,
-        ...filters
-      })
+   const fetchQuestions = useCallback(async (offset = 0, filters = {}) => {
+     try {
+       setLoading(true)
+       setError(null)
+       const response = await questionsAPI.listQuestions({
+         limit: pagination.limit,
+         offset: offset,
+         ...filters
+       })
       
       const data = response.data.data || []
       const total = response.data.pagination?.total || 0

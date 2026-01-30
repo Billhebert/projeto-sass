@@ -201,6 +201,9 @@ const questionsAnswersRoutes = require('./routes/questions-answers');
 const feedbackReviewsRoutes = require('./routes/feedback-reviews');
 const categoriesAttributesRoutes = require('./routes/categories-attributes');
 
+// Import Mock Data for Frontend Testing
+const { mockListMiddleware } = require('./mock-data');
+
 // Import Swagger/OpenAPI
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpecs = require('./swagger');
@@ -286,13 +289,13 @@ app.use('/api/price-automation', priceAutomationRoutes);
 
 // Core API Endpoints (Generated from ML API Documentation)
 app.use('/api/users', usersRoutes);  // GET /users/{id}, GET /users/me, GET /users/{id}/addresses, POST /users/{id}/addresses
-app.use('/api/items-publications', itemsPublicationsRoutes);  // POST /items, GET /items/{id}, PUT /items/{id}, DELETE /items/{id}, GET /items/{id}/description, POST /items/{id}/description
+app.use('/api/items-publications', mockListMiddleware, itemsPublicationsRoutes);  // POST /items, GET /items/{id}, PUT /items/{id}, DELETE /items/{id}, GET /items/{id}/description, POST /items/{id}/description
 app.use('/api/search', searchBrowseRoutes);  // GET /sites/{site_id}/search, GET /categories/{id}, GET /sites/{site_id}/categories
-app.use('/api/orders-sales', ordersSalesRoutes);  // Orders and packs endpoints
-app.use('/api/shipping-ml', shippingRoutes);  // GET /shipments/{id}, PUT /shipments/{id}, POST /shipments
-app.use('/api/questions-answers', questionsAnswersRoutes);  // GET /items/{id}/questions, POST /questions, PUT /questions/{id}
-app.use('/api/feedback-reviews', feedbackReviewsRoutes);  // GET /items/{id}/reviews, POST /feedback, GET /users/{id}/reviews
-app.use('/api/categories-attributes', categoriesAttributesRoutes);  // GET /categories/{id}/attributes, GET /domains/{id}, GET /sites/{id}/listing_types
+app.use('/api/orders-sales', mockListMiddleware, ordersSalesRoutes);  // Orders and packs endpoints
+app.use('/api/shipping-ml', mockListMiddleware, shippingRoutes);  // GET /shipments/{id}, PUT /shipments/{id}, POST /shipments
+app.use('/api/questions-answers', mockListMiddleware, questionsAnswersRoutes);  // GET /items/{id}/questions, POST /questions, PUT /questions/{id}
+app.use('/api/feedback-reviews', mockListMiddleware, feedbackReviewsRoutes);  // GET /items/{id}/reviews, POST /feedback, GET /users/{id}/reviews
+app.use('/api/categories-attributes', mockListMiddleware, categoriesAttributesRoutes);  // GET /categories/{id}/attributes, GET /domains/{id}, GET /sites/{id}/listing_types
 
 // ============================================
 // HEALTH CHECK & METRICS ROUTES

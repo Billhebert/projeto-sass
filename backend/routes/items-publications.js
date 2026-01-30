@@ -31,6 +31,106 @@ const validateItemId = (id) => {
 };
 
 /**
+ * GET /
+ * Listar itens/publicações (with pagination)
+ * Query params: limit, offset
+ */
+router.get('/', async (req, res) => {
+  try {
+    const { limit = 20, offset = 0 } = req.query;
+    const limitNum = Math.min(parseInt(limit) || 20, 100);
+    const offsetNum = Math.max(parseInt(offset) || 0, 0);
+
+    // Mock data for testing
+    const mockItems = [
+      {
+        id: 'MLB1',
+        title: 'Produto Premium 1',
+        category_id: 'MLB1000',
+        price: 299.99,
+        stock: 15,
+        condition: 'new',
+        currency_id: 'BRL',
+        description: 'Descrição do produto 1',
+        status: 'active',
+        created_at: new Date(Date.now() - 7*24*60*60*1000)
+      },
+      {
+        id: 'MLB2',
+        title: 'Eletrônico Popular',
+        category_id: 'MLB2000',
+        price: 149.99,
+        stock: 8,
+        condition: 'new',
+        currency_id: 'BRL',
+        description: 'Descrição do produto 2',
+        status: 'active',
+        created_at: new Date(Date.now() - 5*24*60*60*1000)
+      },
+      {
+        id: 'MLB3',
+        title: 'Acessório Importado',
+        category_id: 'MLB3000',
+        price: 89.99,
+        stock: 25,
+        condition: 'new',
+        currency_id: 'BRL',
+        description: 'Descrição do produto 3',
+        status: 'active',
+        created_at: new Date(Date.now() - 3*24*60*60*1000)
+      },
+      {
+        id: 'MLB4',
+        title: 'Produto Reembalado',
+        category_id: 'MLB1000',
+        price: 199.99,
+        stock: 3,
+        condition: 'used',
+        currency_id: 'BRL',
+        description: 'Descrição do produto 4',
+        status: 'active',
+        created_at: new Date(Date.now() - 2*24*60*60*1000)
+      },
+      {
+        id: 'MLB5',
+        title: 'Produto em Destaque',
+        category_id: 'MLB2000',
+        price: 499.99,
+        stock: 1,
+        condition: 'new',
+        currency_id: 'BRL',
+        description: 'Descrição do produto 5',
+        status: 'active',
+        created_at: new Date(Date.now() - 1*24*60*60*1000)
+      }
+    ];
+
+    const total = mockItems.length;
+    const items = mockItems.slice(offsetNum, offsetNum + limitNum);
+
+    logger.info(`ITEMS_PUBLICATIONS - list_items: Retrieved ${items.length} items (total: ${total})`);
+
+    res.json({
+      success: true,
+      data: items,
+      pagination: {
+        limit: limitNum,
+        offset: offsetNum,
+        total: total,
+        has_more: offsetNum + limitNum < total
+      }
+    });
+  } catch (error) {
+    logger.error(`ITEMS_PUBLICATIONS - list_items: ${error.message}`);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to list items',
+      details: [error.message]
+    });
+  }
+});
+
+/**
  * POST /
  * Criar novo item/publicação
  * Required: title, category_id, price

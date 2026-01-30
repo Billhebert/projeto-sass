@@ -21,20 +21,24 @@ function CategoriesList() {
   const [attributes, setAttributes] = useState([])
   const [toast, setToast] = useState(null)
 
-  const fetchCategories = useCallback(async (offset = 0) => {
-    try {
-      setLoading(true)
-      setError(null)
-      const response = await categoriesAPI.getListingTypes('MLB')
-      
-      const data = response.data.data || response.data.listing_types || []
-      
-      setCategories(Array.isArray(data) ? data : [])
-      setPagination(prev => ({
-        ...prev,
-        offset: 0,
-        total: Array.isArray(data) ? data.length : 0
-      }))
+   const fetchCategories = useCallback(async (offset = 0) => {
+     try {
+       setLoading(true)
+       setError(null)
+       const response = await categoriesAPI.listCategories({
+         limit: pagination.limit,
+         offset: offset
+       })
+       
+       const data = response.data.data || response.data.listing_types || []
+       const total = response.data.pagination?.total || data.length
+       
+       setCategories(Array.isArray(data) ? data : [])
+       setPagination(prev => ({
+         ...prev,
+         offset: offset,
+         total: total
+       }))
     } catch (err) {
       const apiError = handleAPIError(err)
       setError(apiError.message)

@@ -71,7 +71,8 @@ export const searchAPI = {
 // ORDERS & SALES ENDPOINTS
 // ============================================
 export const ordersAPI = {
-  searchOrders: (params) => api.get('/orders-sales/orders/search', { params }),
+  searchOrders: (params) => api.get('/orders-sales', { params }),
+  listOrders: (params) => api.get('/orders-sales', { params }),
   getOrder: (orderId) => api.get(`/orders-sales/orders/${orderId}`),
   updateOrder: (orderId, data) => api.put(`/orders-sales/orders/${orderId}`, data),
   getPack: (packId) => api.get(`/orders-sales/packs/${packId}`),
@@ -83,18 +84,19 @@ export const ordersAPI = {
 // SHIPPING ENDPOINTS
 // ============================================
 export const shippingAPI = {
-  getShipment: (shipmentId) => api.get(`/shipping/${shipmentId}`),
-  updateShipment: (shipmentId, data) => api.put(`/shipping/${shipmentId}`, data),
-  createShipment: (data) => api.post('/shipping', data),
-  generateLabel: (shipmentId) => api.get(`/shipping/${shipmentId}/label`),
-  listShipments: (params) => api.get('/shipping/list', { params }),
-  getShippingOptions: (params) => api.get('/shipping/options', { params }),
+  listShipments: (params) => api.get('/shipping-ml', { params }),
+  getShipment: (shipmentId) => api.get(`/shipping-ml/${shipmentId}`),
+  updateShipment: (shipmentId, data) => api.put(`/shipping-ml/${shipmentId}`, data),
+  createShipment: (data) => api.post('/shipping-ml', data),
+  generateLabel: (shipmentId) => api.get(`/shipping-ml/${shipmentId}/label`),
+  getShippingOptions: (params) => api.get('/shipping-ml/options', { params }),
 }
 
 // ============================================
 // QUESTIONS & ANSWERS ENDPOINTS
 // ============================================
 export const questionsAPI = {
+  listQuestions: (params) => api.get('/questions-answers', { params }),
   getItemQuestions: (itemId, params) => api.get(`/questions-answers/items/${itemId}/questions`, { params }),
   createQuestion: (data) => api.post('/questions-answers/questions', data),
   answerQuestion: (questionId, data) => api.put(`/questions-answers/questions/${questionId}`, data),
@@ -106,6 +108,7 @@ export const questionsAPI = {
 // FEEDBACK & REVIEWS ENDPOINTS
 // ============================================
 export const feedbackAPI = {
+  listFeedback: (params) => api.get('/feedback-reviews', { params }),
   getItemReviews: (itemId, params) => api.get(`/feedback-reviews/items/${itemId}/reviews`, { params }),
   createFeedback: (data) => api.post('/feedback-reviews/feedback', data),
   getUserReviews: (userId) => api.get(`/feedback-reviews/users/${userId}/reviews`),
@@ -117,6 +120,7 @@ export const feedbackAPI = {
 // CATEGORIES & ATTRIBUTES ENDPOINTS
 // ============================================
 export const categoriesAPI = {
+  listCategories: (params) => api.get('/categories-attributes', { params }),
   getCategoryAttributes: (categoryId) => api.get(`/categories-attributes/${categoryId}/attributes`),
   getDomain: (domainId) => api.get(`/categories-attributes/domains/${domainId}`),
   getListingTypes: (siteId) => api.get(`/categories-attributes/sites/${siteId}/listing_types`),
