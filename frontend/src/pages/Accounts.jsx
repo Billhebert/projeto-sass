@@ -126,24 +126,33 @@ function Accounts() {
     }
   }
 
-  const handleDelete = async (accountId) => {
-    if (!window.confirm('Tem certeza que deseja deletar esta conta? Esta ação é irreversível.')) {
-      return
-    }
+   const handleDelete = async (accountId) => {
+     if (!window.confirm('Tem certeza que deseja deletar esta conta? Esta ação é irreversível.')) {
+       return
+     }
 
-    try {
-      setDeletingId(accountId)
-      setError('')
-      await api.delete(`/ml-accounts/${accountId}`)
-      setSuccess('Conta deletada com sucesso!')
-      await fetchAccounts()
-    } catch (err) {
-      setError(err.response?.data?.error || 'Erro ao deletar conta')
-      console.error(err)
-    } finally {
-      setDeletingId(null)
-    }
-  }
+     try {
+       setDeletingId(accountId)
+       setError('')
+       const response = await api.delete(`/ml-accounts/${accountId}`)
+       setSuccess('Conta deletada com sucesso!')
+       // Clear any state and refresh
+       setTimeout(() => {
+         setSuccess('')
+         fetchAccounts()
+       }, 1500)
+     } catch (err) {
+       const errorMsg = err.response?.data?.message || err.response?.data?.error || err.message || 'Erro ao deletar conta'
+       setError(errorMsg)
+       console.error('Delete error:', {
+         status: err.response?.status,
+         data: err.response?.data,
+         message: err.message
+       })
+     } finally {
+       setDeletingId(null)
+     }
+   }
 
   const handleMLLogin = () => {
     // Open OAuth configuration modal instead of redirecting immediately

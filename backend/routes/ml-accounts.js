@@ -311,56 +311,107 @@ router.put('/:accountId', authenticateToken, async (req, res) => {
  */
 router.delete('/:accountId', authenticateToken, async (req, res) => {
   try {
+    const accountId = req.params.accountId;
+    const userId = req.user.userId;
+
+    logger.info({
+      action: 'DELETE_ML_ACCOUNT_START',
+      accountId,
+      userId,
+    });
+
+    // Find account
     const account = await MLAccount.findOne({
-      id: req.params.accountId,
-      userId: req.user.userId,
+      id: accountId,
+      userId: userId,
     });
 
     if (!account) {
+      logger.warn({
+        action: 'DELETE_ML_ACCOUNT_NOT_FOUND',
+        accountId,
+        userId,
+      });
+
       return res.status(404).json({
         success: false,
         message: 'Account not found',
       });
     }
 
+    logger.info({
+      action: 'DELETE_ML_ACCOUNT_FOUND',
+      accountId,
+      userId,
+      mlUserId: account.mlUserId,
+      nickname: account.nickname,
+    });
+
     // Se era primária, tornar outra como primária
     if (account.isPrimary) {
       const nextAccount = await MLAccount.findOne({
-        userId: req.user.userId,
-        id: { $ne: req.params.accountId },
+        userId: userId,
+        id: { $ne: accountId },
       }).sort({ createdAt: 1 });
 
       if (nextAccount) {
         nextAccount.isPrimary = true;
         await nextAccount.save();
+        logger.info({
+          action: 'DELETE_ML_ACCOUNT_PRIMARY_REASSIGNED',
+          fromAccount: accountId,
+          toAccount: nextAccount.id,
+        });
       }
     }
 
-    await MLAccount.deleteOne({ id: req.params.accountId });
+    // Delete account
+    const deleteResult = await MLAccount.deleteOne({ 
+      id: accountId,
+      userId: userId 
+    });
 
-    // Atualizar contador
+    if (deleteResult.deletedCount === 0) {
+      logger.warn({
+        action: 'DELETE_ML_ACCOUNT_DELETE_FAILED',
+        accountId,
+        userId,
+      });
+
+      return res.status(400).json({
+        success: false,
+        message: 'Failed to delete account',
+      });
+    }
+
+    // Update user account count
     await User.updateOne(
-      { _id: req.user.userId },
+      { _id: userId },
       { $inc: { 'metadata.totalAccounts': -1 } }
     );
 
     logger.info({
-      action: 'ML_ACCOUNT_REMOVED',
-      userId: req.user.userId,
-      accountId: account.id,
-      timestamp: new Date().toISOString(),
+      action: 'DELETE_ML_ACCOUNT_SUCCESS',
+      accountId,
+      userId,
+      mlUserId: account.mlUserId,
     });
 
     res.json({
       success: true,
       message: 'Account removed successfully',
+      data: {
+        accountId,
+        mlUserId: account.mlUserId,
+      },
     });
   } catch (error) {
     logger.error({
-      action: 'REMOVE_ML_ACCOUNT_ERROR',
+      action: 'DELETE_ML_ACCOUNT_ERROR',
       accountId: req.params.accountId,
       userId: req.user.userId,
       error: error.message,
+      stack: error.stack,
     });
 
     res.status(500).json({
@@ -641,101 +692,6 @@ router.put('/:accountId/resume', authenticateToken, async (req, res) => {
 });
 
 /**
- * PUT /api/ml-accounts/:accountId/refresh-token
- * Refresh account token manually
- */
-router.put('/:accountId/refresh-token', authenticateToken, async (req, res) => {
-  try {
-    const account = await MLAccount.findOne({
-      id: req.params.accountId,
-      userId: req.user.userId,
-    });
-
-    if (!account) {
-      return res.status(404).json({
-        success: false,
-        message: 'Account not found',
-      });
-    }
-
-    if (!account.refreshToken) {
-      return res.status(400).json({
-        success: false,
-        message: 'Cannot refresh token: refresh token not available',
-        code: 'NO_REFRESH_TOKEN',
-      });
-    }
-
-    // Attempt token refresh
-    const refreshResult = await MLTokenManager.refreshToken(
-      account.refreshToken,
-      process.env.ML_CLIENT_ID,
-      process.env.ML_CLIENT_SECRET
-    );
-
-    if (!refreshResult.success) {
-      logger.error({
-        action: 'ML_ACCOUNT_TOKEN_REFRESH_FAILED',
-        accountId: account.id,
-        userId: req.user.userId,
-        error: refreshResult.error,
-      });
-
-      // Mark account as expired if token refresh failed
-      account.status = 'expired';
-      await account.save();
-
-      return res.status(401).json({
-        success: false,
-        message: 'Failed to refresh token',
-        error: refreshResult.error,
-        code: 'TOKEN_REFRESH_FAILED',
-      });
-    }
-
-    // Update account with new tokens
-    account.accessToken = refreshResult.accessToken;
-    account.refreshToken = refreshResult.refreshToken;
-    account.tokenExpiresAt = refreshResult.tokenExpiresAt;
-    account.lastTokenRefresh = new Date();
-    account.status = 'active';
-    await account.save();
-
-    logger.info({
-      action: 'ML_ACCOUNT_TOKEN_REFRESHED',
-      accountId: account.id,
-      userId: req.user.userId,
-      expiresAt: refreshResult.tokenExpiresAt,
-      timestamp: new Date().toISOString(),
-    });
-
-    res.json({
-      success: true,
-      message: 'Token refreshed successfully',
-      data: {
-        accountId: account.id,
-        status: account.status,
-        tokenExpiresAt: refreshResult.tokenExpiresAt,
-        tokenInfo: MLTokenManager.getTokenInfo(account),
-      },
-    });
-  } catch (error) {
-    logger.error({
-      action: 'REFRESH_TOKEN_ERROR',
-      accountId: req.params.accountId,
-      userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to refresh token',
-      error: error.message,
-    });
-  }
-});
-
-/**
  * GET /api/ml-accounts/:accountId/token-info
  * Get token expiry information and health
  */
@@ -950,6 +906,40 @@ router.put('/:accountId/refresh-token', authenticateToken, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to refresh token',
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * DEBUG ENDPOINT - Get current user info and all their accounts
+ * GET /api/ml-accounts/debug/user-info
+ */
+router.get('/debug/user-info', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    
+    const accounts = await MLAccount.find({ userId });
+    
+    res.json({
+      debug: true,
+      userFromToken: {
+        userId,
+        username: req.user.username,
+      },
+      accountsFound: accounts.length,
+      accounts: accounts.map(acc => ({
+        id: acc.id,
+        mlUserId: acc.mlUserId,
+        nickname: acc.nickname,
+        email: acc.email,
+        status: acc.status,
+        isPrimary: acc.isPrimary,
+      })),
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
       error: error.message,
     });
   }
