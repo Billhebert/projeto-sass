@@ -191,6 +191,16 @@ const salesDashboardRoutes = require('./routes/sales-dashboard');
 const globalSellingRoutes = require('./routes/global-selling');
 const priceAutomationRoutes = require('./routes/price-automation');
 
+// Import automatically generated ML API routes
+const usersRoutes = require('./routes/users');
+const itemsPublicationsRoutes = require('./routes/items-publications');
+const searchBrowseRoutes = require('./routes/search-browse');
+const ordersSalesRoutes = require('./routes/orders-sales');
+const shippingRoutes = require('./routes/shipping');
+const questionsAnswersRoutes = require('./routes/questions-answers');
+const feedbackReviewsRoutes = require('./routes/feedback-reviews');
+const categoriesAttributesRoutes = require('./routes/categories-attributes');
+
 // Import Swagger/OpenAPI
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpecs = require('./swagger');
@@ -268,6 +278,21 @@ app.use('/api/sales-dashboard', salesDashboardRoutes);
 // Premium Features - New Modules
 app.use('/api/global-selling', globalSellingRoutes);
 app.use('/api/price-automation', priceAutomationRoutes);
+
+// ============================================
+// AUTOMATICALLY GENERATED ML API ROUTES
+// Complete API Coverage from Web Scraping
+// ============================================
+
+// Core API Endpoints (Generated from ML API Documentation)
+app.use('/api/users', usersRoutes);  // GET /users/{id}, GET /users/me, GET /users/{id}/addresses, POST /users/{id}/addresses
+app.use('/api/items-publications', itemsPublicationsRoutes);  // POST /items, GET /items/{id}, PUT /items/{id}, DELETE /items/{id}, GET /items/{id}/description, POST /items/{id}/description
+app.use('/api/search', searchBrowseRoutes);  // GET /sites/{site_id}/search, GET /categories/{id}, GET /sites/{site_id}/categories
+app.use('/api/orders-sales', ordersSalesRoutes);  // Orders and packs endpoints
+app.use('/api/shipping-ml', shippingRoutes);  // GET /shipments/{id}, PUT /shipments/{id}, POST /shipments
+app.use('/api/questions-answers', questionsAnswersRoutes);  // GET /items/{id}/questions, POST /questions, PUT /questions/{id}
+app.use('/api/feedback-reviews', feedbackReviewsRoutes);  // GET /items/{id}/reviews, POST /feedback, GET /users/{id}/reviews
+app.use('/api/categories-attributes', categoriesAttributesRoutes);  // GET /categories/{id}/attributes, GET /domains/{id}, GET /sites/{id}/listing_types
 
 // ============================================
 // HEALTH CHECK & METRICS ROUTES
