@@ -57,14 +57,18 @@ export default function OAuthCallback() {
 
       const { accessToken, refreshToken, expiresIn } = tokenResponse.data.data;
 
-      // Step 2: Create account with tokens
-      setMessage('Creating account with tokens...');
-      const accountResponse = await api.post('/ml-accounts', {
-        accessToken,
-        refreshToken,
-        expiresIn,
-        status: 'connected'
-      });
+       // Step 2: Create account with tokens and OAuth credentials
+       setMessage('Creating account with tokens...');
+       const accountResponse = await api.post('/ml-accounts', {
+         accessToken,
+         refreshToken,
+         expiresIn,
+         // Include OAuth credentials for automatic token refresh
+         clientId,
+         clientSecret,
+         redirectUri,
+         status: 'connected'
+       });
 
       if (!accountResponse.data.success) {
         throw new Error(accountResponse.data.error || 'Failed to create account');

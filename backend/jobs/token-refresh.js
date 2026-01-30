@@ -25,11 +25,16 @@ const MLTokenManager = require('../utils/ml-token-manager');
 const ML_OAUTH_URL = 'https://auth.mercadolibre.com';
 
 // Get credentials from environment
+// NOTE: These are only used as fallback. Each account should have its own client credentials.
 const ML_APP_CLIENT_ID = process.env.ML_APP_CLIENT_ID || '1706187223829083';
 const ML_APP_CLIENT_SECRET = process.env.ML_APP_CLIENT_SECRET || 'vjEgzPD85Ehwe6aefX3TGij4xGdRV0jG';
 
 /**
  * Refresh a single account's token
+ * 
+ * Uses the account's OAuth credentials (clientId + clientSecret) to refresh the token
+ * This allows each client to have their own app and refresh tokens independently
+ * 
  * @param {Object} account - MLAccount document
  * @returns {Promise<Object>} Result of refresh attempt
  */
@@ -50,19 +55,43 @@ async function refreshAccountToken(account) {
       };
     }
 
+    // Check if we have client credentials for this account
+    if (!account.clientId || !account.clientSecret) {
+      logger.warn({
+        action: 'TOKEN_REFRESH_SKIP',
+        accountId: account.id,
+        reason: 'No client credentials available (manual token entry without OAuth)',
+        mlUserId: account.mlUserId,
+      });
+      
+      return {
+        success: false,
+        accountId: account.id,
+        reason: 'No client credentials',
+      };
+    }
+
     logger.info({
       action: 'TOKEN_REFRESH_START',
       accountId: account.id,
       mlUserId: account.mlUserId,
       nickname: account.nickname,
+      clientId: account.clientId.substring(0, 8) + '***',
     });
 
     // Call Mercado Libre OAuth endpoint to refresh token
+    // Using the account's own client credentials (not the app's credentials)
     const response = await axios.post(`${ML_OAUTH_URL}/oauth/token`, {
       grant_type: 'refresh_token',
-      client_id: ML_APP_CLIENT_ID,
-      client_secret: ML_APP_CLIENT_SECRET,
+      client_id: account.clientId,
+      client_secret: account.clientSecret,
       refresh_token: account.refreshToken,
+    }, {
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      timeout: 10000, // 10 second timeout
     });
 
     const { access_token, refresh_token, expires_in } = response.data;

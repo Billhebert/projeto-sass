@@ -19,6 +19,7 @@ const router = express.Router();
 
 // Models
 const User = require('../db/models/User');
+const logger = require('../logger');
 
 // ML API Endpoints
 const ML_AUTH_URL = 'https://auth.mercadolibre.com/authorization';
@@ -290,15 +291,33 @@ router.post('/ml-oauth-url', (req, res) => {
  * }
  */
 router.post('/ml-token-exchange', async (req, res) => {
-  try {
-    const { code, clientId, clientSecret, redirectUri } = req.body;
+  const { code, clientId, clientSecret, redirectUri } = req.body;
 
+  try {
+    // Validation
     if (!code || !clientId || !clientSecret || !redirectUri) {
+      logger.warn({
+        action: 'TOKEN_EXCHANGE_INVALID_REQUEST',
+        missingFields: {
+          code: !code,
+          clientId: !clientId,
+          clientSecret: !clientSecret,
+          redirectUri: !redirectUri
+        }
+      });
+
       return res.status(400).json({
         success: false,
         error: 'code, clientId, clientSecret, and redirectUri are required'
       });
     }
+
+    logger.info({
+      action: 'TOKEN_EXCHANGE_START',
+      clientId: clientId.substring(0, 8) + '***', // Log only first 8 chars for security
+      redirectUri: redirectUri,
+      timestamp: new Date().toISOString()
+    });
 
     // Exchange code for tokens using user-provided credentials
     const tokenResponse = await exchangeCodeForTokenWithCredentials(
@@ -309,12 +328,26 @@ router.post('/ml-token-exchange', async (req, res) => {
     );
 
     if (!tokenResponse.access_token) {
+      logger.error({
+        action: 'TOKEN_EXCHANGE_NO_ACCESS_TOKEN',
+        clientId: clientId.substring(0, 8) + '***',
+        responseKeys: Object.keys(tokenResponse)
+      });
+
       return res.status(400).json({
         success: false,
         error: 'Failed to exchange code for token',
         details: 'Mercado Livre did not return an access token'
       });
     }
+
+    logger.info({
+      action: 'TOKEN_EXCHANGE_SUCCESS',
+      clientId: clientId.substring(0, 8) + '***',
+      expiresIn: tokenResponse.expires_in,
+      hasRefreshToken: !!tokenResponse.refresh_token,
+      timestamp: new Date().toISOString()
+    });
 
     return res.json({
       success: true,
@@ -323,15 +356,24 @@ router.post('/ml-token-exchange', async (req, res) => {
         refreshToken: tokenResponse.refresh_token,
         expiresIn: tokenResponse.expires_in,
         tokenType: tokenResponse.token_type || 'Bearer',
+        userId: tokenResponse.user_id,
+        scope: tokenResponse.scope,
         obtainedAt: new Date().toISOString()
       }
     });
   } catch (error) {
-    console.error('Token exchange error:', error.message);
-    return res.status(500).json({
+    logger.error({
+      action: 'TOKEN_EXCHANGE_ERROR',
+      error: error.message,
+      statusCode: error.response?.status,
+      mlErrorData: error.response?.data,
+      timestamp: new Date().toISOString()
+    });
+
+    return res.status(error.response?.status || 500).json({
       success: false,
       error: 'Failed to exchange code for token',
-      details: error.message
+      details: error.response?.data?.error_description || error.message
     });
   }
 });
@@ -693,8 +735,31 @@ async function exchangeCodeForToken(code) {
  * Exchange authorization code for tokens using provided credentials
  * Used when user provides their own App ID, Secret, and Redirect URI
  */
+/**
+ * Exchange authorization code for access and refresh tokens
+ * Using user-provided credentials
+ * 
+ * Flow:
+ * 1. Client provides: code, clientId, clientSecret, redirectUri
+ * 2. We send to Mercado Libre OAuth endpoint
+ * 3. Mercado Libre returns: access_token, refresh_token, expires_in, user_id
+ * 4. We return tokens to client
+ * 
+ * @param {string} code - Authorization code from Mercado Livre
+ * @param {string} clientId - User's Mercado Livre App ID
+ * @param {string} clientSecret - User's Mercado Livre App Secret
+ * @param {string} redirectUri - Redirect URI (must match what was used in authUrl)
+ * @returns {Promise<Object>} Token response from Mercado Livre
+ */
 async function exchangeCodeForTokenWithCredentials(code, clientId, clientSecret, redirectUri) {
   try {
+    logger.info({
+      action: 'EXCHANGE_CODE_START',
+      clientId: clientId.substring(0, 8) + '***',
+      redirectUri: redirectUri
+    });
+
+    // Make request to Mercado Livre OAuth endpoint
     const response = await axios.post(ML_TOKEN_URL, {
       grant_type: 'authorization_code',
       client_id: clientId,
@@ -703,37 +768,91 @@ async function exchangeCodeForTokenWithCredentials(code, clientId, clientSecret,
       redirect_uri: redirectUri
     }, {
       headers: {
-        'Accept': 'application/json'
-      }
+        'Accept': 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      timeout: 10000 // 10 second timeout
+    });
+
+    logger.info({
+      action: 'EXCHANGE_CODE_SUCCESS',
+      clientId: clientId.substring(0, 8) + '***',
+      userId: response.data.user_id,
+      expiresIn: response.data.expires_in,
+      hasRefreshToken: !!response.data.refresh_token
     });
 
     return response.data;
   } catch (error) {
-    console.error('Token exchange failed:', error.response?.data || error.message);
-    throw new Error(`Failed to exchange code for token: ${error.message}`);
+    logger.error({
+      action: 'EXCHANGE_CODE_ERROR',
+      clientId: clientId.substring(0, 8) + '***',
+      error: error.message,
+      statusCode: error.response?.status,
+      mlError: error.response?.data?.error,
+      mlErrorDescription: error.response?.data?.error_description
+    });
+
+    throw error;
   }
 }
 
 /**
  * Refresh an access token using refresh token
+ * 
+ * Flow:
+ * 1. Client provides: old refresh token
+ * 2. We send to Mercado Libre OAuth endpoint with app credentials
+ * 3. Mercado Libre returns: new access_token, new refresh_token, expires_in
+ * 4. We return new tokens (refresh token is single-use, new one issued)
+ * 
+ * @param {string} refreshToken - Current refresh token
+ * @returns {Promise<Object>} New token response from Mercado Livre
  */
 async function refreshToken(refreshToken) {
   try {
+    const CLIENT_ID = process.env.ML_CLIENT_ID;
+    const CLIENT_SECRET = process.env.ML_CLIENT_SECRET;
+
+    if (!CLIENT_ID || !CLIENT_SECRET) {
+      throw new Error('ML_CLIENT_ID and ML_CLIENT_SECRET environment variables are required');
+    }
+
+    logger.info({
+      action: 'REFRESH_TOKEN_START',
+      clientId: CLIENT_ID.substring(0, 8) + '***'
+    });
+
     const response = await axios.post(ML_TOKEN_URL, {
       grant_type: 'refresh_token',
-      client_id: process.env.ML_CLIENT_ID,
-      client_secret: process.env.ML_CLIENT_SECRET,
+      client_id: CLIENT_ID,
+      client_secret: CLIENT_SECRET,
       refresh_token: refreshToken
     }, {
       headers: {
-        'Accept': 'application/json'
-      }
+        'Accept': 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      timeout: 10000
+    });
+
+    logger.info({
+      action: 'REFRESH_TOKEN_SUCCESS',
+      expiresIn: response.data.expires_in,
+      hasNewRefreshToken: !!response.data.refresh_token
     });
 
     return response.data;
   } catch (error) {
-    console.error('Token refresh failed:', error.response?.data || error.message);
-    throw new Error(`Failed to refresh token: ${error.message}`);
+    logger.error({
+      action: 'REFRESH_TOKEN_ERROR',
+      error: error.message,
+      statusCode: error.response?.status,
+      mlError: error.response?.data?.error,
+      mlErrorDescription: error.response?.data?.error_description
+    });
+
+    throw error;
   }
 }
 

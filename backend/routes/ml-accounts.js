@@ -105,15 +105,15 @@ router.get('/:accountId', authenticateToken, async (req, res) => {
  *    - Usuário forneceu token manualmente
  *    - Sistema não pode renovar (sem refreshToken)
  * 
- * 2. OAuth: { accessToken, refreshToken, expiresIn, accountName? }
+ * 2. OAuth: { accessToken, refreshToken, expiresIn, clientId, clientSecret, redirectUri, accountName? }
  *    - Usuário fez OAuth/login autorizado
- *    - Sistema pode renovar automaticamente com refreshToken
+ *    - Sistema pode renovar automaticamente com refreshToken + clientId + clientSecret
  * 
  * Sistema automaticamente busca info do usuário e salva tudo
  */
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    const { accessToken, refreshToken, expiresIn, accountName, accountType } = req.body;
+    const { accessToken, refreshToken, expiresIn, accountName, accountType, clientId, clientSecret, redirectUri } = req.body;
 
     // Validação
     if (!accessToken) {
@@ -181,6 +181,10 @@ router.post('/', authenticateToken, async (req, res) => {
       accessToken,
       refreshToken: refreshToken || null, // OAuth tem refreshToken, manual não
       tokenExpiresAt: new Date(tokenExpiresAtTime),
+      // OAuth Credentials - needed for automatic token refresh
+      clientId: clientId || null,
+      clientSecret: clientSecret || null,
+      redirectUri: redirectUri || null,
       accountName: accountName || mlUserInfo.nickname,
       accountType: accountType || 'individual',
       isPrimary,
@@ -209,6 +213,7 @@ router.post('/', authenticateToken, async (req, res) => {
       mlUserId: mlUserInfo.id,
       nickname: mlUserInfo.nickname,
       hasRefreshToken: !!refreshToken,
+      hasClientCredentials: !!(clientId && clientSecret),
       timestamp: new Date().toISOString(),
     });
 
@@ -217,7 +222,7 @@ router.post('/', authenticateToken, async (req, res) => {
       message: 'Account added successfully',
       data: {
         ...newAccount.getSummary(),
-        canAutoRefresh: !!refreshToken, // Frontend sabe se pode renovar automaticamente
+        canAutoRefresh: !!(refreshToken && clientId && clientSecret), // Can auto-refresh if has all 3
       },
     });
   } catch (error) {

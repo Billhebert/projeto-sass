@@ -69,6 +69,32 @@ const mlAccountSchema = new mongoose.Schema(
       required: [true, 'Token expiration time is required'],
     },
 
+    // OAuth Client Credentials
+    // These are the client's own Mercado Livre app credentials
+    // Used for automatic token refresh (refresh_token grant)
+    // 
+    // Flow:
+    // 1. Client provides: client_id, client_secret, code, redirect_uri
+    // 2. We exchange code for tokens
+    // 3. We store: client_id, client_secret, access_token, refresh_token
+    // 4. When token expires, we use client_id + client_secret + refresh_token to get new token
+    clientId: {
+      type: String,
+      default: null, // Will be null if user provided token manually without OAuth
+      trim: true,
+      index: true,
+    },
+    clientSecret: {
+      type: String,
+      default: null, // Will be null if user provided token manually without OAuth
+      trim: true,
+    },
+    redirectUri: {
+      type: String,
+      default: null, // Will be null if user provided token manually without OAuth
+      trim: true,
+    },
+
     // Account Status
     status: {
       type: String,
@@ -222,6 +248,7 @@ mlAccountSchema.index({ userId: 1, status: 1 });
 mlAccountSchema.index({ userId: 1, isPrimary: 1 });
 mlAccountSchema.index({ lastSync: -1 });
 mlAccountSchema.index({ nextSync: 1 });
+mlAccountSchema.index({ clientId: 1 }); // For finding accounts with OAuth credentials
 
 // Check if token is expired
 mlAccountSchema.methods.isTokenExpired = function () {
@@ -337,7 +364,12 @@ mlAccountSchema.methods.refreshedTokens = async function (newAccessToken, newRef
 
 // Check if token refresh is needed
 mlAccountSchema.methods.isTokenRefreshNeeded = function () {
-  if (!this.refreshToken) return false; // Can't refresh without refresh token
+  // Can only refresh if we have:
+  // 1. A refresh token
+  // 2. Client credentials (clientId + clientSecret)
+  if (!this.refreshToken || !this.clientId || !this.clientSecret) {
+    return false;
+  }
   return new Date() >= (this.nextTokenRefreshNeeded || this.tokenExpiresAt);
 };
 
@@ -366,6 +398,9 @@ mlAccountSchema.methods.getSummary = function () {
     cachedData: this.cachedData,
     errorCount: this.errorCount,
     createdAt: this.createdAt,
+    // Token refresh info
+    canAutoRefresh: !!(this.refreshToken && this.clientId && this.clientSecret),
+    hasOAuthCredentials: !!(this.clientId && this.clientSecret),
   };
 };
 
