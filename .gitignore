@@ -24,3 +24,6 @@ Thumbs.db
 # Dependencies
 package-lock.json
 yarn.lock
+
+*storybook.log
+storybook-static
