@@ -1,7 +1,7 @@
 /**
  * Token Refresh Job
  * 
- * Runs every hour to refresh tokens that are about to expire
+ * Runs every 5 minutes to refresh tokens that are about to expire
  * 
  * How it works:
  * 1. Find all accounts with refreshToken that need renewal
@@ -23,11 +23,6 @@ const MLAccount = require('../db/models/MLAccount');
 const MLTokenManager = require('../utils/ml-token-manager');
 
 const ML_TOKEN_URL = 'https://api.mercadolibre.com/oauth/token';
-
-// Get credentials from environment
-// NOTE: These are only used as fallback. Each account should have its own client credentials.
-const ML_APP_CLIENT_ID = process.env.ML_APP_CLIENT_ID || '1706187223829083';
-const ML_APP_CLIENT_SECRET = process.env.ML_APP_CLIENT_SECRET || 'vjEgzPD85Ehwe6aefX3TGij4xGdRV0jG';
 
 /**
  * Refresh a single account's token
@@ -103,6 +98,12 @@ async function refreshAccountToken(account) {
 
     // Update account with new tokens
     await account.refreshedTokens(access_token, refresh_token, expires_in);
+    
+    // Also reactivate account if it was expired
+    if (account.status === 'expired') {
+      account.status = 'active';
+      await account.save();
+    }
 
     logger.info({
       action: 'TOKEN_REFRESH_SUCCESS',
@@ -143,7 +144,7 @@ async function refreshAccountToken(account) {
 }
 
 /**
- * Main job function - runs hourly
+ * Main job function - runs every 5 minutes
  */
 async function tokenRefreshJob() {
   const startTime = new Date();
@@ -157,14 +158,20 @@ async function tokenRefreshJob() {
     // Find all accounts that need token refresh
     // These are accounts with:
     // - refreshToken available (came from OAuth)
-    // - status active or paused (not deleted)
-    // - nextTokenRefreshNeeded <= now OR never refreshed
+    // - clientId and clientSecret available
+    // - status active, paused, or expired (try to reactivate expired ones)
+    // - tokenExpiresAt is in the past OR within 30 minutes
+    const thirtyMinutesFromNow = new Date(Date.now() + 30 * 60 * 1000);
+    
     const accountsNeedingRefresh = await MLAccount.find({
       refreshToken: { $exists: true, $ne: null },
-      status: { $in: ['active', 'paused'] },
+      clientId: { $exists: true, $ne: null },
+      clientSecret: { $exists: true, $ne: null },
+      status: { $in: ['active', 'paused', 'expired'] },
       $or: [
-        { nextTokenRefreshNeeded: { $lte: new Date() } },
-        { lastTokenRefresh: null },
+        { tokenExpiresAt: { $lte: thirtyMinutesFromNow } }, // Token expires within 30 min
+        { lastTokenRefresh: null }, // Never refreshed
+        { nextTokenRefreshNeeded: { $lte: new Date() } }, // Scheduled refresh
       ],
     });
 
@@ -218,17 +225,17 @@ async function tokenRefreshJob() {
 
 /**
  * Start the token refresh job
- * Runs every hour
+ * Runs every 5 minutes
  */
 function startTokenRefreshJob() {
   try {
-    // Run every hour at minute 0
-    // This ensures consistent timing
-    const job = schedule.scheduleJob('0 * * * *', tokenRefreshJob);
+    // Run every 5 minutes
+    // This ensures tokens are refreshed well before they expire
+    const job = schedule.scheduleJob('*/5 * * * *', tokenRefreshJob);
 
     logger.info({
       action: 'TOKEN_REFRESH_JOB_SCHEDULED',
-      schedule: '0 * * * * (every hour at minute 0)',
+      schedule: '*/5 * * * * (every 5 minutes)',
       nextRun: job.nextInvocation(),
     });
 

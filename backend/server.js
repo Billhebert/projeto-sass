@@ -171,8 +171,12 @@ app.get('/api-docs/swagger.json', (req, res) => {
   res.send(swaggerSpecs);
 });
 
+// Import user auth routes (profile, password change)
+const authUserRoutes = require('./routes/auth-user');
+
 // Register routes
 app.use('/api/auth', authRoutes);
+app.use('/api/user', authUserRoutes);  // User profile and password routes
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/accounts', accountRoutes);
 app.use('/api/sync', syncRoutes);

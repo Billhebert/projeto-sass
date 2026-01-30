@@ -8,7 +8,7 @@ const router = express.Router();
 const jwt = require('jsonwebtoken');
 const User = require('../db/models/User');
 const logger = require('../logger');
-const authenticateToken = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 const { validateEmail, validatePassword } = require('../middleware/validation');
 
 // ============================================

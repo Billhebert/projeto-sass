@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   LineChart,
   Line,
@@ -18,348 +19,407 @@ import api from '../services/api'
 import './Pages.css'
 
 function Reports() {
+  const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [dateRange, setDateRange] = useState('30d') // 30d, 90d, 1y
-  const [salesData, setSalesData] = useState([])
-  const [productData, setProductData] = useState([])
-  const [categoryData, setCategoryData] = useState([])
-  const [summary, setSummary] = useState({
-    totalSales: 0,
-    totalOrders: 0,
-    avgOrderValue: 0,
-    conversionRate: 0,
-  })
+  const [hasAccounts, setHasAccounts] = useState(false)
+  const [hasRealData, setHasRealData] = useState(false)
+  const [dateRange, setDateRange] = useState('30d')
+  const [accounts, setAccounts] = useState([])
+  const [selectedAccountId, setSelectedAccountId] = useState('')
+  
+  // Real data from products
+  const [productStats, setProductStats] = useState(null)
+  const [products, setProducts] = useState([])
 
   const COLORS = ['#0066cc', '#ff6b6b', '#4ecdc4', '#45b7d1', '#ffa07a', '#98d8c8']
 
   useEffect(() => {
-    fetchReportsData()
-  }, [dateRange])
+    fetchAccounts()
+  }, [])
 
-  const fetchReportsData = async () => {
+  useEffect(() => {
+    if (selectedAccountId) {
+      fetchProductStats()
+      fetchProducts()
+    }
+  }, [selectedAccountId])
+
+  const fetchAccounts = async () => {
     try {
       setLoading(true)
       setError('')
 
-      // Fetch real data from API
-      const accountsResponse = await api.get('/ml-accounts')
-      const accountsList = accountsResponse.data.data?.accounts || accountsResponse.data.data || []
-      const accounts = Array.isArray(accountsList) ? accountsList : []
+      const response = await api.get('/ml-accounts')
+      const accountsList = response.data.data?.accounts || response.data.data || []
+      const accountsArray = Array.isArray(accountsList) ? accountsList : []
 
-      if (accounts.length === 0) {
-        throw new Error('Nenhuma conta conectada. Conecte uma conta Mercado Livre primeiro.')
+      setAccounts(accountsArray)
+      setHasAccounts(accountsArray.length > 0)
+
+      if (accountsArray.length > 0) {
+        setSelectedAccountId(accountsArray[0].id)
       }
-
-      // Use data from the first account if available
-      const firstAccount = accounts[0]
-      const cachedData = firstAccount?.cachedData || {}
-      
-      // Generate chart data based on real metrics
-      const salesChart = generateSalesData(dateRange, cachedData)
-      const products = generateProductData(cachedData)
-      const categories = generateCategoryData(cachedData)
-
-      setSalesData(salesChart)
-      setProductData(products)
-      setCategoryData(categories)
-      setSummary({
-        totalSales: cachedData.sales || Math.floor(Math.random() * 50000) + 10000,
-        totalOrders: cachedData.orders || Math.floor(Math.random() * 500) + 100,
-        avgOrderValue: cachedData.avgOrderValue || Math.floor(Math.random() * 500) + 50,
-        conversionRate: (cachedData.conversionRate || (Math.random() * 8 + 2)).toFixed(2),
-      })
     } catch (err) {
-      setError(err.message || 'Erro ao carregar relatórios')
+      setError('Erro ao carregar contas')
       console.error(err)
     } finally {
       setLoading(false)
     }
   }
 
-  const generateSalesData = (range, realData = {}) => {
-    const days = range === '30d' ? 30 : range === '90d' ? 90 : 365
-    const data = []
-    const now = new Date()
-    const baseRevenue = realData.sales || 5000
+  const fetchProductStats = async () => {
+    if (!selectedAccountId) return
 
-    for (let i = days; i >= 0; i--) {
-      const date = new Date(now)
-      date.setDate(date.getDate() - i)
-      const formatDate =
-        range === '30d'
-          ? date.toLocaleDateString('pt-BR', { month: '2-digit', day: '2-digit' })
-          : date.toLocaleDateString('pt-BR', { month: 'short', day: 'numeric' })
-
-      // Generate realistic variation based on day of week
-      const dayOfWeek = date.getDay()
-      const weekendMultiplier = (dayOfWeek === 0 || dayOfWeek === 6) ? 1.2 : 0.95
-      const variance = 0.7 + Math.random() * 0.6
-
-      data.push({
-        date: formatDate,
-        sales: Math.floor((baseRevenue / days) * weekendMultiplier * variance),
-        orders: Math.floor((baseRevenue / days / 100) * weekendMultiplier * variance * 5),
-        revenue: Math.floor(baseRevenue * weekendMultiplier * variance),
-      })
+    try {
+      const response = await api.get(`/products/${selectedAccountId}/stats`)
+      if (response.data.success) {
+        setProductStats(response.data.data)
+        setHasRealData(true)
+      }
+    } catch (err) {
+      console.error('Error fetching product stats:', err)
+      setProductStats(null)
+      setHasRealData(false)
     }
-    return data
   }
 
-  const generateProductData = (realData = {}) => {
-    const baseProducts = [
-      { name: 'Produto A', sales: 450, revenue: 12500 },
-      { name: 'Produto B', sales: 380, revenue: 10200 },
-      { name: 'Produto C', sales: 320, revenue: 8900 },
-      { name: 'Produto D', sales: 280, revenue: 7500 },
-      { name: 'Produto E', sales: 220, revenue: 6100 },
-    ]
-    
-    // Apply real multiplier if available
-    const multiplier = realData.products ? realData.products / 450 : 1
-    
-    return baseProducts.map(product => ({
-      ...product,
-      sales: Math.floor(product.sales * multiplier),
-      revenue: Math.floor(product.revenue * multiplier),
-    }))
-  }
+  const fetchProducts = async () => {
+    if (!selectedAccountId) return
 
-  const generateCategoryData = (realData = {}) => {
-    return [
-      { name: 'Eletrônicos', value: 35 },
-      { name: 'Moda', value: 25 },
-      { name: 'Casa', value: 20 },
-      { name: 'Esportes', value: 12 },
-      { name: 'Outros', value: 8 },
-    ]
+    try {
+      const response = await api.get(`/products/${selectedAccountId}?limit=50`)
+      if (response.data.success) {
+        setProducts(response.data.data.products || [])
+      }
+    } catch (err) {
+      console.error('Error fetching products:', err)
+      setProducts([])
+    }
   }
 
   const formatCurrency = (value) => {
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
       currency: 'BRL',
-    }).format(value)
+    }).format(value || 0)
+  }
+
+  // Generate category distribution from real products
+  const getCategoryData = () => {
+    if (products.length === 0) return []
+
+    const categories = {}
+    products.forEach(product => {
+      const category = product.category?.categoryName || 'Outros'
+      categories[category] = (categories[category] || 0) + 1
+    })
+
+    const total = products.length
+    return Object.entries(categories)
+      .map(([name, count]) => ({
+        name: name.length > 15 ? name.substring(0, 15) + '...' : name,
+        value: Math.round((count / total) * 100),
+      }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5)
+  }
+
+  // Get top products by sales
+  const getTopProducts = () => {
+    return [...products]
+      .sort((a, b) => (b.salesCount || 0) - (a.salesCount || 0))
+      .slice(0, 5)
+      .map(p => ({
+        name: p.title?.substring(0, 20) + (p.title?.length > 20 ? '...' : ''),
+        sales: p.salesCount || 0,
+        revenue: (p.salesCount || 0) * (p.price || 0),
+      }))
   }
 
   if (loading) {
     return (
       <div className="page">
         <div className="page-header">
-          <h1>Relatórios e Análises</h1>
+          <h1>Relatorios e Analises</h1>
           <p>Visualize o desempenho de suas vendas</p>
         </div>
         <div className="loading-container">
           <div className="spinner"></div>
-          <p>Carregando relatórios...</p>
+          <p>Carregando relatorios...</p>
         </div>
       </div>
     )
   }
 
+  // No accounts connected
+  if (!hasAccounts) {
+    return (
+      <div className="page">
+        <div className="page-header">
+          <h1>Relatorios e Analises</h1>
+          <p>Visualize o desempenho de suas vendas</p>
+        </div>
+        <div className="card">
+          <div className="empty-state" style={{ padding: '3rem' }}>
+            <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>📊</div>
+            <h2>Nenhuma conta conectada</h2>
+            <p style={{ color: '#666', marginBottom: '1.5rem' }}>
+              Conecte uma conta do Mercado Livre para visualizar relatorios e analises.
+            </p>
+            <button 
+              className="btn btn-primary"
+              onClick={() => navigate('/accounts')}
+            >
+              Conectar Conta
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const categoryData = getCategoryData()
+  const topProducts = getTopProducts()
+
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Relatórios e Análises</h1>
+        <h1>Relatorios e Analises</h1>
         <p>Visualize o desempenho de suas vendas</p>
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}
 
-      {/* Filters */}
-      <div className="card">
-        <div className="card-header">
-          <h2 className="card-title">Período</h2>
-          <div className="date-range-filters">
-            <button
-              className={`btn btn-sm ${dateRange === '30d' ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setDateRange('30d')}
+      {/* Account Selector */}
+      {accounts.length > 1 && (
+        <div className="card" style={{ marginBottom: '1rem' }}>
+          <div className="card-body" style={{ padding: '1rem' }}>
+            <label style={{ marginRight: '1rem', fontWeight: 'bold' }}>Conta:</label>
+            <select
+              value={selectedAccountId}
+              onChange={(e) => setSelectedAccountId(e.target.value)}
+              style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid #ddd' }}
             >
-              30 dias
-            </button>
-            <button
-              className={`btn btn-sm ${dateRange === '90d' ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setDateRange('90d')}
+              {accounts.map(account => (
+                <option key={account.id} value={account.id}>
+                  {account.nickname} ({account.email})
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
+
+      {/* Info Banner */}
+      {!hasRealData && (
+        <div className="alert" style={{ 
+          backgroundColor: '#fff3cd', 
+          borderColor: '#ffc107', 
+          color: '#856404',
+          marginBottom: '1rem',
+          padding: '1rem',
+          borderRadius: '4px',
+          border: '1px solid #ffc107'
+        }}>
+          <strong>Aviso:</strong> Sincronize seus produtos para ver dados reais.
+          Os graficos abaixo mostram dados baseados nos produtos sincronizados.
+          <button 
+            className="btn btn-sm btn-primary" 
+            style={{ marginLeft: '1rem' }}
+            onClick={() => navigate(`/accounts/${selectedAccountId}/products`)}
+          >
+            Ir para Produtos
+          </button>
+        </div>
+      )}
+
+      {/* Summary Stats from Real Data */}
+      {productStats && (
+        <div className="summary-cards">
+          <div className="summary-card">
+            <h3>Total de Produtos</h3>
+            <p className="summary-value">{productStats.products?.total || 0}</p>
+            <small>Produtos cadastrados</small>
+          </div>
+          <div className="summary-card">
+            <h3>Produtos Ativos</h3>
+            <p className="summary-value">{productStats.products?.active || 0}</p>
+            <small>Disponiveis para venda</small>
+          </div>
+          <div className="summary-card">
+            <h3>Total de Vendas</h3>
+            <p className="summary-value">{productStats.sales || 0}</p>
+            <small>Unidades vendidas</small>
+          </div>
+          <div className="summary-card">
+            <h3>Valor em Estoque</h3>
+            <p className="summary-value">{formatCurrency(productStats.estimatedValue)}</p>
+            <small>Valor estimado</small>
+          </div>
+        </div>
+      )}
+
+      {/* Additional Stats */}
+      {productStats && (
+        <div className="summary-cards" style={{ marginTop: '1rem' }}>
+          <div className="summary-card">
+            <h3>Visualizacoes</h3>
+            <p className="summary-value">{productStats.views || 0}</p>
+            <small>Total de views</small>
+          </div>
+          <div className="summary-card">
+            <h3>Perguntas</h3>
+            <p className="summary-value">{productStats.questions || 0}</p>
+            <small>Perguntas recebidas</small>
+          </div>
+          <div className="summary-card">
+            <h3>Estoque Baixo</h3>
+            <p className="summary-value" style={{ color: productStats.products?.lowStock > 0 ? '#ff6b6b' : 'inherit' }}>
+              {productStats.products?.lowStock || 0}
+            </p>
+            <small>Produtos com pouco estoque</small>
+          </div>
+          <div className="summary-card">
+            <h3>Sem Estoque</h3>
+            <p className="summary-value" style={{ color: productStats.products?.outOfStock > 0 ? '#dc3545' : 'inherit' }}>
+              {productStats.products?.outOfStock || 0}
+            </p>
+            <small>Produtos esgotados</small>
+          </div>
+        </div>
+      )}
+
+      {/* Charts Grid */}
+      {products.length > 0 && (
+        <div className="reports-grid" style={{ marginTop: '2rem' }}>
+          {/* Top Products by Sales */}
+          {topProducts.length > 0 && (
+            <div className="chart-container">
+              <h3 className="chart-title">Top 5 Produtos (por vendas)</h3>
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart data={topProducts}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                  <XAxis dataKey="name" stroke="#999" fontSize={10} />
+                  <YAxis stroke="#999" />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: 'white',
+                      border: '1px solid #e0e0e0',
+                      borderRadius: '0.5rem',
+                    }}
+                  />
+                  <Bar dataKey="sales" fill="#0066cc" name="Vendas" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* Category Distribution */}
+          {categoryData.length > 0 && (
+            <div className="chart-container">
+              <h3 className="chart-title">Distribuicao por Categoria</h3>
+              <ResponsiveContainer width="100%" height={250}>
+                <PieChart>
+                  <Pie
+                    data={categoryData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ name, value }) => `${name} (${value}%)`}
+                    outerRadius={80}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {categoryData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: 'white',
+                      border: '1px solid #e0e0e0',
+                      borderRadius: '0.5rem',
+                    }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Products Table */}
+      {products.length > 0 && (
+        <div className="card" style={{ marginTop: '2rem' }}>
+          <div className="card-header">
+            <h2 className="card-title">Produtos com Mais Vendas</h2>
+          </div>
+          <div className="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Produto</th>
+                  <th>Preco</th>
+                  <th>Estoque</th>
+                  <th>Vendas</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...products]
+                  .sort((a, b) => (b.salesCount || 0) - (a.salesCount || 0))
+                  .slice(0, 10)
+                  .map((product, idx) => (
+                    <tr key={product.id || idx}>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          {product.thumbnailUrl && (
+                            <img 
+                              src={product.thumbnailUrl} 
+                              alt="" 
+                              style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4 }}
+                            />
+                          )}
+                          <span>{product.title?.substring(0, 40)}{product.title?.length > 40 ? '...' : ''}</span>
+                        </div>
+                      </td>
+                      <td>{formatCurrency(product.price)}</td>
+                      <td>{product.quantity || 0}</td>
+                      <td>{product.salesCount || 0}</td>
+                      <td>
+                        <span className={`status-badge status-${product.status || 'active'}`}>
+                          {product.status === 'active' ? 'Ativo' : 
+                           product.status === 'paused' ? 'Pausado' : 
+                           product.status || 'Ativo'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Empty state for no products */}
+      {products.length === 0 && hasAccounts && (
+        <div className="card" style={{ marginTop: '2rem' }}>
+          <div className="empty-state" style={{ padding: '3rem' }}>
+            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📦</div>
+            <h3>Nenhum produto sincronizado</h3>
+            <p style={{ color: '#666', marginBottom: '1.5rem' }}>
+              Sincronize seus produtos do Mercado Livre para ver os relatorios.
+            </p>
+            <button 
+              className="btn btn-primary"
+              onClick={() => navigate(`/accounts/${selectedAccountId}/products`)}
             >
-              90 dias
-            </button>
-            <button
-              className={`btn btn-sm ${dateRange === '1y' ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setDateRange('1y')}
-            >
-              1 ano
+              Sincronizar Produtos
             </button>
           </div>
         </div>
-      </div>
-
-      {/* Summary Stats */}
-      <div className="summary-cards">
-        <div className="summary-card">
-          <h3>Vendas Totais</h3>
-          <p className="summary-value">{formatCurrency(summary.totalSales)}</p>
-          <small>Últimos {dateRange === '30d' ? '30' : dateRange === '90d' ? '90' : '365'} dias</small>
-        </div>
-        <div className="summary-card">
-          <h3>Pedidos</h3>
-          <p className="summary-value">{summary.totalOrders}</p>
-          <small>Total de pedidos</small>
-        </div>
-        <div className="summary-card">
-          <h3>Ticket Médio</h3>
-          <p className="summary-value">{formatCurrency(summary.avgOrderValue)}</p>
-          <small>Valor médio por pedido</small>
-        </div>
-        <div className="summary-card">
-          <h3>Taxa de Conversão</h3>
-          <p className="summary-value">{summary.conversionRate}%</p>
-          <small>Visitantes convertidos</small>
-        </div>
-      </div>
-
-      {/* Charts Grid */}
-      <div className="reports-grid">
-        {/* Sales Trend */}
-        <div className="chart-container" style={{ gridColumn: '1 / -1' }}>
-          <h3 className="chart-title">Tendência de Vendas</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={salesData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-              <XAxis dataKey="date" stroke="#999" />
-              <YAxis stroke="#999" />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: 'white',
-                  border: '1px solid #e0e0e0',
-                  borderRadius: '0.5rem',
-                }}
-              />
-              <Legend />
-              <Line
-                type="monotone"
-                dataKey="revenue"
-                stroke="#0066cc"
-                strokeWidth={2}
-                dot={false}
-                name="Receita (R$)"
-              />
-              <Line
-                type="monotone"
-                dataKey="orders"
-                stroke="#ff6b6b"
-                strokeWidth={2}
-                dot={false}
-                name="Pedidos"
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* Top Products */}
-        <div className="chart-container">
-          <h3 className="chart-title">Top 5 Produtos</h3>
-          <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={productData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-              <XAxis dataKey="name" stroke="#999" />
-              <YAxis stroke="#999" />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: 'white',
-                  border: '1px solid #e0e0e0',
-                  borderRadius: '0.5rem',
-                }}
-              />
-              <Bar dataKey="sales" fill="#0066cc" name="Vendas" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* Category Distribution */}
-        <div className="chart-container">
-          <h3 className="chart-title">Distribuição por Categoria</h3>
-          <ResponsiveContainer width="100%" height={250}>
-            <PieChart>
-              <Pie
-                data={categoryData}
-                cx="50%"
-                cy="50%"
-                labelLine={false}
-                label={({ name, value }) => `${name} (${value}%)`}
-                outerRadius={80}
-                fill="#8884d8"
-                dataKey="value"
-              >
-                {categoryData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: 'white',
-                  border: '1px solid #e0e0e0',
-                  borderRadius: '0.5rem',
-                }}
-              />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* Product Revenue */}
-        <div className="chart-container">
-          <h3 className="chart-title">Receita por Produto</h3>
-          <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={productData} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-              <XAxis type="number" stroke="#999" />
-              <YAxis dataKey="name" type="category" stroke="#999" width={100} />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: 'white',
-                  border: '1px solid #e0e0e0',
-                  borderRadius: '0.5rem',
-                }}
-              />
-              <Bar dataKey="revenue" fill="#4ecdc4" name="Receita (R$)" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      {/* Detailed Table */}
-      <div className="card">
-        <div className="card-header">
-          <h2 className="card-title">Últimas Vendas</h2>
-        </div>
-        <div className="table-container">
-          <table>
-            <thead>
-              <tr>
-                <th>Data</th>
-                <th>Pedido ID</th>
-                <th>Produto</th>
-                <th>Quantidade</th>
-                <th>Valor</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {salesData.slice(-10).map((item, idx) => (
-                <tr key={idx}>
-                  <td>{item.date}</td>
-                  <td>#PED-{1000 + idx}</td>
-                  <td>Produto {String.fromCharCode(65 + (idx % 5))}</td>
-                  <td>{Math.floor(Math.random() * 5) + 1}</td>
-                  <td>{formatCurrency(item.revenue / 10)}</td>
-                  <td>
-                    <span className={`status-badge status-active`}>Entregue</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      )}
     </div>
   )
 }

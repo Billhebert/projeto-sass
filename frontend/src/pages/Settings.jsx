@@ -4,16 +4,20 @@ import api from '../services/api'
 import './Pages.css'
 
 function Settings() {
-  const { user, logout } = useAuth()
+  const { user, logout, updateUser } = useAuth()
   const [activeTab, setActiveTab] = useState('profile')
   const [loading, setLoading] = useState(false)
+  const [loadingProfile, setLoadingProfile] = useState(true)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
   // Profile form state
   const [profileData, setProfileData] = useState({
-    name: user?.name || '',
-    email: user?.email || '',
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    company: '',
   })
 
   // Password form state
@@ -31,41 +35,43 @@ function Settings() {
     emailNotifications: true,
   })
 
-  // API Keys state
-  const [apiKeys, setApiKeys] = useState([])
-  const [showNewKeyModal, setShowNewKeyModal] = useState(false)
-  const [newKeyName, setNewKeyName] = useState('')
-
   useEffect(() => {
     // Load preferences from localStorage
     const savedPreferences = localStorage.getItem('preferences')
     if (savedPreferences) {
       setPreferences(JSON.parse(savedPreferences))
     }
-    loadApiKeys()
+    loadProfile()
   }, [])
 
-  const loadApiKeys = async () => {
+  const loadProfile = async () => {
     try {
-      // Mock API keys - in production, fetch from backend
-      setApiKeys([
-        {
-          id: '1',
-          name: 'Production Key',
-          key: 'sk_live_' + '*'.repeat(20),
-          created: '2024-01-15',
-          lastUsed: '2024-01-28',
-        },
-        {
-          id: '2',
-          name: 'Development Key',
-          key: 'sk_test_' + '*'.repeat(20),
-          created: '2024-01-10',
-          lastUsed: '2024-01-25',
-        },
-      ])
+      setLoadingProfile(true)
+      const response = await api.get('/user/profile')
+      if (response.data.success) {
+        const userData = response.data.data.user
+        setProfileData({
+          firstName: userData.firstName || '',
+          lastName: userData.lastName || '',
+          email: userData.email || '',
+          phone: userData.phone || '',
+          company: userData.company || '',
+        })
+      }
     } catch (err) {
-      console.error('Error loading API keys:', err)
+      console.error('Error loading profile:', err)
+      // Use data from auth store as fallback
+      if (user) {
+        setProfileData({
+          firstName: user.firstName || '',
+          lastName: user.lastName || '',
+          email: user.email || '',
+          phone: user.phone || '',
+          company: user.company || '',
+        })
+      }
+    } finally {
+      setLoadingProfile(false)
     }
   }
 
@@ -102,13 +108,23 @@ function Settings() {
       setLoading(true)
       setError('')
       
-      // In production, this would call your backend API
-      await new Promise(resolve => setTimeout(resolve, 500))
+      const response = await api.put('/user/profile', {
+        firstName: profileData.firstName,
+        lastName: profileData.lastName,
+        phone: profileData.phone,
+        company: profileData.company,
+      })
       
-      setSuccess('Perfil atualizado com sucesso!')
-      setTimeout(() => setSuccess(''), 3000)
+      if (response.data.success) {
+        // Update user in auth store
+        if (updateUser) {
+          updateUser(response.data.data.user)
+        }
+        setSuccess('Perfil atualizado com sucesso!')
+        setTimeout(() => setSuccess(''), 3000)
+      }
     } catch (err) {
-      setError('Erro ao atualizar perfil')
+      setError(err.response?.data?.message || 'Erro ao atualizar perfil')
     } finally {
       setLoading(false)
     }
@@ -131,64 +147,24 @@ function Settings() {
       setLoading(true)
       setError('')
 
-      // In production, this would call your backend API
-      await new Promise(resolve => setTimeout(resolve, 500))
-
-      setPasswordData({
-        currentPassword: '',
-        newPassword: '',
-        confirmPassword: '',
+      const response = await api.post('/user/change-password', {
+        currentPassword: passwordData.currentPassword,
+        newPassword: passwordData.newPassword,
       })
-      setSuccess('Senha alterada com sucesso!')
-      setTimeout(() => setSuccess(''), 3000)
-    } catch (err) {
-      setError(err.response?.data?.error || 'Erro ao alterar senha')
-    } finally {
-      setLoading(false)
-    }
-  }
 
-  const handleCreateApiKey = async (e) => {
-    e.preventDefault()
-    try {
-      setLoading(true)
-      setError('')
-
-      // In production, this would call your backend API
-      await new Promise(resolve => setTimeout(resolve, 500))
-
-      const newKey = {
-        id: Date.now().toString(),
-        name: newKeyName,
-        key: 'sk_live_' + Math.random().toString(36).substring(2, 22),
-        created: new Date().toISOString().split('T')[0],
-        lastUsed: 'Nunca',
+      if (response.data.success) {
+        setPasswordData({
+          currentPassword: '',
+          newPassword: '',
+          confirmPassword: '',
+        })
+        setSuccess('Senha alterada com sucesso!')
+        setTimeout(() => setSuccess(''), 3000)
       }
-
-      setApiKeys([...apiKeys, newKey])
-      setNewKeyName('')
-      setShowNewKeyModal(false)
-      setSuccess('Chave de API criada com sucesso!')
-      setTimeout(() => setSuccess(''), 3000)
     } catch (err) {
-      setError('Erro ao criar chave de API')
+      setError(err.response?.data?.message || 'Erro ao alterar senha')
     } finally {
       setLoading(false)
-    }
-  }
-
-  const handleDeleteApiKey = async (keyId) => {
-    if (!window.confirm('Tem certeza que deseja deletar esta chave? Ela não poderá mais ser usada.')) {
-      return
-    }
-
-    try {
-      setError('')
-      setApiKeys(apiKeys.filter(key => key.id !== keyId))
-      setSuccess('Chave de API deletada com sucesso!')
-      setTimeout(() => setSuccess(''), 3000)
-    } catch (err) {
-      setError('Erro ao deletar chave de API')
     }
   }
 
@@ -229,12 +205,6 @@ function Settings() {
           >
             Preferências
           </button>
-          <button
-            className={`settings-nav-item ${activeTab === 'api-keys' ? 'active' : ''}`}
-            onClick={() => setActiveTab('api-keys')}
-          >
-            Chaves de API
-          </button>
           <hr style={{ margin: '1rem 0', border: 'none', borderTop: '1px solid #e0e0e0' }} />
           <button
             className="settings-nav-item"
@@ -251,43 +221,75 @@ function Settings() {
           {activeTab === 'profile' && (
             <div className="settings-section">
               <h3>Informações do Perfil</h3>
-              <form onSubmit={handleProfileSubmit} className="settings-form">
-                <div className="form-group">
-                  <label>Nome Completo</label>
-                  <input
-                    type="text"
-                    name="name"
-                    value={profileData.name}
-                    onChange={handleProfileChange}
-                    placeholder="Seu nome completo"
-                  />
+              {loadingProfile ? (
+                <div className="loading-container">
+                  <div className="spinner"></div>
+                  <p>Carregando perfil...</p>
                 </div>
+              ) : (
+                <form onSubmit={handleProfileSubmit} className="settings-form">
+                  <div className="form-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    <div className="form-group">
+                      <label>Nome</label>
+                      <input
+                        type="text"
+                        name="firstName"
+                        value={profileData.firstName}
+                        onChange={handleProfileChange}
+                        placeholder="Seu nome"
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Sobrenome</label>
+                      <input
+                        type="text"
+                        name="lastName"
+                        value={profileData.lastName}
+                        onChange={handleProfileChange}
+                        placeholder="Seu sobrenome"
+                      />
+                    </div>
+                  </div>
 
-                <div className="form-group">
-                  <label>Email</label>
-                  <input
-                    type="email"
-                    name="email"
-                    value={profileData.email}
-                    onChange={handleProfileChange}
-                    placeholder="seu@email.com"
-                  />
-                </div>
+                  <div className="form-group">
+                    <label>Email</label>
+                    <input
+                      type="email"
+                      name="email"
+                      value={profileData.email}
+                      disabled
+                      style={{ backgroundColor: '#f5f5f5', cursor: 'not-allowed' }}
+                    />
+                    <small style={{ color: '#666' }}>O email não pode ser alterado</small>
+                  </div>
 
-                <div className="form-group">
-                  <label>Data de Cadastro</label>
-                  <input
-                    type="text"
-                    value={new Date(user?.createdAt).toLocaleDateString('pt-BR')}
-                    disabled
-                    style={{ backgroundColor: '#f5f5f5' }}
-                  />
-                </div>
+                  <div className="form-group">
+                    <label>Telefone</label>
+                    <input
+                      type="tel"
+                      name="phone"
+                      value={profileData.phone}
+                      onChange={handleProfileChange}
+                      placeholder="(11) 99999-9999"
+                    />
+                  </div>
 
-                <button type="submit" className="btn btn-primary" disabled={loading}>
-                  {loading ? 'Salvando...' : 'Salvar Alterações'}
-                </button>
-              </form>
+                  <div className="form-group">
+                    <label>Empresa</label>
+                    <input
+                      type="text"
+                      name="company"
+                      value={profileData.company}
+                      onChange={handleProfileChange}
+                      placeholder="Nome da sua empresa"
+                    />
+                  </div>
+
+                  <button type="submit" className="btn btn-primary" disabled={loading}>
+                    {loading ? 'Salvando...' : 'Salvar Alterações'}
+                  </button>
+                </form>
+              )}
             </div>
           )}
 
@@ -409,87 +411,8 @@ function Settings() {
               </div>
             </div>
           )}
-
-          {/* API Keys Tab */}
-          {activeTab === 'api-keys' && (
-            <div className="settings-section">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-                <h3 style={{ margin: 0 }}>Chaves de API</h3>
-                <button className="btn btn-primary btn-sm" onClick={() => setShowNewKeyModal(true)}>
-                  + Gerar Nova Chave
-                </button>
-              </div>
-
-              <div className="api-keys-list">
-                {apiKeys.map(key => (
-                  <div key={key.id} className="api-key-item">
-                    <div className="api-key-info">
-                      <h4>{key.name}</h4>
-                      <p className="api-key-value">{key.key}</p>
-                      <div className="api-key-meta">
-                        <span>Criada em: {key.created}</span>
-                        <span>Último uso: {key.lastUsed}</span>
-                      </div>
-                    </div>
-                    <button
-                      className="btn btn-danger btn-sm"
-                      onClick={() => handleDeleteApiKey(key.id)}
-                    >
-                      Deletar
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              {apiKeys.length === 0 && (
-                <div className="empty-state">
-                  <p>Nenhuma chave de API criada</p>
-                </div>
-              )}
-            </div>
-          )}
         </div>
       </div>
-
-      {/* Modal for New API Key */}
-      {showNewKeyModal && (
-        <div className="modal-overlay" onClick={() => setShowNewKeyModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>Gerar Nova Chave de API</h2>
-              <button className="modal-close" onClick={() => setShowNewKeyModal(false)}>×</button>
-            </div>
-
-            <form onSubmit={handleCreateApiKey} className="modal-form">
-              <div className="form-group">
-                <label htmlFor="keyName">Nome da Chave</label>
-                <input
-                  type="text"
-                  id="keyName"
-                  value={newKeyName}
-                  onChange={(e) => setNewKeyName(e.target.value)}
-                  placeholder="Ex: Production Key"
-                  required
-                />
-              </div>
-
-              <div className="modal-actions">
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setShowNewKeyModal(false)}
-                  disabled={loading}
-                >
-                  Cancelar
-                </button>
-                <button type="submit" className="btn btn-primary" disabled={loading}>
-                  {loading ? 'Gerando...' : 'Gerar Chave'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
