@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { toast } from '../store/toastStore'
+import validators from '../utils/validation'
 import './Auth.css'
 
 function Register() {
@@ -14,29 +15,84 @@ function Register() {
     password: '',
     confirmPassword: '',
   })
+  const [errors, setErrors] = useState({})
+  const [touched, setTouched] = useState({})
 
   const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    })
+    const { name, value } = e.target
+    setFormData(prev => ({ ...prev, [name]: value }))
+    
+    // Clear error when user starts typing
+    if (errors[name]) {
+      setErrors(prev => ({ ...prev, [name]: null }))
+    }
+  }
+
+  const handleBlur = (e) => {
+    const { name, value } = e.target
+    setTouched(prev => ({ ...prev, [name]: true }))
+    
+    // Validate on blur
+    let error = null
+    switch (name) {
+      case 'firstName':
+        error = validators.required(value, 'Nome')
+        break
+      case 'lastName':
+        error = validators.required(value, 'Sobrenome')
+        break
+      case 'email':
+        error = validators.email(value)
+        break
+      case 'password':
+        error = validators.password(value)
+        break
+      case 'confirmPassword':
+        error = validators.confirmPassword(value, formData.password)
+        break
+    }
+    
+    if (error) {
+      setErrors(prev => ({ ...prev, [name]: error }))
+    }
+  }
+
+  const validateForm = () => {
+    const newErrors = {}
+    
+    const firstNameError = validators.required(formData.firstName, 'Nome')
+    if (firstNameError) newErrors.firstName = firstNameError
+    
+    const lastNameError = validators.required(formData.lastName, 'Sobrenome')
+    if (lastNameError) newErrors.lastName = lastNameError
+    
+    const emailError = validators.email(formData.email)
+    if (emailError) newErrors.email = emailError
+    
+    const passwordError = validators.password(formData.password)
+    if (passwordError) newErrors.password = passwordError
+    
+    const confirmError = validators.confirmPassword(formData.confirmPassword, formData.password)
+    if (confirmError) newErrors.confirmPassword = confirmError
+    
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    
+    // Mark all fields as touched
+    setTouched({
+      firstName: true,
+      lastName: true,
+      email: true,
+      password: true,
+      confirmPassword: true,
+    })
 
-    if (!formData.firstName || !formData.lastName || !formData.email || !formData.password) {
-      toast.error('Todos os campos são obrigatórios')
-      return
-    }
-
-    if (formData.password !== formData.confirmPassword) {
-      toast.error('As senhas não conferem')
-      return
-    }
-
-    if (formData.password.length < 8) {
-      toast.error('A senha deve ter no mínimo 8 caracteres')
+    if (!validateForm()) {
+      toast.error('Por favor, corrija os erros no formulário')
       return
     }
 
@@ -55,6 +111,16 @@ function Register() {
     }
   }
 
+  const getInputClassName = (fieldName) => {
+    let className = 'form-input'
+    if (touched[fieldName] && errors[fieldName]) {
+      className += ' input-error'
+    } else if (touched[fieldName] && formData[fieldName] && !errors[fieldName]) {
+      className += ' input-success'
+    }
+    return className
+  }
+
   return (
     <div className="auth-container">
       <div className="auth-card">
@@ -63,7 +129,7 @@ function Register() {
           <p>Dashboard com Mercado Livre</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="auth-form">
+        <form onSubmit={handleSubmit} className="auth-form" noValidate>
           <h2>Criar Conta</h2>
 
           <div className="form-group">
@@ -71,12 +137,15 @@ function Register() {
             <input
               type="text"
               name="firstName"
-              className="form-input"
+              className={getInputClassName('firstName')}
               value={formData.firstName}
               onChange={handleChange}
+              onBlur={handleBlur}
               disabled={loading}
-              required
             />
+            {touched.firstName && errors.firstName && (
+              <span className="form-error">{errors.firstName}</span>
+            )}
           </div>
 
           <div className="form-group">
@@ -84,12 +153,15 @@ function Register() {
             <input
               type="text"
               name="lastName"
-              className="form-input"
+              className={getInputClassName('lastName')}
               value={formData.lastName}
               onChange={handleChange}
+              onBlur={handleBlur}
               disabled={loading}
-              required
             />
+            {touched.lastName && errors.lastName && (
+              <span className="form-error">{errors.lastName}</span>
+            )}
           </div>
 
           <div className="form-group">
@@ -97,12 +169,15 @@ function Register() {
             <input
               type="email"
               name="email"
-              className="form-input"
+              className={getInputClassName('email')}
               value={formData.email}
               onChange={handleChange}
+              onBlur={handleBlur}
               disabled={loading}
-              required
             />
+            {touched.email && errors.email && (
+              <span className="form-error">{errors.email}</span>
+            )}
           </div>
 
           <div className="form-group">
@@ -110,12 +185,18 @@ function Register() {
             <input
               type="password"
               name="password"
-              className="form-input"
+              className={getInputClassName('password')}
               value={formData.password}
               onChange={handleChange}
+              onBlur={handleBlur}
               disabled={loading}
-              required
             />
+            {touched.password && errors.password && (
+              <span className="form-error">{errors.password}</span>
+            )}
+            {!errors.password && (
+              <span className="form-hint">Mínimo 8 caracteres</span>
+            )}
           </div>
 
           <div className="form-group">
@@ -123,12 +204,15 @@ function Register() {
             <input
               type="password"
               name="confirmPassword"
-              className="form-input"
+              className={getInputClassName('confirmPassword')}
               value={formData.confirmPassword}
               onChange={handleChange}
+              onBlur={handleBlur}
               disabled={loading}
-              required
             />
+            {touched.confirmPassword && errors.confirmPassword && (
+              <span className="form-error">{errors.confirmPassword}</span>
+            )}
           </div>
 
           <button
