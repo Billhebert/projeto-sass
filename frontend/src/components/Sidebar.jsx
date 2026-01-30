@@ -133,6 +133,7 @@ function Sidebar() {
       title: 'Analytics',
       key: 'analytics',
       items: [
+        { path: '/analytics', label: 'Analises', icon: 'trending_up' },
         { path: '/reports', label: 'Relatorios', icon: 'bar_chart' },
         { path: '/financial-reports', label: 'Relatorios MP', icon: 'account_balance' },
         { path: '/conciliation', label: 'Conciliacao', icon: 'compare_arrows' },

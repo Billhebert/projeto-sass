@@ -47,6 +47,7 @@ import PriceAutomation from './pages/PriceAutomation'
 import GlobalSelling from './pages/GlobalSelling'
 import FinancialReports from './pages/FinancialReports'
 import Conciliation from './pages/Conciliation'
+import Analytics from './pages/Analytics'
 
 // Phase 6 - New List Pages
 import ItemsList from './pages/ItemsList'
@@ -112,6 +113,7 @@ function App() {
             <Route path="/promotions" element={<Promotions />} />
             
             {/* Analytics */}
+            <Route path="/analytics" element={<Analytics />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/metrics" element={<Metrics />} />
             
