@@ -48,6 +48,14 @@ import GlobalSelling from './pages/GlobalSelling'
 import FinancialReports from './pages/FinancialReports'
 import Conciliation from './pages/Conciliation'
 
+// Phase 6 - New List Pages
+import ItemsList from './pages/ItemsList'
+import OrdersList from './pages/OrdersList'
+import ShippingList from './pages/ShippingList'
+import QuestionsList from './pages/QuestionsList'
+import FeedbackList from './pages/FeedbackList'
+import CategoriesList from './pages/CategoriesList'
+
 function App() {
   const { token, loadToken } = useAuthStore()
 
@@ -77,6 +85,14 @@ function App() {
             
             {/* Products - Global view */}
             <Route path="/products" element={<AllProducts />} />
+            
+            {/* Phase 6 - New List Pages (Enhanced versions) */}
+            <Route path="/products-list" element={<ItemsList />} />
+            <Route path="/orders-list" element={<OrdersList />} />
+            <Route path="/shipping-list" element={<ShippingList />} />
+            <Route path="/questions-list" element={<QuestionsList />} />
+            <Route path="/feedback-list" element={<FeedbackList />} />
+            <Route path="/categories" element={<CategoriesList />} />
             
             {/* Sales */}
             <Route path="/orders" element={<Orders />} />

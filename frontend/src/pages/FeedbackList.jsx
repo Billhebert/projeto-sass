@@ -272,4 +272,31 @@ function FeedbackList() {
       {selectedFeedback && (
         <Modal
           isOpen={showReplyModal}
-          onClose={() => setShowReplyModal
+          onClose={() => setShowReplyModal(false)}
+          title="Responder Avaliação"
+          size="medium"
+          footer={null}
+        >
+          <Form
+            fields={replyFormFields}
+            initialValues={{ reply: selectedFeedback.reply || '' }}
+            onSubmit={handleSubmitReply}
+            onCancel={() => setShowReplyModal(false)}
+            loading={loading}
+            submitLabel="Responder"
+          />
+        </Modal>
+      )}
+
+      {toast && (
+        <Toast
+          type={toast.type}
+          message={toast.message}
+          onClose={() => setToast(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+export default FeedbackList
