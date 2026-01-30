@@ -52,13 +52,16 @@ class MLTokenManager {
         throw new Error('Missing required parameters for token refresh');
       }
 
+      // Build form-urlencoded body properly
+      // Axios sends objects as JSON by default, so we need URLSearchParams for form encoding
+      const params = new URLSearchParams();
+      params.append('grant_type', 'refresh_token');
+      params.append('client_id', clientId);
+      params.append('client_secret', clientSecret);
+      params.append('refresh_token', refreshToken);
+
       // Use ML_TOKEN_URL (api.mercadolibre.com), NOT auth.mercadolibre.com
-      const response = await axios.post(ML_TOKEN_URL, {
-        grant_type: 'refresh_token',
-        client_id: clientId,
-        client_secret: clientSecret,
-        refresh_token: refreshToken,
-      }, {
+      const response = await axios.post(ML_TOKEN_URL, params.toString(), {
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -82,16 +85,35 @@ class MLTokenManager {
         expiresIn: expires_in,
       };
     } catch (error) {
+      // Log detailed error for debugging
       logger.error({
         action: 'TOKEN_REFRESH_ERROR',
         error: error.message,
         statusCode: error.response?.status,
+        responseData: error.response?.data,
+        cause: error.response?.data?.cause,
+        errorDescription: error.response?.data?.error_description || error.response?.data?.message,
       });
+
+      // Build user-friendly error message
+      const mlError = error.response?.data;
+      let errorMessage = error.message;
+      
+      if (mlError) {
+        if (mlError.error === 'invalid_grant') {
+          errorMessage = 'Refresh token inválido ou expirado. Reconecte a conta.';
+        } else if (mlError.error_description) {
+          errorMessage = mlError.error_description;
+        } else if (mlError.message) {
+          errorMessage = mlError.message;
+        }
+      }
 
       return {
         success: false,
-        error: error.message,
+        error: errorMessage,
         statusCode: error.response?.status,
+        mlError: mlError?.error,
       };
     }
   }
@@ -160,6 +182,12 @@ class MLTokenManager {
    * Format token info for logging
    */
   static getTokenInfo(account) {
+    // Can auto-refresh only if has ALL required fields:
+    // - refreshToken (to exchange for new access token)
+    // - clientId (ML app ID)
+    // - clientSecret (ML app secret)
+    const canAutoRefresh = !!(account.refreshToken && account.clientId && account.clientSecret);
+    
     return {
       accountId: account.id,
       mlUserId: account.mlUserId,
@@ -168,8 +196,9 @@ class MLTokenManager {
       healthPercent: this.getTokenHealthPercent(account.tokenExpiresAt, account.lastTokenRefresh),
       isExpired: this.isTokenCriticallyExpired(account.tokenExpiresAt),
       needsRefresh: this.isTokenExpired(account.tokenExpiresAt),
-      canAutoRefresh: !!account.refreshToken,  // Indica se pode renovar automaticamente
-      hasRefreshToken: !!account.refreshToken, // Explícito
+      canAutoRefresh,
+      hasRefreshToken: !!account.refreshToken,
+      hasClientCredentials: !!(account.clientId && account.clientSecret),
     };
   }
 }

@@ -1,0 +1,441 @@
+{
+  "metadata": {
+    "total_urls_found": 86,
+    "base_url": "https://developers.mercadolivre.com.br/pt_br/",
+    "scrape_date": "2026-01-30T08:36:46.103Z",
+    "status": "indexed",
+    "note": "Índice de documentação do Mercado Libre para Web Scraping"
+  },
+  "urls": [
+    {
+      "title": "Crie uma aplicação no Mercado Libre",
+      "path": "crie-uma-aplicacao-no-mercado-libre",
+      "category": "Getting Started"
+    },
+    {
+      "title": "Permissões funcionais",
+      "path": "permissoes-funcionais",
+      "category": "Getting Started"
+    },
+    {
+      "title": "Desenvolvimento seguro",
+      "path": "desenvolvimento-seguro",
+      "category": "Getting Started"
+    },
+    {
+      "title": "Autenticação e Autorização",
+      "path": "autenticacao-e-autorizacao",
+      "category": "Getting Started"
+    },
+    {
+      "title": "Boas práticas",
+      "path": "boas-praticas-para-usar-a-plataforma",
+      "category": "Getting Started"
+    },
+    {
+      "title": "Usuários e Aplicativos",
+      "path": "usuarios-e-aplicativos",
+      "category": "Users"
+    },
+    {
+      "title": "Consulta de usuários",
+      "path": "consulta-de-usuarios",
+      "category": "Users"
+    },
+    {
+      "title": "Endereços do usuário",
+      "path": "enderecos-do-usuario",
+      "category": "Users"
+    },
+    {
+      "title": "Domínios e Categorias",
+      "path": "categorias-e-publicacoes",
+      "category": "Resources"
+    },
+    {
+      "title": "Localização e moedas",
+      "path": "localizacao-e-moedas",
+      "category": "Resources"
+    },
+    {
+      "title": "Busca de itens",
+      "path": "itens-e-buscas",
+      "category": "Resources"
+    },
+    {
+      "title": "Perguntas e Respostas",
+      "path": "perguntas-e-respostas",
+      "category": "Resources"
+    },
+    {
+      "title": "Pedidos e opiniões",
+      "path": "pedidos-e-opinioes",
+      "category": "Resources"
+    },
+    {
+      "title": "Atributos",
+      "path": "atributos",
+      "category": "Resources"
+    },
+    {
+      "title": "Métricas",
+      "path": "metricas",
+      "category": "Resources"
+    },
+    {
+      "title": "Envio",
+      "path": "envio",
+      "category": "Resources"
+    },
+    {
+      "title": "Notificações",
+      "path": "produto-receba-notificacoes",
+      "category": "Resources"
+    },
+    {
+      "title": "Gerenciar moderações",
+      "path": "gerenciar-moderacoes",
+      "category": "Moderation"
+    },
+    {
+      "title": "Moderações com pausa",
+      "path": "com-pausa",
+      "category": "Moderation"
+    },
+    {
+      "title": "Diagnóstico de imagens",
+      "path": "diagnostico-de-imagens",
+      "category": "Moderation"
+    },
+    {
+      "title": "Moderações de imagens",
+      "path": "moderacoes-de-imagens",
+      "category": "Moderation"
+    },
+    {
+      "title": "Brand Protection Program",
+      "path": "o-que-e-brand-protection-program",
+      "category": "Protection"
+    },
+    {
+      "title": "Membros do Programa",
+      "path": "membros-do-programa",
+      "category": "Protection"
+    },
+    {
+      "title": "Tipos de publicação",
+      "path": "tutorial-tipos-de-publicacao-y-atualizacao-de-artigos",
+      "category": "Products"
+    },
+    {
+      "title": "Categorização de produtos",
+      "path": "categorizacao-de-produtos",
+      "category": "Products"
+    },
+    {
+      "title": "Publicar produtos",
+      "path": "publicacao-de-produtos",
+      "category": "Products"
+    },
+    {
+      "title": "User Products",
+      "path": "user-products",
+      "category": "Products"
+    },
+    {
+      "title": "Preço por variação",
+      "path": "preco-variacao",
+      "category": "Products"
+    },
+    {
+      "title": "Estoque distribuído",
+      "path": "estoque-distribuido",
+      "category": "Products"
+    },
+    {
+      "title": "Descrição de produtos",
+      "path": "descricao-de-produtos",
+      "category": "Products"
+    },
+    {
+      "title": "Validações",
+      "path": "validacoes",
+      "category": "Products"
+    },
+    {
+      "title": "Preços de produtos",
+      "path": "api-de-precos",
+      "category": "Pricing"
+    },
+    {
+      "title": "Preços por quantidade",
+      "path": "precos-por-quantidade",
+      "category": "Pricing"
+    },
+    {
+      "title": "Custos por vender",
+      "path": "comissao-por-vender",
+      "category": "Pricing"
+    },
+    {
+      "title": "Automatizações de preços",
+      "path": "automatizacoes-de-precos",
+      "category": "Pricing"
+    },
+    {
+      "title": "Imagens",
+      "path": "trabalhar-com-imagens",
+      "category": "Products"
+    },
+    {
+      "title": "Variações",
+      "path": "variacoes",
+      "category": "Products"
+    },
+    {
+      "title": "Kits virtuais",
+      "path": "kits-virtuais",
+      "category": "Products"
+    },
+    {
+      "title": "Gerenciar tabela de medidas",
+      "path": "gerenciar-tabela-de-medida",
+      "category": "Products"
+    },
+    {
+      "title": "Validação da tabela de medidas",
+      "path": "validacao-tabela-de-medidas",
+      "category": "Products"
+    },
+    {
+      "title": "Gestão Mercado Envios",
+      "path": "mercado-envios",
+      "category": "Shipping"
+    },
+    {
+      "title": "Mercado Envios 1",
+      "path": "mercado-envios-1",
+      "category": "Shipping"
+    },
+    {
+      "title": "Status de pedidos e rastreamento",
+      "path": "status-de-pedidos-rastreamento",
+      "category": "Shipping"
+    },
+    {
+      "title": "Frete dinâmico",
+      "path": "frete-dinamico",
+      "category": "Shipping"
+    },
+    {
+      "title": "Mercado Envios 2",
+      "path": "mercado-envios-2",
+      "category": "Shipping"
+    },
+    {
+      "title": "Custos de envio",
+      "path": "custos-de-envio",
+      "category": "Shipping"
+    },
+    {
+      "title": "Envios em pontos facultativos",
+      "path": "envios-em-pontos-facultativos",
+      "category": "Shipping"
+    },
+    {
+      "title": "Envios Coletas e Places",
+      "path": "envios-coletas-places",
+      "category": "Shipping"
+    },
+    {
+      "title": "Envios Flex",
+      "path": "envios-flex",
+      "category": "Shipping"
+    },
+    {
+      "title": "Envios Turbo",
+      "path": "envios-turbo",
+      "category": "Shipping"
+    },
+    {
+      "title": "Envios Fulfillment",
+      "path": "envios-fulfillment",
+      "category": "Shipping"
+    },
+    {
+      "title": "O que é catálogo",
+      "path": "o-catalogo-chegou-saiba-como-adaptar-sua-integracao",
+      "category": "Catalog"
+    },
+    {
+      "title": "Elegibilidade de catálogo",
+      "path": "elegibilidade-de-catalogo",
+      "category": "Catalog"
+    },
+    {
+      "title": "Buscador de produtos",
+      "path": "buscador-de-produtos",
+      "category": "Catalog"
+    },
+    {
+      "title": "Publicar no catálogo",
+      "path": "publicacao-no-catalogo",
+      "category": "Catalog"
+    },
+    {
+      "title": "Competição de catálogo",
+      "path": "concorrencia-em-catalogo",
+      "category": "Catalog"
+    },
+    {
+      "title": "Brand Central",
+      "path": "brand-central",
+      "category": "Catalog"
+    },
+    {
+      "title": "Gerenciar promoções",
+      "path": "gerenciar-ofertas",
+      "category": "Promotions"
+    },
+    {
+      "title": "Campanhas tradicionais",
+      "path": "campanhas-tradicionais",
+      "category": "Promotions"
+    },
+    {
+      "title": "Campanha com co-participação",
+      "path": "campanha-com-co-participacao",
+      "category": "Promotions"
+    },
+    {
+      "title": "Campanhas de desconto por quantidade",
+      "path": "campanhas-de-desconto-por-quantidade",
+      "category": "Promotions"
+    },
+    {
+      "title": "Desconto individual",
+      "path": "desconto-individua",
+      "category": "Promotions"
+    },
+    {
+      "title": "Ofertas do dia",
+      "path": "ofertas-do-dia",
+      "category": "Promotions"
+    },
+    {
+      "title": "Ofertas relâmpago",
+      "path": "ofertas-relampago",
+      "category": "Promotions"
+    },
+    {
+      "title": "Cupons do vendedor",
+      "path": "cupons-do-vendedor",
+      "category": "Promotions"
+    },
+    {
+      "title": "Orders",
+      "path": "gerenciamento-de-vendas",
+      "category": "Sales"
+    },
+    {
+      "title": "Packs",
+      "path": "gestao-packs",
+      "category": "Sales"
+    },
+    {
+      "title": "Envios",
+      "path": "gerenciamento-de-envios",
+      "category": "Sales"
+    },
+    {
+      "title": "Pagamentos",
+      "path": "gerenciamento-de-pagamentos",
+      "category": "Sales"
+    },
+    {
+      "title": "Feedback de uma venda",
+      "path": "feedback-de-uma-venda",
+      "category": "Sales"
+    },
+    {
+      "title": "Emitindo Nota Fiscal",
+      "path": "api-fiscal-faturamento-de-venda",
+      "category": "Billing"
+    },
+    {
+      "title": "Envio das regras tributárias",
+      "path": "envio-regras-tributarias",
+      "category": "Billing"
+    },
+    {
+      "title": "Gerenciar reclamações",
+      "path": "gerenciar-reclamacoes",
+      "category": "Claims"
+    },
+    {
+      "title": "Devoluções",
+      "path": "gerenciar-devolucoes",
+      "category": "Returns"
+    },
+    {
+      "title": "Introdução guia de imóveis",
+      "path": "introducao-guia-de-imoveis",
+      "category": "RealEstate"
+    },
+    {
+      "title": "Categorias e atributos (imóveis)",
+      "path": "categorias-e-atributos-imoveis",
+      "category": "RealEstate"
+    },
+    {
+      "title": "Gerenciar pacotes de imóveis",
+      "path": "gerenciar-pacotes-de-imoveis",
+      "category": "RealEstate"
+    },
+    {
+      "title": "Publica Imóveis",
+      "path": "publica-imoveis",
+      "category": "RealEstate"
+    },
+    {
+      "title": "Desenvolvimentos imobiliários",
+      "path": "desenvolvimentos-imobiliarios",
+      "category": "RealEstate"
+    },
+    {
+      "title": "Leads",
+      "path": "leads",
+      "category": "RealEstate"
+    },
+    {
+      "title": "Introdução guia de veículos",
+      "path": "guia-para-veiculos",
+      "category": "Motors"
+    },
+    {
+      "title": "Categorias e Atributos (veículos)",
+      "path": "categorias-e-atributos-veiculos",
+      "category": "Motors"
+    },
+    {
+      "title": "Gerenciamento de pacotes de veículos",
+      "path": "automovel-gerenciamento-de-pacotes",
+      "category": "Motors"
+    },
+    {
+      "title": "Publicação de automóveis",
+      "path": "publicacao-de-automoveis",
+      "category": "Motors"
+    },
+    {
+      "title": "Pessoas interessadas",
+      "path": "pessoas-interessadas",
+      "category": "Motors"
+    },
+    {
+      "title": "Créditos pré-aprovados",
+      "path": "credits-motors",
+      "category": "Motors"
+    }
+  ]
+}

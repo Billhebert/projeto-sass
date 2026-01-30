@@ -27,8 +27,8 @@ const ML_TOKEN_URL = 'https://api.mercadolibre.com/oauth/token';
 /**
  * Refresh a single account's token
  * 
- * Uses the account's OAuth credentials (clientId + clientSecret) to refresh the token
- * This allows each client to have their own app and refresh tokens independently
+ * Uses account's credentials if available, otherwise uses .env credentials
+ * This allows automatic refresh for ANY account that has a refreshToken
  * 
  * @param {Object} account - MLAccount document
  * @returns {Promise<Object>} Result of refresh attempt
@@ -39,7 +39,7 @@ async function refreshAccountToken(account) {
       logger.warn({
         action: 'TOKEN_REFRESH_SKIP',
         accountId: account.id,
-        reason: 'No refresh token available (manual token entry)',
+        reason: 'No refresh token available',
         mlUserId: account.mlUserId,
       });
       
@@ -50,19 +50,22 @@ async function refreshAccountToken(account) {
       };
     }
 
-    // Check if we have client credentials for this account
-    if (!account.clientId || !account.clientSecret) {
-      logger.warn({
+    // Use account credentials if available, otherwise use .env credentials
+    const clientId = account.clientId || process.env.ML_CLIENT_ID;
+    const clientSecret = account.clientSecret || process.env.ML_CLIENT_SECRET;
+
+    if (!clientId || !clientSecret) {
+      logger.error({
         action: 'TOKEN_REFRESH_SKIP',
         accountId: account.id,
-        reason: 'No client credentials available (manual token entry without OAuth)',
+        reason: 'No credentials available (neither account nor .env)',
         mlUserId: account.mlUserId,
       });
       
       return {
         success: false,
         accountId: account.id,
-        reason: 'No client credentials',
+        reason: 'No credentials available',
       };
     }
 
@@ -71,35 +74,33 @@ async function refreshAccountToken(account) {
       accountId: account.id,
       mlUserId: account.mlUserId,
       nickname: account.nickname,
-      clientId: account.clientId.substring(0, 8) + '***',
+      usingEnvCredentials: !account.clientId,
     });
 
     // Call Mercado Libre OAuth endpoint to refresh token
-    // Using the account's own client credentials (not the app's credentials)
-    // IMPORTANT: Use api.mercadolibre.com, NOT auth.mercadolibre.com
     const response = await axios.post(ML_TOKEN_URL, {
       grant_type: 'refresh_token',
-      client_id: account.clientId,
-      client_secret: account.clientSecret,
+      client_id: clientId,
+      client_secret: clientSecret,
       refresh_token: account.refreshToken,
     }, {
       headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/x-www-form-urlencoded',
       },
-      timeout: 10000, // 10 second timeout
+      timeout: 10000,
     });
 
     const { access_token, refresh_token, expires_in } = response.data;
 
-    if (!access_token || !refresh_token || !expires_in) {
+    if (!access_token || !expires_in) {
       throw new Error('Invalid token response from Mercado Libre');
     }
 
     // Update account with new tokens
-    await account.refreshedTokens(access_token, refresh_token, expires_in);
+    await account.refreshedTokens(access_token, refresh_token || account.refreshToken, expires_in);
     
-    // Also reactivate account if it was expired
+    // Reactivate account if it was expired
     if (account.status === 'expired') {
       account.status = 'active';
       await account.save();
@@ -157,16 +158,16 @@ async function tokenRefreshJob() {
 
     // Find all accounts that need token refresh
     // These are accounts with:
-    // - refreshToken available (came from OAuth)
-    // - clientId and clientSecret available
+    // - refreshToken available (came from OAuth or manual input)
     // - status active, paused, or expired (try to reactivate expired ones)
     // - tokenExpiresAt is in the past OR within 30 minutes
+    // 
+    // Note: We no longer require clientId/clientSecret in the account.
+    // The refreshAccountToken() function will use .env credentials as fallback.
     const thirtyMinutesFromNow = new Date(Date.now() + 30 * 60 * 1000);
     
     const accountsNeedingRefresh = await MLAccount.find({
       refreshToken: { $exists: true, $ne: null },
-      clientId: { $exists: true, $ne: null },
-      clientSecret: { $exists: true, $ne: null },
       status: { $in: ['active', 'paused', 'expired'] },
       $or: [
         { tokenExpiresAt: { $lte: thirtyMinutesFromNow } }, // Token expires within 30 min

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { toast } from '../store/toastStore';
@@ -11,29 +11,29 @@ export default function Products() {
 
   const [products, setProducts] = useState([]);
   const [stats, setStats] = useState(null);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [account, setAccount] = useState(null);
   const [filterStatus, setFilterStatus] = useState('active');
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('-createdAt');
-  const [pagination, setPagination] = useState({ limit: 20, offset: 0 });
+  const [limit] = useState(20);
+  const [offset, setOffset] = useState(0);
+  
+  // Ref to track if initial fetch was done
+  const initialFetchDone = useRef(false);
 
-  // Fetch products
-  useEffect(() => {
-    fetchProducts();
-    fetchStats();
-  }, [accountId, filterStatus, sortBy, pagination]);
-
-  const fetchProducts = async () => {
+  // Fetch products - memoized to prevent unnecessary re-renders
+  const fetchProducts = useCallback(async () => {
     if (!accountId) return;
 
     setLoading(true);
 
     try {
       const query = new URLSearchParams({
-        limit: pagination.limit,
-        offset: pagination.offset,
+        limit: limit.toString(),
+        offset: offset.toString(),
         sort: sortBy,
       });
 
@@ -48,10 +48,7 @@ export default function Products() {
       if (response.data.success) {
         setProducts(response.data.data.products);
         setAccount(response.data.data.account);
-        setPagination(prev => ({
-          ...prev,
-          total: response.data.data.total,
-        }));
+        setTotal(response.data.data.total || 0);
       }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to fetch products');
@@ -59,9 +56,10 @@ export default function Products() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [accountId, filterStatus, sortBy, limit, offset]);
 
-  const fetchStats = async () => {
+  // Fetch stats separately
+  const fetchStats = useCallback(async () => {
     if (!accountId) return;
 
     try {
@@ -73,7 +71,25 @@ export default function Products() {
     } catch (err) {
       console.error('Error fetching stats:', err);
     }
-  };
+  }, [accountId]);
+
+  // Effect for fetching products when dependencies change
+  useEffect(() => {
+    fetchProducts();
+  }, [fetchProducts]);
+
+  // Effect for fetching stats only when accountId changes
+  useEffect(() => {
+    fetchStats();
+  }, [accountId]);
+
+  // Reset offset when filter or sort changes
+  useEffect(() => {
+    if (initialFetchDone.current) {
+      setOffset(0);
+    }
+    initialFetchDone.current = true;
+  }, [filterStatus, sortBy]);
 
   const handleSyncProducts = async () => {
     if (!accountId) return;
@@ -85,11 +101,12 @@ export default function Products() {
 
       if (response.data.success) {
         setProducts(response.data.data.products);
+        setTotal(response.data.data.productsCount || response.data.data.products.length);
         fetchStats();
-        toast.success('Products synced successfully!');
+        toast.success(`${response.data.data.productsCount || response.data.data.products.length} produtos sincronizados com sucesso!`);
       }
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to sync products');
+      toast.error(err.response?.data?.message || 'Falha ao sincronizar produtos');
       console.error('Error syncing products:', err);
     } finally {
       setSyncing(false);
@@ -113,12 +130,23 @@ export default function Products() {
   };
 
   const filteredProducts = products.filter(product =>
-    product.title.toLowerCase().includes(searchTerm.toLowerCase())
+    product.title?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const hasProducts = filteredProducts.length > 0;
-  const totalPages = Math.ceil((pagination.total || 0) / pagination.limit);
-  const currentPage = pagination.offset / pagination.limit + 1;
+  const totalPages = Math.ceil(total / limit);
+  const currentPage = Math.floor(offset / limit) + 1;
+
+  // Pagination handlers
+  const goToPrevPage = () => {
+    setOffset(Math.max(0, offset - limit));
+  };
+
+  const goToNextPage = () => {
+    if (currentPage < totalPages) {
+      setOffset(offset + limit);
+    }
+  };
 
   // Export handlers
   const handleExportCSV = () => {
@@ -155,7 +183,7 @@ export default function Products() {
     <div className="products-container">
       <div className="products-header">
         <div className="header-left">
-          <h1>🏪 Products</h1>
+          <h1>Produtos</h1>
           {account && <p className="account-name">{account.nickname}</p>}
         </div>
         <div className="header-actions" style={{ display: 'flex', gap: '0.5rem' }}>
@@ -182,7 +210,7 @@ export default function Products() {
             onClick={handleSyncProducts}
             disabled={syncing}
           >
-            {syncing ? '⏳ Syncing...' : '🔄 Sync Products'}
+            {syncing ? 'Sincronizando...' : 'Sincronizar Produtos'}
           </button>
         </div>
       </div>
@@ -193,7 +221,7 @@ export default function Products() {
           <div className="stat-card">
             <div className="stat-icon">📦</div>
             <div className="stat-content">
-              <div className="stat-label">Total Products</div>
+              <div className="stat-label">Total de Produtos</div>
               <div className="stat-value">{stats.products.total}</div>
             </div>
           </div>
@@ -201,7 +229,7 @@ export default function Products() {
           <div className="stat-card">
             <div className="stat-icon">✅</div>
             <div className="stat-content">
-              <div className="stat-label">Active</div>
+              <div className="stat-label">Ativos</div>
               <div className="stat-value">{stats.products.active}</div>
             </div>
           </div>
@@ -209,7 +237,7 @@ export default function Products() {
           <div className="stat-card">
             <div className="stat-icon">⏸️</div>
             <div className="stat-content">
-              <div className="stat-label">Paused</div>
+              <div className="stat-label">Pausados</div>
               <div className="stat-value">{stats.products.paused}</div>
             </div>
           </div>
@@ -217,7 +245,7 @@ export default function Products() {
           <div className="stat-card">
             <div className="stat-icon">⚠️</div>
             <div className="stat-content">
-              <div className="stat-label">Low Stock</div>
+              <div className="stat-label">Estoque Baixo</div>
               <div className="stat-value">{stats.products.lowStock}</div>
             </div>
           </div>
@@ -225,7 +253,7 @@ export default function Products() {
           <div className="stat-card">
             <div className="stat-icon">📊</div>
             <div className="stat-content">
-              <div className="stat-label">Total Sales</div>
+              <div className="stat-label">Total Vendas</div>
               <div className="stat-value">{stats.sales}</div>
             </div>
           </div>
@@ -233,7 +261,7 @@ export default function Products() {
           <div className="stat-card">
             <div className="stat-icon">💰</div>
             <div className="stat-content">
-              <div className="stat-label">Est. Value</div>
+              <div className="stat-label">Valor Estimado</div>
               <div className="stat-value">
                 R$ {(stats.estimatedValue || 0).toLocaleString('pt-BR')}
               </div>
@@ -247,7 +275,7 @@ export default function Products() {
         <div className="search-box">
           <input
             type="text"
-            placeholder="🔍 Search products..."
+            placeholder="Buscar produtos..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -256,16 +284,13 @@ export default function Products() {
         <div className="filter-controls">
           <select
             value={filterStatus}
-            onChange={(e) => {
-              setFilterStatus(e.target.value);
-              setPagination({ ...pagination, offset: 0 });
-            }}
+            onChange={(e) => setFilterStatus(e.target.value)}
             className="filter-select"
           >
-            <option value="">All Status</option>
-            <option value="active">Active</option>
-            <option value="paused">Paused</option>
-            <option value="closed">Closed</option>
+            <option value="">Todos</option>
+            <option value="active">Ativos</option>
+            <option value="paused">Pausados</option>
+            <option value="closed">Encerrados</option>
           </select>
 
           <select
@@ -273,11 +298,11 @@ export default function Products() {
             onChange={(e) => setSortBy(e.target.value)}
             className="filter-select"
           >
-            <option value="-createdAt">Newest First</option>
-            <option value="createdAt">Oldest First</option>
-            <option value="-price.amount">Price: High to Low</option>
-            <option value="price.amount">Price: Low to High</option>
-            <option value="-salesCount">Most Sales</option>
+            <option value="-createdAt">Mais Recentes</option>
+            <option value="createdAt">Mais Antigos</option>
+            <option value="-price.amount">Preço: Maior para Menor</option>
+            <option value="price.amount">Preço: Menor para Maior</option>
+            <option value="-salesCount">Mais Vendidos</option>
           </select>
         </div>
       </div>
@@ -286,7 +311,7 @@ export default function Products() {
       {loading ? (
         <div className="loading-spinner">
           <div className="spinner"></div>
-          <p>Loading products...</p>
+          <p>Carregando produtos...</p>
         </div>
       ) : hasProducts ? (
         <>
@@ -294,12 +319,12 @@ export default function Products() {
             <table className="products-table">
               <thead>
                 <tr>
-                  <th>Product</th>
-                  <th>Price</th>
-                  <th>Stock</th>
-                  <th>Sales</th>
+                  <th>Produto</th>
+                  <th>Preço</th>
+                  <th>Estoque</th>
+                  <th>Vendas</th>
                   <th>Status</th>
-                  <th>Actions</th>
+                  <th>Ações</th>
                 </tr>
               </thead>
               <tbody>
@@ -326,7 +351,7 @@ export default function Products() {
                       </div>
                     </td>
                     <td className="product-price">
-                      R$ {product.price.toLocaleString('pt-BR')}
+                      R$ {(product.price || 0).toLocaleString('pt-BR')}
                     </td>
                     <td className="product-stock">
                       <span
@@ -338,15 +363,18 @@ export default function Products() {
                             : 'low'
                         }`}
                       >
-                        {product.quantity} units
+                        {product.quantity} unidades
                       </span>
                     </td>
                     <td className="product-sales">
-                      {product.salesCount} sales
+                      {product.salesCount} vendas
                     </td>
                     <td className="product-status">
                       <span className={`status-badge ${product.status}`}>
-                        {product.status.charAt(0).toUpperCase() + product.status.slice(1)}
+                        {product.status === 'active' ? 'Ativo' : 
+                         product.status === 'paused' ? 'Pausado' : 
+                         product.status === 'closed' ? 'Encerrado' : 
+                         product.status}
                       </span>
                     </td>
                     <td className="product-actions">
@@ -357,16 +385,16 @@ export default function Products() {
                             `/accounts/${accountId}/products/${product.id}`
                           )
                         }
-                        title="View details"
+                        title="Ver detalhes"
                       >
-                        👁️
+                        Ver
                       </button>
                       <button
                         className="btn btn-small btn-danger"
                         onClick={() => handleRemoveProduct(product.id)}
-                        title="Remove product"
+                        title="Remover produto"
                       >
-                        🗑️
+                        Remover
                       </button>
                     </td>
                   </tr>
@@ -379,33 +407,23 @@ export default function Products() {
           {totalPages > 1 && (
             <div className="pagination">
               <button
-                onClick={() =>
-                  setPagination({
-                    ...pagination,
-                    offset: Math.max(0, pagination.offset - pagination.limit),
-                  })
-                }
+                onClick={goToPrevPage}
                 disabled={currentPage === 1}
                 className="btn btn-small"
               >
-                ← Previous
+                ← Anterior
               </button>
 
               <div className="pagination-info">
-                Page {currentPage} of {totalPages}
+                Página {currentPage} de {totalPages}
               </div>
 
               <button
-                onClick={() =>
-                  setPagination({
-                    ...pagination,
-                    offset: pagination.offset + pagination.limit,
-                  })
-                }
+                onClick={goToNextPage}
                 disabled={currentPage === totalPages}
                 className="btn btn-small"
               >
-                Next →
+                Próximo →
               </button>
             </div>
           )}
@@ -413,11 +431,11 @@ export default function Products() {
       ) : (
         <div className="empty-state">
           <div className="empty-icon">📦</div>
-          <h2>No Products Found</h2>
+          <h2>Nenhum Produto Encontrado</h2>
           <p>
             {searchTerm
-              ? 'No products match your search'
-              : 'Sync your Mercado Livre account to see products here'}
+              ? 'Nenhum produto corresponde a sua busca'
+              : 'Sincronize sua conta do Mercado Livre para ver os produtos aqui'}
           </p>
           {!searchTerm && (
             <button
@@ -425,7 +443,7 @@ export default function Products() {
               onClick={handleSyncProducts}
               disabled={syncing}
             >
-              {syncing ? '⏳ Syncing...' : '🔄 Sync Products Now'}
+              {syncing ? 'Sincronizando...' : 'Sincronizar Produtos Agora'}
             </button>
           )}
         </div>

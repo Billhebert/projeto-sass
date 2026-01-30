@@ -425,10 +425,10 @@ userSchema.methods.getProfile = function () {
     company: this.company,
     emailVerified: this.emailVerified,
     status: this.status,
-    preferences: this.preferences,
+    preferences: this.preferences || {},
     lastLogin: this.lastLogin,
     role: this.role,
-    plan: this.metadata.plan,
+    plan: this.metadata?.plan || 'free',
     createdAt: this.createdAt,
   };
 };

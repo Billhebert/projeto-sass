@@ -1,0 +1,159 @@
+/* Items Page Styles */
+.items-page {
+  padding: 0;
+}
+
+.filter-stats {
+  margin-left: auto;
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+/* Items Grid */
+.items-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1rem;
+}
+
+.item-card {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.item-image {
+  position: relative;
+  height: 180px;
+  background: #f3f4f6;
+}
+
+.item-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.item-image .no-image {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.item-image .no-image .material-icons {
+  font-size: 48px;
+  color: #d1d5db;
+}
+
+.item-image .badge {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+}
+
+.item-content {
+  padding: 1rem;
+  flex: 1;
+}
+
+.item-title {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: #1f2937;
+  margin: 0 0 0.25rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.item-id {
+  font-size: 0.75rem;
+  color: #60a5fa;
+  margin: 0 0 0.75rem;
+}
+
+.item-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.item-stats .stat {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.8125rem;
+  color: #4b5563;
+}
+
+.item-stats .stat .material-icons {
+  font-size: 16px;
+  color: #9ca3af;
+}
+
+.item-listing-type {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: #6b7280;
+  padding-top: 0.75rem;
+  border-top: 1px solid #f3f4f6;
+}
+
+.item-listing-type .material-icons {
+  font-size: 14px;
+  color: #fbbf24;
+}
+
+.item-actions {
+  display: flex;
+  gap: 0.5rem;
+  padding: 1rem;
+  border-top: 1px solid #e5e7eb;
+  flex-wrap: wrap;
+}
+
+/* Pagination */
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.pagination-info {
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .items-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .item-actions {
+    flex-direction: column;
+  }
+
+  .item-actions .btn {
+    width: 100%;
+  }
+
+  .pagination {
+    flex-direction: column;
+  }
+}

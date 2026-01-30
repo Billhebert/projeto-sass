@@ -18,7 +18,11 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    // Only logout for 401 errors that are NOT related to ML token refresh
+    // ML token refresh failures should show an error, not logout the user
+    const isMLTokenRefresh = error.config?.url?.includes('/refresh-token')
+    
+    if (error.response?.status === 401 && !isMLTokenRefresh) {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
       window.location.href = '/login'

@@ -403,6 +403,7 @@ router.delete('/:accountId/:productId', authenticateToken, async (req, res) => {
 
 /**
  * Buscar produtos do Mercado Livre API usando token do usuário
+ * Busca todos os produtos usando paginação
  */
 async function fetchMLProducts(mlUserId, accessToken) {
   try {
@@ -411,37 +412,103 @@ async function fetchMLProducts(mlUserId, accessToken) {
       'Content-Type': 'application/json',
     };
 
-    // Get products list for the user
-    // Note: This requires specific ML API permissions
-    const response = await axios.get(
-      `${ML_API_BASE}/users/${mlUserId}/items/search?limit=50&offset=0`,
-      { headers }
-    );
+    // First, get the total count and first batch of items
+    let allItemIds = [];
+    let offset = 0;
+    const limit = 50;
+    let total = 0;
 
-    const itemIds = response.data.results || [];
+    // Fetch all item IDs with pagination
+    do {
+      const response = await axios.get(
+        `${ML_API_BASE}/users/${mlUserId}/items/search?limit=${limit}&offset=${offset}`,
+        { headers }
+      );
 
-    if (itemIds.length === 0) {
+      const itemIds = response.data.results || [];
+      allItemIds = allItemIds.concat(itemIds);
+      total = response.data.paging?.total || itemIds.length;
+      offset += limit;
+
+      logger.info({
+        action: 'FETCH_ML_ITEMS_PROGRESS',
+        mlUserId,
+        fetched: allItemIds.length,
+        total,
+      });
+    } while (offset < total && allItemIds.length < 500); // Limit to 500 products max
+
+    if (allItemIds.length === 0) {
       return [];
     }
 
-    // Fetch detailed info for each item
-    const detailedProducts = await Promise.all(
-      itemIds.map(itemId =>
-        axios
-          .get(`${ML_API_BASE}/items/${itemId}`, { headers })
-          .then(res => res.data)
-          .catch(error => {
-            logger.warn({
-              action: 'FETCH_PRODUCT_DETAILS_ERROR',
-              itemId,
-              error: error.message,
-            });
-            return null;
-          })
-      )
-    );
+    logger.info({
+      action: 'FETCH_ML_ITEMS_COMPLETE',
+      mlUserId,
+      totalItems: allItemIds.length,
+    });
 
-    return detailedProducts.filter(p => p !== null);
+    // Fetch detailed info for each item in batches of 20 (ML API allows multiget)
+    const detailedProducts = [];
+    const batchSize = 20;
+
+    for (let i = 0; i < allItemIds.length; i += batchSize) {
+      const batch = allItemIds.slice(i, i + batchSize);
+      
+      // Use multiget endpoint for better performance
+      try {
+        const multigetResponse = await axios.get(
+          `${ML_API_BASE}/items?ids=${batch.join(',')}`,
+          { headers }
+        );
+        
+        // Multiget returns array of objects with body property
+        for (const item of multigetResponse.data) {
+          if (item.code === 200 && item.body) {
+            detailedProducts.push(item.body);
+          } else {
+            logger.warn({
+              action: 'FETCH_PRODUCT_SKIPPED',
+              itemId: batch[multigetResponse.data.indexOf(item)],
+              code: item.code,
+              error: item.body?.message,
+            });
+          }
+        }
+      } catch (batchError) {
+        // Fallback to individual requests if multiget fails
+        logger.warn({
+          action: 'MULTIGET_FAILED_FALLBACK',
+          error: batchError.message,
+        });
+        
+        const batchResults = await Promise.all(
+          batch.map(itemId =>
+            axios
+              .get(`${ML_API_BASE}/items/${itemId}`, { headers })
+              .then(res => res.data)
+              .catch(error => {
+                logger.warn({
+                  action: 'FETCH_PRODUCT_DETAILS_ERROR',
+                  itemId,
+                  error: error.message,
+                });
+                return null;
+              })
+          )
+        );
+        
+        detailedProducts.push(...batchResults.filter(p => p !== null));
+      }
+    }
+
+    logger.info({
+      action: 'FETCH_ML_PRODUCTS_COMPLETE',
+      mlUserId,
+      totalProducts: detailedProducts.length,
+    });
+
+    return detailedProducts;
   } catch (error) {
     logger.error({
       action: 'FETCH_ML_PRODUCTS_ERROR',

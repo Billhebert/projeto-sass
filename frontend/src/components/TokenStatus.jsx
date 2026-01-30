@@ -5,8 +5,18 @@ import './TokenStatus.css'
 /**
  * TokenStatus Component
  * Shows token expiration status and provides manual refresh option
+ * 
+ * Auto-refresh is now enabled for any account with a refreshToken,
+ * since credentials can come from .env as fallback.
  */
-function TokenStatus({ accountId, canAutoRefresh = false, tokenExpiresAt = null, onRefreshSuccess = null }) {
+function TokenStatus({ 
+  accountId, 
+  canAutoRefresh = false, 
+  hasRefreshToken = false,
+  tokenExpiresAt = null, 
+  onRefreshSuccess = null,
+  onConfigureOAuth = null 
+}) {
   const [tokenInfo, setTokenInfo] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -49,12 +59,14 @@ function TokenStatus({ accountId, canAutoRefresh = false, tokenExpiresAt = null,
       const response = await api.put(`/ml-accounts/${accountId}/refresh-token`)
       
       if (response.data.success) {
-        setSuccess('Token refreshed successfully!')
+        setSuccess('Token renovado com sucesso!')
         setTokenInfo(prev => ({
           ...prev,
           tokenExpiry: response.data.data.tokenExpiresAt,
           timeToExpiry: response.data.data.expiresIn,
           healthPercent: 100,
+          isExpired: false,
+          needsRefresh: false,
         }))
         
         if (onRefreshSuccess) {
@@ -64,7 +76,16 @@ function TokenStatus({ accountId, canAutoRefresh = false, tokenExpiresAt = null,
         setTimeout(() => setSuccess(''), 3000)
       }
     } catch (err) {
-      const errorMsg = err.response?.data?.message || 'Failed to refresh token'
+      const errorData = err.response?.data
+      let errorMsg = errorData?.message || 'Falha ao renovar token'
+      
+      // Add solution hint for specific error codes
+      if (errorData?.code === 'INVALID_REFRESH_TOKEN') {
+        errorMsg = 'Refresh token expirado. Reconecte sua conta via OAuth.'
+      } else if (errorData?.code === 'TOKEN_REFRESH_FAILED') {
+        errorMsg = `${errorMsg}. Reconecte sua conta.`
+      }
+      
       setError(errorMsg)
       console.error('Token refresh error:', err)
     } finally {
@@ -72,8 +93,8 @@ function TokenStatus({ accountId, canAutoRefresh = false, tokenExpiresAt = null,
     }
   }
 
-  if (loading) {
-    return <div className="token-status token-status-loading">Loading token status...</div>
+  if (loading && !tokenInfo) {
+    return <div className="token-status token-status-loading">Carregando status do token...</div>
   }
 
   if (!tokenInfo) {
@@ -87,27 +108,34 @@ function TokenStatus({ accountId, canAutoRefresh = false, tokenExpiresAt = null,
   const isWarning = tokenInfo.healthPercent < 10 && !isExpired
 
   let statusClass = 'token-status-ok'
-  let statusIcon = '✓'
-  let statusText = 'Token válido'
+  let statusIcon = 'ok'
+  let statusText = 'Token valido'
 
   if (isExpired) {
     statusClass = 'token-status-expired'
-    statusIcon = '✗'
+    statusIcon = 'error'
     statusText = 'Token expirado'
   } else if (isWarning) {
     statusClass = 'token-status-warning'
-    statusIcon = '⚠'
+    statusIcon = 'warning'
     statusText = `Expirando em ${hoursLeft}h ${minutesLeft}m`
   } else if (isExpiringSoon) {
     statusClass = 'token-status-warning'
-    statusIcon = '⏰'
+    statusIcon = 'clock'
     statusText = `Expirando em ${hoursLeft}h ${minutesLeft}m`
+  } else if (hoursLeft > 0 || minutesLeft > 0) {
+    statusText = `Valido por ${hoursLeft}h ${minutesLeft}m`
   }
 
   return (
     <div className={`token-status ${statusClass}`}>
       <div className="token-status-header">
-        <span className="token-status-icon">{statusIcon}</span>
+        <span className={`token-status-icon token-status-icon-${statusIcon}`}>
+          {statusIcon === 'ok' && 'OK'}
+          {statusIcon === 'error' && '!'}
+          {statusIcon === 'warning' && '!'}
+          {statusIcon === 'clock' && 'T'}
+        </span>
         <div className="token-status-info">
           <p className="token-status-text">{statusText}</p>
           {!isExpired && tokenInfo.healthPercent !== null && (
@@ -116,7 +144,7 @@ function TokenStatus({ accountId, canAutoRefresh = false, tokenExpiresAt = null,
                 className="token-health-fill" 
                 style={{
                   width: `${Math.max(0, tokenInfo.healthPercent)}%`,
-                  backgroundColor: tokenInfo.healthPercent > 30 ? '#4CAF50' : '#FF9800'
+                  backgroundColor: tokenInfo.healthPercent > 30 ? '#4CAF50' : tokenInfo.healthPercent > 10 ? '#FF9800' : '#f44336'
                 }}
               ></div>
             </div>
@@ -124,51 +152,54 @@ function TokenStatus({ accountId, canAutoRefresh = false, tokenExpiresAt = null,
         </div>
       </div>
 
-       {canAutoRefresh && (
-         <div className="token-status-auto-refresh">
-           <span className="badge badge-success">🔄 Auto-refresh ativo</span>
-           <p className="text-small text-muted">Token será renovado automaticamente</p>
-         </div>
-       )}
+      {/* Auto-refresh ativo */}
+      {canAutoRefresh && (
+        <div className="token-status-auto-refresh">
+          <span className="token-badge token-badge-success">Auto-refresh ativo</span>
+          <p className="token-status-hint">Token sera renovado automaticamente</p>
+        </div>
+      )}
 
-       {!canAutoRefresh && tokenInfo.hasRefreshToken === false && (
-         <div className="token-status-no-refresh">
-           <span className="badge badge-warning">⚠️ Renovação Manual</span>
-           <p className="text-small text-muted">
-             Token foi fornecido manualmente. Sem renovação automática.
-             <br/>
-             Quando expirar (em 6 horas), você precisará inserir um novo token.
-           </p>
-           <button
-             className="btn btn-sm btn-secondary token-reconnect-btn"
-             onClick={() => window.location.href = '/accounts'}
-           >
-             Inserir Novo Token
-           </button>
-         </div>
-       )}
+      {/* Sem refresh token - token manual */}
+      {!canAutoRefresh && !hasRefreshToken && (
+        <div className="token-status-no-refresh">
+          <span className="token-badge token-badge-danger">Token Manual</span>
+          <p className="token-status-hint">
+            Token foi fornecido manualmente sem Refresh Token. Quando expirar (em 6 horas),
+            voce precisara inserir um novo token ou adicionar um Refresh Token.
+          </p>
+          {onConfigureOAuth && (
+            <button
+              className="btn btn-sm btn-warning token-configure-btn"
+              onClick={onConfigureOAuth}
+            >
+              Adicionar Refresh Token
+            </button>
+          )}
+        </div>
+      )}
 
-       {!canAutoRefresh && tokenInfo.hasRefreshToken !== false && (
-         <div className="token-status-manual">
-           <p className="text-small text-muted">Sem renovação automática</p>
-           <button
-             className="btn btn-sm btn-primary token-refresh-btn"
-             onClick={handleManualRefresh}
-             disabled={refreshing}
-           >
-             {refreshing ? 'Renovando...' : '🔄 Renovar Agora'}
-           </button>
-         </div>
-       )}
+      {/* Botao de renovar para quem tem auto-refresh mas quer forcar */}
+      {canAutoRefresh && (isExpiringSoon || isWarning) && (
+        <div className="token-status-force-refresh">
+          <button
+            className="btn btn-sm btn-secondary token-refresh-btn"
+            onClick={handleManualRefresh}
+            disabled={refreshing}
+          >
+            {refreshing ? 'Renovando...' : 'Renovar Agora'}
+          </button>
+        </div>
+      )}
 
       {error && (
-        <div className="alert alert-error">
+        <div className="token-alert token-alert-error">
           {error}
         </div>
       )}
 
       {success && (
-        <div className="alert alert-success">
+        <div className="token-alert token-alert-success">
           {success}
         </div>
       )}

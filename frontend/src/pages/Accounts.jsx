@@ -12,9 +12,12 @@ function Accounts() {
   const [showModal, setShowModal] = useState(false)
   const [showMLLoginModal, setShowMLLoginModal] = useState(false)
   const [showOAuthModal, setShowOAuthModal] = useState(false)
+  const [showCredentialsModal, setShowCredentialsModal] = useState(false)
+  const [selectedAccountForCredentials, setSelectedAccountForCredentials] = useState(null)
   const [editingId, setEditingId] = useState(null)
   const [mlLoginLoading, setMLLoginLoading] = useState(false)
   const [oauthLoading, setOAuthLoading] = useState(false)
+  const [credentialsLoading, setCredentialsLoading] = useState(false)
   const [formData, setFormData] = useState({
     accessToken: '',
     refreshToken: '',
@@ -24,6 +27,12 @@ function Accounts() {
     appId: '',
     appSecret: '',
     redirectUrl: '',
+  })
+  const [credentialsFormData, setCredentialsFormData] = useState({
+    clientId: '',
+    clientSecret: '',
+    redirectUri: '',
+    refreshToken: '',
   })
   const [submitting, setSubmitting] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
@@ -208,6 +217,96 @@ function Accounts() {
     })
   }
 
+  // ========== CREDENTIALS MODAL FUNCTIONS ==========
+  
+  const openCredentialsModal = (account) => {
+    setSelectedAccountForCredentials(account)
+    setCredentialsFormData({
+      clientId: '',
+      clientSecret: '',
+      redirectUri: 'http://localhost:5173/auth/callback',
+      refreshToken: '',
+    })
+    setShowCredentialsModal(true)
+  }
+
+  const closeCredentialsModal = () => {
+    setShowCredentialsModal(false)
+    setSelectedAccountForCredentials(null)
+    setCredentialsFormData({
+      clientId: '',
+      clientSecret: '',
+      redirectUri: '',
+      refreshToken: '',
+    })
+  }
+
+  const handleCredentialsFormChange = (e) => {
+    const { name, value } = e.target
+    setCredentialsFormData(prev => ({
+      ...prev,
+      [name]: value
+    }))
+  }
+
+  const handleCredentialsSubmit = async (e) => {
+    e.preventDefault()
+    
+    if (!credentialsFormData.refreshToken) {
+      toast.error('Refresh Token e obrigatorio')
+      return
+    }
+
+    try {
+      setCredentialsLoading(true)
+      
+      const response = await api.put(
+        `/ml-accounts/${selectedAccountForCredentials.id}/oauth-credentials`,
+        {
+          clientId: credentialsFormData.clientId || null,
+          clientSecret: credentialsFormData.clientSecret || null,
+          redirectUri: credentialsFormData.redirectUri || null,
+          refreshToken: credentialsFormData.refreshToken,
+        }
+      )
+      
+      if (response.data.success) {
+        toast.success('Refresh Token salvo com sucesso! Renovacao automatica ativada.')
+        await fetchAccounts()
+        closeCredentialsModal()
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Erro ao salvar refresh token')
+      console.error(err)
+    } finally {
+      setCredentialsLoading(false)
+    }
+  }
+
+  // Get status badge color based on token configuration
+  const getOAuthStatusBadge = (account) => {
+    if (account.canAutoRefresh) {
+      return (
+        <span className="oauth-badge oauth-badge-success" title="Renovacao automatica ativa (tem Refresh Token)">
+          Auto-Refresh
+        </span>
+      )
+    } else if (account.hasRefreshToken) {
+      // Has refresh token but canAutoRefresh is false - this shouldn't happen with the new logic
+      return (
+        <span className="oauth-badge oauth-badge-warning" title="Refresh Token presente">
+          Auto-Refresh
+        </span>
+      )
+    } else {
+      return (
+        <span className="oauth-badge oauth-badge-danger" title="Token manual - sem renovacao automatica">
+          Manual
+        </span>
+      )
+    }
+  }
+
   return (
     <div className="page">
       <div className="page-header">
@@ -255,7 +354,7 @@ function Accounts() {
                 className="btn btn-secondary"
                 onClick={() => openModal()}
               >
-                ➕ Adicionar Manualmente
+                + Adicionar Manualmente
               </button>
             </div>
           </div>
@@ -267,10 +366,13 @@ function Accounts() {
                   <div className="account-info">
                     <h3>{account.nickname}</h3>
                     <p className="text-muted">{account.email}</p>
+                    <div className="account-badges">
+                      <span className={`status-badge status-${account.status}`}>
+                        {account.status === 'active' ? 'Ativo' : account.status === 'expired' ? 'Expirado' : 'Inativo'}
+                      </span>
+                      {getOAuthStatusBadge(account)}
+                    </div>
                   </div>
-                  <span className={`status-badge status-${account.status}`}>
-                    {account.status === 'active' ? 'Ativo' : 'Inativo'}
-                  </span>
                 </div>
                 
                 <div className="account-stats">
@@ -292,8 +394,10 @@ function Accounts() {
                 <TokenStatus 
                   accountId={account.id}
                   canAutoRefresh={account.canAutoRefresh}
+                  hasRefreshToken={account.hasRefreshToken}
                   tokenExpiresAt={account.tokenExpiresAt}
                   onRefreshSuccess={() => fetchAccounts()}
+                  onConfigureOAuth={() => openCredentialsModal(account)}
                 />
 
                 <div className="account-actions">
@@ -301,8 +405,17 @@ function Accounts() {
                     className="btn btn-primary btn-sm"
                     onClick={() => navigate(`/accounts/${account.id}/products`)}
                   >
-                    📦 Produtos
+                    Produtos
                   </button>
+                  {!account.canAutoRefresh && (
+                    <button 
+                      className="btn btn-warning btn-sm"
+                      onClick={() => openCredentialsModal(account)}
+                      title="Configurar credenciais OAuth para renovação automática"
+                    >
+                      Configurar OAuth
+                    </button>
+                  )}
                   <button 
                     className="btn btn-secondary btn-sm"
                     onClick={() => openModal(account)}
@@ -323,13 +436,13 @@ function Accounts() {
         )}
       </div>
 
-      {/* Modal */}
+      {/* Modal - Adicionar/Editar Conta Manual */}
       {showModal && (
         <div className="modal-overlay" onClick={closeModal}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>{editingId ? 'Editar Conta' : 'Conectar Conta Mercado Livre'}</h2>
-              <button className="modal-close" onClick={closeModal}>×</button>
+              <button className="modal-close" onClick={closeModal}>x</button>
             </div>
 
             <form onSubmit={handleSubmit} className="modal-form">
@@ -358,16 +471,10 @@ function Accounts() {
                        placeholder="Cole seu token de acesso aqui"
                        required={!editingId}
                      />
-                     <small style={{ color: '#666', marginTop: '0.5rem', display: 'block' }}>
-                       📌 Como obter o token?
-                       <br/>
-                       1. Vá para Mercado Livre Developer (developers.mercadolibre.com.br)
-                       <br/>
-                       2. Acesse Applications → Suas aplicações
-                       <br/>
-                       3. Procure por "Access Token" ou faça login com sua conta ML
-                       <br/>
-                       4. Cole o token aqui (ele expira em 6 horas)
+                     <small className="form-help">
+                       Como obter o token? Vá para developers.mercadolibre.com.br, 
+                       acesse suas aplicações e procure por "Access Token".
+                       O token expira em 6 horas.
                      </small>
                    </div>
 
@@ -381,9 +488,9 @@ function Accounts() {
                        onChange={handleFormChange}
                        placeholder="Cole seu refresh token aqui (opcional)"
                      />
-                     <small style={{ color: '#666', marginTop: '0.5rem', display: 'block' }}>
-                       💡 Se você tem um refresh token (válido por 6 meses), cole aqui para ativar
-                       renovação automática. Se deixar em branco, o token será válido por apenas 6 horas.
+                     <small className="form-help">
+                       Se você tem um refresh token (válido por 6 meses), cole aqui.
+                       Sem ele, precisará inserir novo token a cada 6 horas.
                      </small>
                    </div>
                 </>
@@ -411,19 +518,23 @@ function Accounts() {
         </div>
       )}
 
-      {/* OAuth Configuration Modal */}
+      {/* OAuth Configuration Modal - Nova Conta */}
       {showOAuthModal && (
         <div className="modal-overlay" onClick={closeOAuthModal}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal modal-lg" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>🔐 Autenticação OAuth 2.0</h2>
-              <button className="modal-close" onClick={closeOAuthModal}>×</button>
+              <h2>Autenticacao OAuth 2.0</h2>
+              <button className="modal-close" onClick={closeOAuthModal}>x</button>
             </div>
 
             <form onSubmit={handleOAuthSubmit} className="modal-form">
-              <p style={{ marginBottom: '1.5rem', color: '#666', fontSize: '0.95rem' }}>
-                Forneça suas credenciais da aplicação Mercado Livre para fazer a autenticação OAuth.
-              </p>
+              <div className="info-box info-box-primary">
+                <strong>Como funciona?</strong>
+                <p>
+                  Forneca suas credenciais da aplicacao Mercado Livre para fazer a autenticacao OAuth.
+                  Isso permite renovacao automatica dos tokens.
+                </p>
+              </div>
 
               <div className="form-group">
                 <label htmlFor="appId">App ID (Client ID) *</label>
@@ -433,11 +544,11 @@ function Accounts() {
                   name="appId"
                   value={oauthFormData.appId}
                   onChange={handleOAuthFormChange}
-                  placeholder="Ex: 1706187223829083"
+                  placeholder="Ex: 1234567890123456"
                   required
                 />
-                <small style={{ color: '#999' }}>
-                  Encontre em: https://developers.mercadolibre.com.br → Minhas aplicações
+                <small className="form-help">
+                  Encontre em: developers.mercadolibre.com.br - Minhas aplicacoes
                 </small>
               </div>
 
@@ -452,8 +563,8 @@ function Accounts() {
                   placeholder="Sua chave secreta"
                   required
                 />
-                <small style={{ color: '#999' }}>
-                  Guarde este valor com segurança. Será usado apenas para autenticação.
+                <small className="form-help">
+                  Guarde este valor com seguranca. Sera usado apenas para autenticacao.
                 </small>
               </div>
 
@@ -468,14 +579,12 @@ function Accounts() {
                   placeholder="Ex: http://localhost:5173/auth/callback"
                   required
                 />
-                <small style={{ color: '#999' }}>
-                  Deve corresponder exatamente à URL configurada em suas aplicações Mercado Livre.
-                  <br/>
-                  Use HTTPS em produção.
+                <small className="form-help">
+                  Deve corresponder exatamente a URL configurada em suas aplicacoes Mercado Livre.
                 </small>
               </div>
 
-              <div className="modal-actions" style={{ marginTop: '2rem' }}>
+              <div className="modal-actions">
                 <button 
                   type="button" 
                   className="btn btn-secondary"
@@ -489,26 +598,121 @@ function Accounts() {
                   className="btn btn-primary"
                   disabled={oauthLoading}
                 >
-                  {oauthLoading ? 'Conectando...' : '🔐 Conectar com OAuth'}
+                  {oauthLoading ? 'Conectando...' : 'Conectar com OAuth'}
                 </button>
               </div>
 
-              <div style={{ 
-                marginTop: '1.5rem', 
-                padding: '1rem', 
-                backgroundColor: '#f0f8ff', 
-                borderRadius: '4px',
-                fontSize: '0.9rem',
-                color: '#333',
-                borderLeft: '4px solid #2196F3'
-              }}>
-                <strong>ℹ️ O que acontece após enviar?</strong>
-                <ol style={{ margin: '0.5rem 0 0 1.5rem', paddingLeft: 0 }}>
-                  <li>Você será redirecionado para o Mercado Livre</li>
-                  <li>Authorize a aplicação na sua conta</li>
-                  <li>Retornará automáticamente com o token de acesso</li>
-                  <li>Sua conta estará conectada e pronta</li>
+              <div className="info-box info-box-info">
+                <strong>O que acontece apos enviar?</strong>
+                <ol>
+                  <li>Voce sera redirecionado para o Mercado Livre</li>
+                  <li>Authorize a aplicacao na sua conta</li>
+                  <li>Retornara automaticamente com o token de acesso</li>
+                  <li>Sua conta estara conectada com renovacao automatica!</li>
                 </ol>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* OAuth Credentials Modal - Conta Existente */}
+      {showCredentialsModal && selectedAccountForCredentials && (
+        <div className="modal-overlay" onClick={closeCredentialsModal}>
+          <div className="modal modal-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Adicionar Refresh Token</h2>
+              <button className="modal-close" onClick={closeCredentialsModal}>x</button>
+            </div>
+
+            <form onSubmit={handleCredentialsSubmit} className="modal-form">
+              <div className="info-box info-box-warning">
+                <strong>Conta: {selectedAccountForCredentials.nickname}</strong>
+                <p>
+                  Esta conta foi adicionada manualmente. Adicione um Refresh Token para ativar a renovacao automatica.
+                </p>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="cred-refreshToken">Refresh Token *</label>
+                <input
+                  type="password"
+                  id="cred-refreshToken"
+                  name="refreshToken"
+                  value={credentialsFormData.refreshToken}
+                  onChange={handleCredentialsFormChange}
+                  placeholder="Cole seu refresh token aqui"
+                  required
+                />
+                <small className="form-help">
+                  O Refresh Token e necessario para a renovacao automatica funcionar.
+                  Voce pode obte-lo atraves do OAuth do Mercado Livre ou da API.
+                </small>
+              </div>
+
+              <div className="info-box info-box-info">
+                <strong>Credenciais OAuth (Opcional)</strong>
+                <p>
+                  Se voce quiser usar credenciais OAuth proprias (diferente das configuradas no servidor),
+                  preencha os campos abaixo. Caso contrario, o sistema usara as credenciais padrao.
+                </p>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="cred-clientId">Client ID (App ID) - Opcional</label>
+                <input
+                  type="text"
+                  id="cred-clientId"
+                  name="clientId"
+                  value={credentialsFormData.clientId}
+                  onChange={handleCredentialsFormChange}
+                  placeholder="Ex: 1234567890123456"
+                />
+                <small className="form-help">
+                  ID da sua aplicacao no Mercado Livre Developers (deixe vazio para usar o padrao)
+                </small>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="cred-clientSecret">Client Secret (App Secret) - Opcional</label>
+                <input
+                  type="password"
+                  id="cred-clientSecret"
+                  name="clientSecret"
+                  value={credentialsFormData.clientSecret}
+                  onChange={handleCredentialsFormChange}
+                  placeholder="Sua chave secreta"
+                />
+                <small className="form-help">
+                  Chave secreta da sua aplicacao (deixe vazio para usar o padrao)
+                </small>
+              </div>
+
+              <div className="info-box info-box-success">
+                <strong>O que acontece?</strong>
+                <ul style={{ margin: '0.5rem 0 0 1rem', paddingLeft: '0.5rem' }}>
+                  <li>Com o Refresh Token, a renovacao automatica sera ativada</li>
+                  <li>O sistema renovara o token automaticamente antes de expirar</li>
+                  <li>Voce nao precisara mais inserir tokens manualmente!</li>
+                </ul>
+              </div>
+
+              <div className="modal-actions">
+                <button 
+                  type="button" 
+                  className="btn btn-secondary"
+                  onClick={closeCredentialsModal}
+                  disabled={credentialsLoading}
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn btn-primary"
+                  disabled={credentialsLoading}
+                >
+                  {credentialsLoading ? 'Salvando...' : 'Salvar'}
+                </button>
               </div>
             </form>
           </div>

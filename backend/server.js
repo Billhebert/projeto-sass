@@ -145,13 +145,51 @@ app.get('/health', (req, res) => {
 // ROUTES
 // ============================================
 
-// Import route handlers
+// Import route handlers - Core
 const authRoutes = require('./routes/auth');
+const authUserRoutes = require('./routes/auth-user');
 const webhookRoutes = require('./routes/webhooks');
 const accountRoutes = require('./routes/accounts');
 const syncRoutes = require('./routes/sync');
 const mlAccountRoutes = require('./routes/ml-accounts');
+
+// Import route handlers - Mercado Livre API Integration
 const productsRoutes = require('./routes/products');
+const ordersRoutes = require('./routes/orders');
+const paymentsRoutes = require('./routes/payments');
+const itemsRoutes = require('./routes/items');
+const messagesRoutes = require('./routes/messages');
+const shipmentsRoutes = require('./routes/shipments');
+const questionsRoutes = require('./routes/questions');
+const claimsRoutes = require('./routes/claims');
+const returnsRoutes = require('./routes/returns');
+const promotionsRoutes = require('./routes/promotions');
+const catalogRoutes = require('./routes/catalog');
+const advertisingRoutes = require('./routes/advertising');
+const couponsRoutes = require('./routes/coupons');
+const qualityRoutes = require('./routes/quality');
+const trendsRoutes = require('./routes/trends');
+const feedbackRoutes = require('./routes/feedback');
+const visitsRoutes = require('./routes/visits');
+const metricsRoutes = require('./routes/metrics');
+const invoicesRoutes = require('./routes/invoices');
+const notificationsRoutes = require('./routes/notifications');
+
+// Import new modules - Full ML API Coverage
+const packsRoutes = require('./routes/packs');
+const sizeChartsRoutes = require('./routes/size-charts');
+const kitsRoutes = require('./routes/kits');
+const moderationsRoutes = require('./routes/moderations');
+const userProductsRoutes = require('./routes/user-products');
+const billingRoutes = require('./routes/billing');
+const reviewsRoutes = require('./routes/reviews');
+const fulfillmentRoutes = require('./routes/fulfillment');
+const skusRoutes = require('./routes/skus');
+const salesDashboardRoutes = require('./routes/sales-dashboard');
+
+// Import new premium modules
+const globalSellingRoutes = require('./routes/global-selling');
+const priceAutomationRoutes = require('./routes/price-automation');
 
 // Import Swagger/OpenAPI
 const swaggerUi = require('swagger-ui-express');
@@ -171,17 +209,65 @@ app.get('/api-docs/swagger.json', (req, res) => {
   res.send(swaggerSpecs);
 });
 
-// Import user auth routes (profile, password change)
-const authUserRoutes = require('./routes/auth-user');
+// ============================================
+// REGISTER ALL API ROUTES
+// ============================================
 
-// Register routes
+// Core Authentication & User Management
 app.use('/api/auth', authRoutes);
-app.use('/api/user', authUserRoutes);  // User profile and password routes
+app.use('/api/user', authUserRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/accounts', accountRoutes);
 app.use('/api/sync', syncRoutes);
 app.use('/api/ml-accounts', mlAccountRoutes);
+
+// Mercado Livre - Products & Items
 app.use('/api/products', productsRoutes);
+app.use('/api/items', itemsRoutes);
+app.use('/api/catalog', catalogRoutes);
+app.use('/api/user-products', userProductsRoutes);
+app.use('/api/kits', kitsRoutes);
+app.use('/api/size-charts', sizeChartsRoutes);
+
+// Mercado Livre - Sales Management
+app.use('/api/orders', ordersRoutes);
+app.use('/api/payments', paymentsRoutes);
+app.use('/api/packs', packsRoutes);
+app.use('/api/shipments', shipmentsRoutes);
+app.use('/api/fulfillment', fulfillmentRoutes);
+app.use('/api/invoices', invoicesRoutes);
+app.use('/api/billing', billingRoutes);
+
+// Mercado Livre - Customer Communication
+app.use('/api/questions', questionsRoutes);
+app.use('/api/messages', messagesRoutes);
+app.use('/api/feedback', feedbackRoutes);
+app.use('/api/reviews', reviewsRoutes);
+
+// Mercado Livre - Claims & Returns
+app.use('/api/claims', claimsRoutes);
+app.use('/api/returns', returnsRoutes);
+
+// Mercado Livre - Marketing & Promotions
+app.use('/api/promotions', promotionsRoutes);
+app.use('/api/advertising', advertisingRoutes);
+app.use('/api/coupons', couponsRoutes);
+
+// Mercado Livre - Analytics & Quality
+app.use('/api/metrics', metricsRoutes);
+app.use('/api/visits', visitsRoutes);
+app.use('/api/trends', trendsRoutes);
+app.use('/api/quality', qualityRoutes);
+app.use('/api/moderations', moderationsRoutes);
+
+// System
+app.use('/api/notifications', notificationsRoutes);
+app.use('/api/skus', skusRoutes);
+app.use('/api/sales-dashboard', salesDashboardRoutes);
+
+// Premium Features - New Modules
+app.use('/api/global-selling', globalSellingRoutes);
+app.use('/api/price-automation', priceAutomationRoutes);
 
 // ============================================
 // HEALTH CHECK & METRICS ROUTES

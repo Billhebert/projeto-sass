@@ -524,6 +524,8 @@ router.post('/ml-callback', async (req, res, next) => {
     const tokenExpiry = Date.now() + (tokenResponse.expires_in * 1000);
 
     // Step 4: Save or update account
+    // IMPORTANT: Save OAuth credentials (clientId, clientSecret, redirectUri) so that
+    // the token-refresh job can automatically refresh tokens when they expire
     const account = {
       id: accountId,
       userId: userInfo.id,
@@ -534,6 +536,11 @@ router.post('/ml-callback', async (req, res, next) => {
       accessToken: tokenResponse.access_token,
       refreshToken: tokenResponse.refresh_token,
       tokenExpiry: tokenExpiry,
+      // Save OAuth credentials for automatic token refresh
+      // These are required by token-refresh.js job to renew tokens
+      clientId: clientId || process.env.ML_CLIENT_ID || null,
+      clientSecret: clientSecret || process.env.ML_CLIENT_SECRET || null,
+      redirectUri: redirectUri || process.env.ML_REDIRECT_URI || null,
       createdAt: existingAccount?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       status: 'connected'
@@ -617,7 +624,11 @@ router.post('/ml-refresh', async (req, res, next) => {
     console.log(`Refreshing token for account: ${accountId}`);
 
     // Step 1: Call ML API to refresh token
-    const tokenResponse = await refreshToken(account.refreshToken);
+    // Use account's OAuth credentials if available, otherwise fall back to env vars
+    const clientId = account.clientId || null;
+    const clientSecret = account.clientSecret || null;
+    
+    const tokenResponse = await refreshToken(account.refreshToken, clientId, clientSecret);
 
     if (!tokenResponse.access_token) {
       return res.status(400).json({ 
@@ -806,28 +817,32 @@ async function exchangeCodeForTokenWithCredentials(code, clientId, clientSecret,
  * 3. Mercado Libre returns: new access_token, new refresh_token, expires_in
  * 4. We return new tokens (refresh token is single-use, new one issued)
  * 
- * @param {string} refreshToken - Current refresh token
+ * @param {string} refreshTokenValue - Current refresh token
+ * @param {string} clientId - Optional client ID (uses env var if not provided)
+ * @param {string} clientSecret - Optional client secret (uses env var if not provided)
  * @returns {Promise<Object>} New token response from Mercado Livre
  */
-async function refreshToken(refreshToken) {
+async function refreshToken(refreshTokenValue, clientId = null, clientSecret = null) {
   try {
-    const CLIENT_ID = process.env.ML_CLIENT_ID;
-    const CLIENT_SECRET = process.env.ML_CLIENT_SECRET;
+    // Use provided credentials or fall back to environment variables
+    const CLIENT_ID = clientId || process.env.ML_CLIENT_ID;
+    const CLIENT_SECRET = clientSecret || process.env.ML_CLIENT_SECRET;
 
     if (!CLIENT_ID || !CLIENT_SECRET) {
-      throw new Error('ML_CLIENT_ID and ML_CLIENT_SECRET environment variables are required');
+      throw new Error('Client credentials are required for token refresh (either from account or environment variables)');
     }
 
     logger.info({
       action: 'REFRESH_TOKEN_START',
-      clientId: CLIENT_ID.substring(0, 8) + '***'
+      clientId: CLIENT_ID.substring(0, 8) + '***',
+      usingAccountCredentials: !!(clientId && clientSecret),
     });
 
     const response = await axios.post(ML_TOKEN_URL, {
       grant_type: 'refresh_token',
       client_id: CLIENT_ID,
       client_secret: CLIENT_SECRET,
-      refresh_token: refreshToken
+      refresh_token: refreshTokenValue
     }, {
       headers: {
         'Accept': 'application/json',

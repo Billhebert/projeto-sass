@@ -364,10 +364,9 @@ mlAccountSchema.methods.refreshedTokens = async function (newAccessToken, newRef
 
 // Check if token refresh is needed
 mlAccountSchema.methods.isTokenRefreshNeeded = function () {
-  // Can only refresh if we have:
-  // 1. A refresh token
-  // 2. Client credentials (clientId + clientSecret)
-  if (!this.refreshToken || !this.clientId || !this.clientSecret) {
+  // Can only refresh if we have a refresh token
+  // (credentials come from account or .env fallback)
+  if (!this.refreshToken) {
     return false;
   }
   return new Date() >= (this.nextTokenRefreshNeeded || this.tokenExpiresAt);
@@ -399,8 +398,10 @@ mlAccountSchema.methods.getSummary = function () {
     errorCount: this.errorCount,
     createdAt: this.createdAt,
     // Token refresh info
-    canAutoRefresh: !!(this.refreshToken && this.clientId && this.clientSecret),
+    // canAutoRefresh: true if account has refreshToken (uses .env credentials as fallback)
+    canAutoRefresh: !!this.refreshToken,
     hasOAuthCredentials: !!(this.clientId && this.clientSecret),
+    hasRefreshToken: !!this.refreshToken,
   };
 };
 

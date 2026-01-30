@@ -78,10 +78,31 @@ function validateMLToken(accountIdParam = 'accountId') {
         // If account has refreshToken, attempt automatic refresh
         if (account.refreshToken) {
           try {
+            // Use account's own OAuth credentials first, then fall back to env vars
+            // This allows each account to use their own ML app for token refresh
+            const clientId = account.clientId || process.env.ML_APP_CLIENT_ID || process.env.ML_CLIENT_ID;
+            const clientSecret = account.clientSecret || process.env.ML_APP_CLIENT_SECRET || process.env.ML_CLIENT_SECRET;
+            
+            if (!clientId || !clientSecret) {
+              logger.warn({
+                action: 'ML_TOKEN_REFRESH_NO_CREDENTIALS',
+                accountId: account.id,
+                hasAccountCredentials: !!(account.clientId && account.clientSecret),
+                hasEnvCredentials: !!(process.env.ML_CLIENT_ID && process.env.ML_CLIENT_SECRET),
+              });
+              
+              return res.status(401).json({
+                success: false,
+                message: 'No OAuth credentials available for automatic token refresh. Please reconnect your account.',
+                code: 'NO_OAUTH_CREDENTIALS',
+                accountId: accountId,
+              });
+            }
+            
             const result = await MLTokenManager.refreshToken(
               account.refreshToken,
-              process.env.ML_APP_CLIENT_ID || '1706187223829083',
-              process.env.ML_APP_CLIENT_SECRET || 'vjEgzPD85Ehwe6aefX3TGij4xGdRV0jG'
+              clientId,
+              clientSecret
             );
 
             if (result.success) {

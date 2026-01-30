@@ -843,10 +843,23 @@ router.put('/:accountId/refresh-token', authenticateToken, async (req, res) => {
     });
 
     // Call Mercado Livre to refresh token
+    // Use account's own OAuth credentials first, then fall back to env vars
+    const clientId = account.clientId || process.env.ML_APP_CLIENT_ID || process.env.ML_CLIENT_ID;
+    const clientSecret = account.clientSecret || process.env.ML_APP_CLIENT_SECRET || process.env.ML_CLIENT_SECRET;
+    
+    if (!clientId || !clientSecret) {
+      return res.status(400).json({
+        success: false,
+        message: 'No OAuth credentials available for this account. Please reconnect using OAuth.',
+        code: 'NO_OAUTH_CREDENTIALS',
+        solution: 'Reconnect account using OAuth with your Client ID and Client Secret',
+      });
+    }
+    
     const result = await MLTokenManager.refreshToken(
       account.refreshToken,
-      process.env.ML_APP_CLIENT_ID || '1706187223829083',
-      process.env.ML_APP_CLIENT_SECRET || 'vjEgzPD85Ehwe6aefX3TGij4xGdRV0jG'
+      clientId,
+      clientSecret
     );
 
     if (!result.success) {
@@ -854,6 +867,8 @@ router.put('/:accountId/refresh-token', authenticateToken, async (req, res) => {
         action: 'MANUAL_TOKEN_REFRESH_FAILED',
         accountId: account.id,
         error: result.error,
+        mlError: result.mlError,
+        statusCode: result.statusCode,
       });
 
       // Mark account as needing reconnection
@@ -861,12 +876,18 @@ router.put('/:accountId/refresh-token', authenticateToken, async (req, res) => {
       account.tokenRefreshError = result.error;
       await account.save();
 
-      return res.status(401).json({
+      // ALWAYS use 400 for ML token refresh failures, NEVER 401
+      // 401 would trigger automatic logout in the frontend interceptor
+      // This is a ML API error, not a JWT auth error
+      return res.status(400).json({
         success: false,
-        message: 'Failed to refresh token. You may need to reconnect your account.',
-        code: 'TOKEN_REFRESH_FAILED',
+        message: result.mlError === 'invalid_grant' 
+          ? 'Refresh token expirado ou inválido. Reconecte sua conta do Mercado Livre.'
+          : `Falha ao renovar token: ${result.error}`,
+        code: result.mlError === 'invalid_grant' ? 'INVALID_REFRESH_TOKEN' : 'TOKEN_REFRESH_FAILED',
         error: result.error,
-        solution: 'Try reconnecting your Mercado Livre account',
+        mlError: result.mlError,
+        solution: 'Reconecte sua conta do Mercado Livre usando OAuth',
       });
     }
 
@@ -940,6 +961,99 @@ router.get('/debug/user-info', authenticateToken, async (req, res) => {
   } catch (error) {
     res.status(500).json({
       success: false,
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * PUT /api/ml-accounts/:accountId/oauth-credentials
+ * Update OAuth credentials for an existing account
+ * 
+ * Use case:
+ * - Account was added manually (just accessToken)
+ * - User now wants to enable automatic token refresh
+ * - User provides their ML app's clientId, clientSecret, and optionally refreshToken
+ * 
+ * Request body:
+ * {
+ *   clientId: string,       // Required: ML App Client ID
+ *   clientSecret: string,   // Required: ML App Client Secret
+ *   redirectUri?: string,   // Optional: OAuth redirect URI
+ *   refreshToken?: string   // Optional: If user has a refresh token to add
+ * }
+ */
+router.put('/:accountId/oauth-credentials', authenticateToken, async (req, res) => {
+  try {
+    const { clientId, clientSecret, redirectUri, refreshToken } = req.body;
+    
+    // Validation
+    if (!clientId || !clientSecret) {
+      return res.status(400).json({
+        success: false,
+        message: 'clientId and clientSecret are required',
+        required: ['clientId', 'clientSecret'],
+      });
+    }
+    
+    const account = await MLAccount.findOne({
+      id: req.params.accountId,
+      userId: req.user.userId,
+    });
+
+    if (!account) {
+      return res.status(404).json({
+        success: false,
+        message: 'Account not found',
+      });
+    }
+
+    // Update OAuth credentials
+    account.clientId = clientId;
+    account.clientSecret = clientSecret;
+    if (redirectUri) account.redirectUri = redirectUri;
+    if (refreshToken) {
+      account.refreshToken = refreshToken;
+      // If we now have all credentials, set up token refresh tracking
+      account.lastTokenRefresh = new Date();
+      account.nextTokenRefreshNeeded = new Date(account.tokenExpiresAt.getTime() - 5 * 60 * 1000);
+      account.tokenRefreshStatus = 'success';
+    }
+
+    await account.save();
+
+    const canAutoRefresh = !!(account.refreshToken && account.clientId && account.clientSecret);
+
+    logger.info({
+      action: 'ML_ACCOUNT_OAUTH_CREDENTIALS_UPDATED',
+      accountId: account.id,
+      userId: req.user.userId,
+      mlUserId: account.mlUserId,
+      canAutoRefresh,
+      timestamp: new Date().toISOString(),
+    });
+
+    res.json({
+      success: true,
+      message: 'OAuth credentials updated successfully',
+      data: {
+        accountId: account.id,
+        canAutoRefresh,
+        hasRefreshToken: !!account.refreshToken,
+        hasClientCredentials: !!(account.clientId && account.clientSecret),
+      },
+    });
+  } catch (error) {
+    logger.error({
+      action: 'UPDATE_OAUTH_CREDENTIALS_ERROR',
+      accountId: req.params.accountId,
+      userId: req.user.userId,
+      error: error.message,
+    });
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update OAuth credentials',
       error: error.message,
     });
   }
