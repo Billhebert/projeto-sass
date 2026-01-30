@@ -51,7 +51,7 @@ function Accounts() {
 
   const openModal = (account = null) => {
     if (account) {
-      setEditingId(account._id)
+      setEditingId(account.id)
       setFormData({
         accessToken: '',
         accountName: account.accountName || account.nickname,
@@ -264,7 +264,7 @@ function Accounts() {
         ) : (
           <div className="accounts-list">
             {accounts.map((account) => (
-              <div key={account._id} className="account-item">
+              <div key={account.id} className="account-item">
                 <div className="account-header">
                   <div className="account-info">
                     <h3>{account.nickname}</h3>
@@ -301,7 +301,7 @@ function Accounts() {
                 <div className="account-actions">
                   <button 
                     className="btn btn-primary btn-sm"
-                    onClick={() => navigate(`/accounts/${account._id}/products`)}
+                    onClick={() => navigate(`/accounts/${account.id}/products`)}
                   >
                     📦 Produtos
                   </button>
@@ -313,10 +313,10 @@ function Accounts() {
                   </button>
                   <button 
                     className="btn btn-danger btn-sm"
-                    onClick={() => handleDelete(account._id)}
-                    disabled={deletingId === account._id}
+                    onClick={() => handleDelete(account.id)}
+                    disabled={deletingId === account.id}
                   >
-                    {deletingId === account._id ? 'Deletando...' : 'Deletar'}
+                    {deletingId === account.id ? 'Deletando...' : 'Deletar'}
                   </button>
                 </div>
               </div>
