@@ -68,6 +68,123 @@ router.get('/', authenticateToken, async (req, res) => {
  * GET /api/products/:accountId
  * List products for a specific ML account
  */
+ * GET /api/products/:accountId/stats
+ * Get product statistics for an account
+ */
+router.get('/:accountId/stats', authenticateToken, async (req, res) => {
+  try {
+    const { accountId } = req.params;
+
+    // Verify account exists
+    const account = await MLAccount.findOne({
+      id: accountId,
+      userId: req.user.userId,
+    });
+
+    if (!account) {
+      return res.status(404).json({
+        success: false,
+        message: 'Account not found',
+      });
+    }
+
+    // Get statistics
+    const totalProducts = await Product.countDocuments({
+      accountId,
+      userId: req.user.userId,
+      status: { $ne: 'removed' },
+    });
+
+    const activeProducts = await Product.countDocuments({
+      accountId,
+      userId: req.user.userId,
+      status: 'active',
+    });
+
+    const pausedProducts = await Product.countDocuments({
+      accountId,
+      userId: req.user.userId,
+      status: 'paused',
+    });
+
+    const lowStockProducts = await Product.countDocuments({
+      accountId,
+      userId: req.user.userId,
+      status: 'active',
+      'quantity.available': { $lte: 5, $gt: 0 },
+    });
+
+    const outOfStockProducts = await Product.countDocuments({
+      accountId,
+      userId: req.user.userId,
+      'quantity.available': 0,
+    });
+
+    // Get total sales and views
+    const salesStats = await Product.aggregate([
+      {
+        $match: {
+          accountId,
+          userId: req.user.userId,
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalSales: { $sum: '$salesCount' },
+          totalViews: { $sum: '$viewCount' },
+          totalQuestions: { $sum: '$questionCount' },
+          totalInventory: { $sum: '$quantity.available' },
+          totalValue: {
+            $sum: {
+              $multiply: ['$price.amount', '$quantity.available'],
+            },
+          },
+        },
+      },
+    ]);
+
+    const stats = salesStats[0] || {
+      totalSales: 0,
+      totalViews: 0,
+      totalQuestions: 0,
+      totalInventory: 0,
+      totalValue: 0,
+    };
+
+    res.json({
+      success: true,
+      data: {
+        accountId,
+        products: {
+          total: totalProducts,
+          active: activeProducts,
+          paused: pausedProducts,
+          lowStock: lowStockProducts,
+          outOfStock: outOfStockProducts,
+        },
+        sales: stats.totalSales,
+        views: stats.totalViews,
+        questions: stats.totalQuestions,
+        inventory: stats.totalInventory,
+        estimatedValue: stats.totalValue,
+      },
+    });
+  } catch (error) {
+    logger.error({
+      action: 'GET_PRODUCT_STATS_ERROR',
+      accountId: req.params.accountId,
+      userId: req.user.userId,
+      error: error.message,
+    });
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get product statistics',
+      error: error.message,
+    });
+  }
+});
 router.get('/:accountId', authenticateToken, async (req, res) => {
   try {
     const { accountId } = req.params;
@@ -282,123 +399,6 @@ router.delete('/:accountId/:productId', authenticateToken, async (req, res) => {
 });
 
 /**
- * GET /api/products/:accountId/stats
- * Get product statistics for an account
- */
-router.get('/:accountId/stats', authenticateToken, async (req, res) => {
-  try {
-    const { accountId } = req.params;
-
-    // Verify account exists
-    const account = await MLAccount.findOne({
-      id: accountId,
-      userId: req.user.userId,
-    });
-
-    if (!account) {
-      return res.status(404).json({
-        success: false,
-        message: 'Account not found',
-      });
-    }
-
-    // Get statistics
-    const totalProducts = await Product.countDocuments({
-      accountId,
-      userId: req.user.userId,
-      status: { $ne: 'removed' },
-    });
-
-    const activeProducts = await Product.countDocuments({
-      accountId,
-      userId: req.user.userId,
-      status: 'active',
-    });
-
-    const pausedProducts = await Product.countDocuments({
-      accountId,
-      userId: req.user.userId,
-      status: 'paused',
-    });
-
-    const lowStockProducts = await Product.countDocuments({
-      accountId,
-      userId: req.user.userId,
-      status: 'active',
-      'quantity.available': { $lte: 5, $gt: 0 },
-    });
-
-    const outOfStockProducts = await Product.countDocuments({
-      accountId,
-      userId: req.user.userId,
-      'quantity.available': 0,
-    });
-
-    // Get total sales and views
-    const salesStats = await Product.aggregate([
-      {
-        $match: {
-          accountId,
-          userId: req.user.userId,
-        },
-      },
-      {
-        $group: {
-          _id: null,
-          totalSales: { $sum: '$salesCount' },
-          totalViews: { $sum: '$viewCount' },
-          totalQuestions: { $sum: '$questionCount' },
-          totalInventory: { $sum: '$quantity.available' },
-          totalValue: {
-            $sum: {
-              $multiply: ['$price.amount', '$quantity.available'],
-            },
-          },
-        },
-      },
-    ]);
-
-    const stats = salesStats[0] || {
-      totalSales: 0,
-      totalViews: 0,
-      totalQuestions: 0,
-      totalInventory: 0,
-      totalValue: 0,
-    };
-
-    res.json({
-      success: true,
-      data: {
-        accountId,
-        products: {
-          total: totalProducts,
-          active: activeProducts,
-          paused: pausedProducts,
-          lowStock: lowStockProducts,
-          outOfStock: outOfStockProducts,
-        },
-        sales: stats.totalSales,
-        views: stats.totalViews,
-        questions: stats.totalQuestions,
-        inventory: stats.totalInventory,
-        estimatedValue: stats.totalValue,
-      },
-    });
-  } catch (error) {
-    logger.error({
-      action: 'GET_PRODUCT_STATS_ERROR',
-      accountId: req.params.accountId,
-      userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get product statistics',
-      error: error.message,
-    });
-  }
-});
 
 // ============================================
 // HELPER FUNCTIONS
