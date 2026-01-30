@@ -122,6 +122,29 @@
   flex-shrink: 0;
 }
 
+/* No refresh token section */
+.token-status-no-refresh {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.badge-warning {
+  background-color: #fff3cd;
+  color: #856404;
+}
+
+.token-status-no-refresh .text-small {
+  margin: 0.5rem 0 0 0;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.token-reconnect-btn {
+  margin-top: 0.5rem;
+  white-space: nowrap;
+}
+
 /* Alerts */
 .alert {
   margin-top: 0.75rem;

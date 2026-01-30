@@ -124,25 +124,42 @@ function TokenStatus({ accountId, canAutoRefresh = false, tokenExpiresAt = null,
         </div>
       </div>
 
-      {canAutoRefresh && (
-        <div className="token-status-auto-refresh">
-          <span className="badge badge-success">🔄 Auto-refresh ativo</span>
-          <p className="text-small text-muted">Token será renovado automaticamente</p>
-        </div>
-      )}
+       {canAutoRefresh && (
+         <div className="token-status-auto-refresh">
+           <span className="badge badge-success">🔄 Auto-refresh ativo</span>
+           <p className="text-small text-muted">Token será renovado automaticamente</p>
+         </div>
+       )}
 
-      {!canAutoRefresh && (
-        <div className="token-status-manual">
-          <p className="text-small text-muted">Sem renovação automática</p>
-          <button
-            className="btn btn-sm btn-primary token-refresh-btn"
-            onClick={handleManualRefresh}
-            disabled={refreshing}
-          >
-            {refreshing ? 'Renovando...' : '🔄 Renovar Agora'}
-          </button>
-        </div>
-      )}
+       {!canAutoRefresh && tokenInfo.hasRefreshToken === false && (
+         <div className="token-status-no-refresh">
+           <span className="badge badge-warning">⚠️ Renovação Manual</span>
+           <p className="text-small text-muted">
+             Token foi fornecido manualmente. Sem renovação automática.
+             <br/>
+             Quando expirar (em 6 horas), você precisará inserir um novo token.
+           </p>
+           <button
+             className="btn btn-sm btn-secondary token-reconnect-btn"
+             onClick={() => window.location.href = '/accounts'}
+           >
+             Inserir Novo Token
+           </button>
+         </div>
+       )}
+
+       {!canAutoRefresh && tokenInfo.hasRefreshToken !== false && (
+         <div className="token-status-manual">
+           <p className="text-small text-muted">Sem renovação automática</p>
+           <button
+             className="btn btn-sm btn-primary token-refresh-btn"
+             onClick={handleManualRefresh}
+             disabled={refreshing}
+           >
+             {refreshing ? 'Renovando...' : '🔄 Renovar Agora'}
+           </button>
+         </div>
+       )}
 
       {error && (
         <div className="alert alert-error">

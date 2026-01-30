@@ -160,6 +160,8 @@ class MLTokenManager {
       healthPercent: this.getTokenHealthPercent(account.tokenExpiresAt, account.lastTokenRefresh),
       isExpired: this.isTokenCriticallyExpired(account.tokenExpiresAt),
       needsRefresh: this.isTokenExpired(account.tokenExpiresAt),
+      canAutoRefresh: !!account.refreshToken,  // Indica se pode renovar automaticamente
+      hasRefreshToken: !!account.refreshToken, // Explícito
     };
   }
 }
