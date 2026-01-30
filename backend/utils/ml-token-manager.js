@@ -12,6 +12,7 @@ const logger = require('../logger');
 
 const ML_OAUTH_URL = 'https://auth.mercadolibre.com';
 const ML_API_BASE = 'https://api.mercadolibre.com';
+const ML_TOKEN_URL = 'https://api.mercadolibre.com/oauth/token';
 const TOKEN_REFRESH_BUFFER = 5 * 60 * 1000; // Refresh 5 minutes before expiry
 
 class MLTokenManager {
@@ -51,11 +52,18 @@ class MLTokenManager {
         throw new Error('Missing required parameters for token refresh');
       }
 
-      const response = await axios.post(`${ML_OAUTH_URL}/oauth/token`, {
+      // Use ML_TOKEN_URL (api.mercadolibre.com), NOT auth.mercadolibre.com
+      const response = await axios.post(ML_TOKEN_URL, {
         grant_type: 'refresh_token',
         client_id: clientId,
         client_secret: clientSecret,
         refresh_token: refreshToken,
+      }, {
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        timeout: 10000,
       });
 
       const { access_token, refresh_token, expires_in } = response.data;

@@ -22,7 +22,7 @@ const logger = require('../logger');
 const MLAccount = require('../db/models/MLAccount');
 const MLTokenManager = require('../utils/ml-token-manager');
 
-const ML_OAUTH_URL = 'https://auth.mercadolibre.com';
+const ML_TOKEN_URL = 'https://api.mercadolibre.com/oauth/token';
 
 // Get credentials from environment
 // NOTE: These are only used as fallback. Each account should have its own client credentials.
@@ -81,7 +81,8 @@ async function refreshAccountToken(account) {
 
     // Call Mercado Libre OAuth endpoint to refresh token
     // Using the account's own client credentials (not the app's credentials)
-    const response = await axios.post(`${ML_OAUTH_URL}/oauth/token`, {
+    // IMPORTANT: Use api.mercadolibre.com, NOT auth.mercadolibre.com
+    const response = await axios.post(ML_TOKEN_URL, {
       grant_type: 'refresh_token',
       client_id: account.clientId,
       client_secret: account.clientSecret,

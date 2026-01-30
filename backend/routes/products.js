@@ -65,9 +65,6 @@ router.get('/', authenticateToken, async (req, res) => {
 });
 
 /**
- * GET /api/products/:accountId
- * List products for a specific ML account
- */
  * GET /api/products/:accountId/stats
  * Get product statistics for an account
  */

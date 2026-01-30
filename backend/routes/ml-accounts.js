@@ -199,7 +199,7 @@ router.post('/', authenticateToken, async (req, res) => {
 
     // Atualizar contador de contas do usuário
     await User.updateOne(
-      { _id: req.user.userId },
+      { id: req.user.userId },
       {
         $inc: { 'metadata.totalAccounts': 1 },
         $set: { 'metadata.accountsLimit': Math.max(5, existingAccounts.length + 1) },
@@ -386,7 +386,7 @@ router.delete('/:accountId', authenticateToken, async (req, res) => {
 
     // Update user account count
     await User.updateOne(
-      { _id: userId },
+      { id: userId },
       { $inc: { 'metadata.totalAccounts': -1 } }
     );
 
