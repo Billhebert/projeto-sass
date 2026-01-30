@@ -18,6 +18,7 @@ function Accounts() {
   const [oauthLoading, setOAuthLoading] = useState(false)
   const [formData, setFormData] = useState({
     accessToken: '',
+    refreshToken: '',
     accountName: '',
   })
   const [oauthFormData, setOAuthFormData] = useState({
@@ -54,6 +55,7 @@ function Accounts() {
       setEditingId(account.id)
       setFormData({
         accessToken: '',
+        refreshToken: '',
         accountName: account.accountName || account.nickname,
       })
     } else {
@@ -73,6 +75,7 @@ function Accounts() {
     setEditingId(null)
     setFormData({
       accessToken: '',
+      refreshToken: '',
       accountName: '',
     })
   }
@@ -103,14 +106,15 @@ function Accounts() {
           accountName: formData.accountName,
         })
         setSuccess('Conta atualizada com sucesso!')
-      } else {
-        // Create new account com access token
-        await api.post('/ml-accounts', {
-          accessToken: formData.accessToken,
-          accountName: formData.accountName || '',
-        })
-        setSuccess('Conta criada com sucesso!')
-      }
+       } else {
+         // Create new account com access token (e opcionalmente refresh token)
+         await api.post('/ml-accounts', {
+           accessToken: formData.accessToken,
+           refreshToken: formData.refreshToken || null,
+           accountName: formData.accountName || '',
+         })
+         setSuccess('Conta criada com sucesso!')
+       }
 
       await fetchAccounts()
       closeModal()
@@ -349,29 +353,45 @@ function Accounts() {
 
               {!editingId && (
                 <>
-                  <div className="form-group">
-                    <label htmlFor="accessToken">Token de Acesso Mercado Livre *</label>
-                    <input
-                      type="password"
-                      id="accessToken"
-                      name="accessToken"
-                      value={formData.accessToken}
-                      onChange={handleFormChange}
-                      placeholder="Cole seu token de acesso aqui"
-                      required={!editingId}
-                    />
-                    <small style={{ color: '#666', marginTop: '0.5rem', display: 'block' }}>
-                      📌 Como obter o token?
-                      <br/>
-                      1. Vá para Mercado Livre Developer (developers.mercadolibre.com.br)
-                      <br/>
-                      2. Acesse Applications → Suas aplicações
-                      <br/>
-                      3. Procure por "Access Token" ou faça login com sua conta ML
-                      <br/>
-                      4. Cole o token aqui (ele expira em 6 horas)
-                    </small>
-                  </div>
+                   <div className="form-group">
+                     <label htmlFor="accessToken">Token de Acesso Mercado Livre *</label>
+                     <input
+                       type="password"
+                       id="accessToken"
+                       name="accessToken"
+                       value={formData.accessToken}
+                       onChange={handleFormChange}
+                       placeholder="Cole seu token de acesso aqui"
+                       required={!editingId}
+                     />
+                     <small style={{ color: '#666', marginTop: '0.5rem', display: 'block' }}>
+                       📌 Como obter o token?
+                       <br/>
+                       1. Vá para Mercado Livre Developer (developers.mercadolibre.com.br)
+                       <br/>
+                       2. Acesse Applications → Suas aplicações
+                       <br/>
+                       3. Procure por "Access Token" ou faça login com sua conta ML
+                       <br/>
+                       4. Cole o token aqui (ele expira em 6 horas)
+                     </small>
+                   </div>
+
+                   <div className="form-group">
+                     <label htmlFor="refreshToken">Refresh Token (Opcional)</label>
+                     <input
+                       type="password"
+                       id="refreshToken"
+                       name="refreshToken"
+                       value={formData.refreshToken}
+                       onChange={handleFormChange}
+                       placeholder="Cole seu refresh token aqui (opcional)"
+                     />
+                     <small style={{ color: '#666', marginTop: '0.5rem', display: 'block' }}>
+                       💡 Se você tem um refresh token (válido por 6 meses), cole aqui para ativar
+                       renovação automática. Se deixar em branco, o token será válido por apenas 6 horas.
+                     </small>
+                   </div>
                 </>
               )}
 
