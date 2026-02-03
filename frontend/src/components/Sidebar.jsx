@@ -60,30 +60,7 @@ function Sidebar() {
         { path: '/accounts', label: 'Contas ML', icon: 'store' },
       ]
     },
-    {
-      title: 'Produtos (v6)',
-      key: 'products-v6',
-      items: [
-        { path: '/products-list', label: 'Produtos', icon: 'inventory' },
-        { path: '/categories', label: 'Categorias', icon: 'folder_open' },
-      ]
-    },
-    {
-      title: 'Vendas (v6)',
-      key: 'sales-v6',
-      items: [
-        { path: '/orders-list', label: 'Pedidos', icon: 'shopping_cart' },
-        { path: '/shipping-list', label: 'Envios', icon: 'local_shipping' },
-        { path: '/feedback-list', label: 'Avaliações', icon: 'star' },
-      ]
-    },
-    {
-      title: 'Atendimento (v6)',
-      key: 'support-v6',
-      items: [
-        { path: '/questions-list', label: 'Perguntas', icon: 'help_outline' },
-      ]
-    },
+
     {
       title: 'Produtos',
       key: 'products',
@@ -148,6 +125,17 @@ function Sidebar() {
       key: 'international',
       items: [
         { path: '/global-selling', label: 'Global Selling', icon: 'public' },
+      ]
+    },
+    {
+      title: 'Mercado Pago',
+      key: 'mercadopago',
+      items: [
+        { path: '/mp', label: 'Dashboard MP', icon: 'account_balance_wallet' },
+        { path: '/mp/payments', label: 'Pagamentos', icon: 'payments' },
+        { path: '/mp/checkout', label: 'Criar Checkout', icon: 'shopping_cart_checkout' },
+        { path: '/mp/subscriptions', label: 'Assinaturas', icon: 'autorenew' },
+        { path: '/mp/customers', label: 'Clientes MP', icon: 'people' },
       ]
     },
     {

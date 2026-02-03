@@ -52,6 +52,8 @@ function SalesDashboard() {
   // Checkbox for shipping cost consideration
   const [considerBuyerShipping, setConsiderBuyerShipping] = useState(false)
 
+  const [hasTriedSync, setHasTriedSync] = useState(false)
+
   // Load initial data
   useEffect(() => {
     loadAccounts()
@@ -59,22 +61,84 @@ function SalesDashboard() {
 
   // Load dashboard data when account or dates change
   useEffect(() => {
-    loadDashboardData()
+    loadDashboardDataWithSync()
   }, [selectedAccount, filters.dateFrom, filters.dateTo])
 
   const loadAccounts = async () => {
     try {
       const response = await api.get('/sales-dashboard/accounts')
-      const accountsList = response.data.accounts || []
+      console.log('Sales Dashboard accounts response:', response.data)
+      
+      // Handle different response formats
+      let accountsList = []
+      if (response.data?.accounts) {
+        accountsList = response.data.accounts
+      } else if (Array.isArray(response.data)) {
+        accountsList = response.data
+      } else if (response.data?.data?.accounts) {
+        accountsList = response.data.data.accounts
+      }
+      
+      console.log('Parsed accounts list:', accountsList)
       setAccounts(accountsList)
     } catch (err) {
       console.error('Erro ao carregar contas:', err)
     }
   }
 
-  const loadDashboardData = async () => {
+  // Load dashboard data with auto-sync if empty
+  const loadDashboardDataWithSync = async () => {
     setLoading(true)
     setError(null)
+    
+    try {
+      const data = await loadDashboardData(false)
+      
+      // If no sales and haven't tried sync yet, try syncing orders
+      if ((!data?.sales || data.sales.length === 0) && !hasTriedSync) {
+        console.log('No sales found, attempting to sync orders...')
+        setHasTriedSync(true)
+        
+        // Get accounts to sync
+        const accountsToSync = selectedAccount === 'all' 
+          ? accounts 
+          : accounts.filter(a => a.id === selectedAccount)
+        
+        if (accountsToSync.length > 0) {
+          try {
+            // Sync orders for each account
+            for (const account of accountsToSync) {
+              console.log('Syncing orders for account:', account.id)
+              await api.post(`/orders/${account.id}/sync`, {
+                status: 'paid',
+                days: 90
+              })
+            }
+            
+            // Reload dashboard data after sync
+            await loadDashboardData(false)
+          } catch (syncErr) {
+            console.error('Auto-sync failed:', syncErr)
+            setError('Nenhum dado encontrado. Sincronize seus pedidos na página de Pedidos.')
+          }
+        }
+      } else {
+        setHasTriedSync(true)
+      }
+    } catch (err) {
+      console.error('Error loading dashboard data:', err)
+      setError('Erro ao carregar dados do dashboard')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const loadDashboardData = async (setLoadingState = true) => {
+    if (setLoadingState) {
+      setLoading(true)
+      setError(null)
+    }
+    
     try {
       const params = new URLSearchParams()
       if (selectedAccount && selectedAccount !== 'all') {
@@ -88,14 +152,25 @@ function SalesDashboard() {
         api.get('/sales-dashboard/skus')
       ])
 
-      setDashboardData(dataResponse.data.data)
-      setSkus(skusResponse.data.skus || {})
+      console.log('Sales dashboard data response:', dataResponse.data)
+      console.log('SKUs response:', skusResponse.data)
+
+      const dashData = dataResponse.data?.data || dataResponse.data || null
+      setDashboardData(dashData)
+      setSkus(skusResponse.data?.skus || {})
+      
+      return dashData
     } catch (err) {
       console.error('Erro ao carregar dados:', err)
-      setError('Erro ao carregar dados do dashboard. Verifique se você tem pedidos sincronizados.')
+      if (setLoadingState) {
+        setError('Erro ao carregar dados do dashboard. Verifique se você tem pedidos sincronizados.')
+      }
       setDashboardData(null)
+      return null
     } finally {
-      setLoading(false)
+      if (setLoadingState) {
+        setLoading(false)
+      }
     }
   }
 
@@ -263,7 +338,7 @@ function SalesDashboard() {
 
   const applyFilters = () => {
     setCurrentPage(1)
-    loadDashboardData()
+    loadDashboardData(true)
     setFiltersOpen(false)
   }
 

@@ -23,6 +23,56 @@ const ML_API_BASE = 'https://api.mercadolibre.com';
 const SITE_ID = 'MLB'; // Brazil
 
 /**
+ * GET /api/catalog
+ * List catalog items (products from official catalog)
+ * Query params: q, category, limit, offset
+ */
+router.get('/', authenticateToken, async (req, res) => {
+  try {
+    const { q, category, limit = 20, offset = 0 } = req.query;
+
+    const params = {
+      limit: parseInt(limit),
+      offset: parseInt(offset),
+    };
+    
+    // If search query provided, search catalog
+    if (q) params.q = q;
+    if (category) params.category = category;
+
+    // Default to popular products if no query
+    const searchUrl = q || category 
+      ? `${ML_API_BASE}/sites/${SITE_ID}/search`
+      : `${ML_API_BASE}/sites/${SITE_ID}/search?category=MLB1648`;
+
+    const response = await axios.get(searchUrl, { params, timeout: 15000 });
+
+    res.json({
+      success: true,
+      data: response.data.results || [],
+      pagination: {
+        total: response.data.paging?.total || 0,
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+      },
+      filters: response.data.available_filters || [],
+    });
+  } catch (error) {
+    logger.error({
+      action: 'CATALOG_LIST_ERROR',
+      userId: req.user?.userId,
+      error: error.message,
+    });
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch catalog',
+      error: error.message,
+    });
+  }
+});
+
+/**
  * GET /api/catalog/search
  * Search catalog products
  */

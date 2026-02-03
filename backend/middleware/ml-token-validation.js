@@ -56,10 +56,12 @@ function validateMLToken(accountIdParam = 'accountId') {
           tokenExpiresAt: account.tokenExpiresAt,
         });
 
-        return res.status(401).json({
+        // Use 400 instead of 401 to avoid triggering frontend logout
+        // 401 should only be used for JWT auth failures, not ML token issues
+        return res.status(400).json({
           success: false,
           message: 'Account token has expired. Please reconnect your account.',
-          code: 'TOKEN_EXPIRED',
+          code: 'ML_TOKEN_EXPIRED',
           accountId: accountId,
           tokenExpiresAt: account.tokenExpiresAt,
           timeToExpiry: MLTokenManager.getTimeToExpiry(account.tokenExpiresAt),
@@ -91,10 +93,11 @@ function validateMLToken(accountIdParam = 'accountId') {
                 hasEnvCredentials: !!(process.env.ML_CLIENT_ID && process.env.ML_CLIENT_SECRET),
               });
               
-              return res.status(401).json({
+              // Use 400 instead of 401 to avoid triggering frontend logout
+              return res.status(400).json({
                 success: false,
                 message: 'No OAuth credentials available for automatic token refresh. Please reconnect your account.',
-                code: 'NO_OAUTH_CREDENTIALS',
+                code: 'ML_NO_OAUTH_CREDENTIALS',
                 accountId: accountId,
               });
             }
@@ -131,10 +134,11 @@ function validateMLToken(accountIdParam = 'accountId') {
                 error: result.error,
               });
 
-              return res.status(401).json({
+              // Use 400 instead of 401 to avoid triggering frontend logout
+              return res.status(400).json({
                 success: false,
                 message: 'Account token expired and automatic refresh failed. Please reconnect your account.',
-                code: 'TOKEN_REFRESH_FAILED',
+                code: 'ML_TOKEN_REFRESH_FAILED',
                 accountId: accountId,
                 error: result.error,
               });
@@ -146,10 +150,11 @@ function validateMLToken(accountIdParam = 'accountId') {
               error: error.message,
             });
 
-            return res.status(401).json({
+            // Use 400 instead of 401 to avoid triggering frontend logout
+            return res.status(400).json({
               success: false,
               message: 'Failed to refresh token. Please try again or reconnect your account.',
-              code: 'TOKEN_REFRESH_ERROR',
+              code: 'ML_TOKEN_REFRESH_ERROR',
               error: error.message,
             });
           }
@@ -162,10 +167,11 @@ function validateMLToken(accountIdParam = 'accountId') {
             timeToExpiry: MLTokenManager.getTimeToExpiry(account.tokenExpiresAt),
           });
 
-          return res.status(401).json({
+          // Use 400 instead of 401 to avoid triggering frontend logout
+          return res.status(400).json({
             success: false,
             message: 'Account token is about to expire. Automatic refresh not available. Please reconnect your account.',
-            code: 'TOKEN_ABOUT_TO_EXPIRE_NO_AUTO_REFRESH',
+            code: 'ML_TOKEN_EXPIRING_NO_REFRESH',
             accountId: accountId,
             timeToExpiry: MLTokenManager.getTimeToExpiry(account.tokenExpiresAt),
             suggestion: 'Reconnect account using OAuth to enable automatic refresh',

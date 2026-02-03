@@ -34,12 +34,30 @@ function Items() {
   const loadAccounts = async () => {
     try {
       const response = await api.get('/ml-accounts')
-      const accountsList = response.data.data?.accounts || response.data.accounts || []
+      console.log('ML Accounts API response:', response.data)
+      
+      // Handle different API response formats (same as Dashboard)
+      let accountsList = []
+      if (Array.isArray(response.data)) {
+        accountsList = response.data
+      } else if (Array.isArray(response.data?.data?.accounts)) {
+        accountsList = response.data.data.accounts
+      } else if (Array.isArray(response.data?.accounts)) {
+        accountsList = response.data.accounts
+      } else if (Array.isArray(response.data?.data)) {
+        accountsList = response.data.data
+      }
+      
+      console.log('Parsed accounts list:', accountsList)
       setAccounts(accountsList)
+      
       if (accountsList.length > 0) {
-        setSelectedAccount(accountsList[0].id)
+        const firstAccountId = accountsList[0]._id || accountsList[0].id
+        console.log('Auto-selecting first account:', firstAccountId)
+        setSelectedAccount(firstAccountId)
       }
     } catch (err) {
+      console.error('Error loading accounts:', err)
       setError('Erro ao carregar contas')
     }
   }
@@ -55,13 +73,36 @@ function Items() {
       if (filters.search) params.append('search', filters.search)
 
       const response = await api.get(`/items/${selectedAccount}?${params}`)
-      setItems(response.data.items || [])
+      console.log('Items API response:', response.data)
+      
+      // Handle different response formats (same as Dashboard)
+      let itemsData = { items: [], paging: { total: 0 } }
+      const resData = response.data
+      
+      if (resData?.success && resData?.data) {
+        itemsData = resData.data
+      } else if (resData?.items) {
+        itemsData = resData
+      } else if (Array.isArray(resData)) {
+        itemsData = { items: resData, paging: { total: resData.length } }
+      }
+      
+      console.log('Parsed itemsData:', itemsData)
+      console.log('Items array:', itemsData.items)
+      
+      setItems(itemsData.items || [])
       setPagination(prev => ({
         ...prev,
-        total: response.data.total || 0
+        total: itemsData.paging?.total || itemsData.total || itemsData.items?.length || 0
       }))
     } catch (err) {
-      setError('Erro ao carregar anuncios')
+      console.error('Error loading items:', err)
+      // Show ML token errors with more detail
+      if (err.response?.data?.code?.startsWith('ML_')) {
+        setError(`Erro de token ML: ${err.response.data.message}. Por favor, reconecte sua conta.`)
+      } else {
+        setError('Erro ao carregar anuncios')
+      }
       setItems([])
     } finally {
       setLoading(false)
@@ -124,7 +165,7 @@ function Items() {
             onChange={(e) => setSelectedAccount(e.target.value)}
           >
             {accounts.map(acc => (
-              <option key={acc.id} value={acc.id}>
+              <option key={acc._id || acc.id} value={acc._id || acc.id}>
                 {acc.nickname || acc.mlUserId}
               </option>
             ))}
@@ -187,88 +228,98 @@ function Items() {
             </Link>
           </div>
         ) : (
-          items.map(item => (
-            <div key={item._id || item.mlItemId} className="item-card">
-              <div className="item-image">
-                {item.thumbnail ? (
-                  <img src={item.thumbnail} alt={item.title} />
-                ) : (
-                  <div className="no-image">
-                    <span className="material-icons">image</span>
-                  </div>
-                )}
-                <span className={`badge ${getStatusBadgeClass(item.status)}`}>
-                  {getStatusLabel(item.status)}
-                </span>
-              </div>
-
-              <div className="item-content">
-                <h3 className="item-title">{item.title}</h3>
-                <p className="item-id">MLB{item.mlItemId}</p>
-
-                <div className="item-stats">
-                  <div className="stat">
-                    <span className="material-icons">attach_money</span>
-                    <span>{formatCurrency(item.price, item.currencyId)}</span>
-                  </div>
-                  <div className="stat">
-                    <span className="material-icons">inventory</span>
-                    <span>{item.availableQuantity || 0} un.</span>
-                  </div>
-                  <div className="stat">
-                    <span className="material-icons">shopping_cart</span>
-                    <span>{item.soldQuantity || 0} vendidos</span>
-                  </div>
+          items.map(item => {
+            // Handle both camelCase and snake_case field names from API
+            const itemId = item.id || item.mlItemId || item.ml_item_id
+            const thumbnail = item.thumbnail || item.secure_thumbnail
+            const availableQty = item.availableQuantity || item.available_quantity || 0
+            const soldQty = item.soldQuantity || item.sold_quantity || 0
+            const currencyId = item.currencyId || item.currency_id || 'BRL'
+            const listingType = item.listingType || item.listing_type_id
+            
+            return (
+              <div key={item._id || itemId} className="item-card">
+                <div className="item-image">
+                  {thumbnail ? (
+                    <img src={thumbnail} alt={item.title} />
+                  ) : (
+                    <div className="no-image">
+                      <span className="material-icons">image</span>
+                    </div>
+                  )}
+                  <span className={`badge ${getStatusBadgeClass(item.status)}`}>
+                    {getStatusLabel(item.status)}
+                  </span>
                 </div>
 
-                {item.listingType && (
-                  <div className="item-listing-type">
-                    <span className="material-icons">stars</span>
-                    <span>{item.listingType}</span>
+                <div className="item-content">
+                  <h3 className="item-title">{item.title}</h3>
+                  <p className="item-id">{itemId}</p>
+
+                  <div className="item-stats">
+                    <div className="stat">
+                      <span className="material-icons">attach_money</span>
+                      <span>{formatCurrency(item.price, currencyId)}</span>
+                    </div>
+                    <div className="stat">
+                      <span className="material-icons">inventory</span>
+                      <span>{availableQty} un.</span>
+                    </div>
+                    <div className="stat">
+                      <span className="material-icons">shopping_cart</span>
+                      <span>{soldQty} vendidos</span>
+                    </div>
                   </div>
-                )}
-              </div>
 
-              <div className="item-actions">
-                <Link
-                  to={`/items/${item.mlItemId}/edit`}
-                  className="btn btn-sm btn-secondary"
-                >
-                  <span className="material-icons">edit</span>
-                  Editar
-                </Link>
+                  {listingType && (
+                    <div className="item-listing-type">
+                      <span className="material-icons">stars</span>
+                      <span>{listingType}</span>
+                    </div>
+                  )}
+                </div>
 
-                {item.status === 'active' && (
-                  <button
-                    className="btn btn-sm btn-warning"
-                    onClick={() => updateItemStatus(item.mlItemId, 'paused')}
+                <div className="item-actions">
+                  <Link
+                    to={`/items/${itemId}/edit`}
+                    className="btn btn-sm btn-secondary"
                   >
-                    <span className="material-icons">pause</span>
-                    Pausar
-                  </button>
-                )}
+                    <span className="material-icons">edit</span>
+                    Editar
+                  </Link>
 
-                {item.status === 'paused' && (
-                  <button
-                    className="btn btn-sm btn-success"
-                    onClick={() => updateItemStatus(item.mlItemId, 'active')}
+                  {item.status === 'active' && (
+                    <button
+                      className="btn btn-sm btn-warning"
+                      onClick={() => updateItemStatus(itemId, 'paused')}
+                    >
+                      <span className="material-icons">pause</span>
+                      Pausar
+                    </button>
+                  )}
+
+                  {item.status === 'paused' && (
+                    <button
+                      className="btn btn-sm btn-success"
+                      onClick={() => updateItemStatus(itemId, 'active')}
+                    >
+                      <span className="material-icons">play_arrow</span>
+                      Ativar
+                    </button>
+                  )}
+
+                  <a
+                    href={item.permalink || `https://produto.mercadolivre.com.br/${itemId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn btn-sm btn-secondary"
                   >
-                    <span className="material-icons">play_arrow</span>
-                    Ativar
-                  </button>
-                )}
-
-                <a
-                  href={item.permalink || `https://produto.mercadolivre.com.br/MLB-${item.mlItemId}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn btn-sm btn-secondary"
-                >
-                  <span className="material-icons">open_in_new</span>
-                </a>
+                    <span className="material-icons">open_in_new</span>
+                  </a>
+                </div>
               </div>
-            </div>
-          ))
+            )
+          })
         )}
       </div>
 

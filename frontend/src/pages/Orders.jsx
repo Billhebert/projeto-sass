@@ -12,6 +12,7 @@ function Orders() {
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState(null)
+  const [hasTriedSync, setHasTriedSync] = useState(false)
   const [filters, setFilters] = useState({
     status: '',
     dateFrom: '',
@@ -27,26 +28,102 @@ function Orders() {
 
   useEffect(() => {
     if (selectedAccount) {
-      loadOrders()
+      setHasTriedSync(false) // Reset sync flag when account changes
+      loadOrdersAndMaybeSync()
       loadStats()
     }
-  }, [selectedAccount, filters])
+  }, [selectedAccount])
+  
+  // Reload when filters change (but don't auto-sync)
+  useEffect(() => {
+    if (selectedAccount && hasTriedSync) {
+      loadOrders(true)
+    }
+  }, [filters])
+
+  // Load orders and auto-sync if empty
+  const loadOrdersAndMaybeSync = async () => {
+    setLoading(true)
+    setError(null)
+    
+    try {
+      // First try to load from local DB
+      const ordersList = await loadOrders(false)
+      
+      // If no orders found and haven't tried sync yet, auto-sync
+      if (ordersList.length === 0 && !hasTriedSync) {
+        console.log('No orders found, attempting auto-sync...')
+        setHasTriedSync(true)
+        setSyncing(true)
+        
+        try {
+          const syncResponse = await api.post(`/orders/${selectedAccount}/sync`, {
+            status: 'paid',
+            days: 90
+          })
+          console.log('Auto-sync response:', syncResponse.data)
+          
+          // Reload after sync
+          await loadOrders(false)
+          await loadStats()
+        } catch (syncErr) {
+          console.error('Auto-sync failed:', syncErr)
+          // Show ML token errors to user
+          if (syncErr.response?.data?.code?.startsWith('ML_')) {
+            setError(`Erro de token ML: ${syncErr.response.data.message}. Por favor, reconecte sua conta.`)
+          }
+          // Don't show error for other auto-sync failures, user can manually sync
+        } finally {
+          setSyncing(false)
+        }
+      } else {
+        setHasTriedSync(true)
+      }
+    } catch (err) {
+      console.error('Error in loadOrdersAndMaybeSync:', err)
+      // Show ML token errors to user
+      if (err.response?.data?.code?.startsWith('ML_')) {
+        setError(`Erro de token ML: ${err.response.data.message}. Por favor, reconecte sua conta.`)
+      }
+      setHasTriedSync(true)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const loadAccounts = async () => {
     try {
       const response = await api.get('/ml-accounts')
-      const accountsList = response.data.data?.accounts || response.data.accounts || []
+      console.log('ML Accounts API response:', response.data)
+      
+      // Handle different API response formats (same as Dashboard)
+      let accountsList = []
+      if (Array.isArray(response.data)) {
+        accountsList = response.data
+      } else if (Array.isArray(response.data?.data?.accounts)) {
+        accountsList = response.data.data.accounts
+      } else if (Array.isArray(response.data?.accounts)) {
+        accountsList = response.data.accounts
+      } else if (Array.isArray(response.data?.data)) {
+        accountsList = response.data.data
+      }
+      
+      console.log('Parsed accounts list:', accountsList)
       setAccounts(accountsList)
+      
       if (accountsList.length > 0) {
-        setSelectedAccount(accountsList[0].id)
+        const firstAccountId = accountsList[0]._id || accountsList[0].id
+        console.log('Auto-selecting first account:', firstAccountId)
+        setSelectedAccount(firstAccountId)
       }
     } catch (err) {
+      console.error('Error loading accounts:', err)
       setError('Erro ao carregar contas')
     }
   }
 
-  const loadOrders = async () => {
-    setLoading(true)
+  const loadOrders = async (setLoadingState = true) => {
+    if (setLoadingState) setLoading(true)
     setError(null)
     try {
       const params = new URLSearchParams()
@@ -56,19 +133,74 @@ function Orders() {
       if (filters.search) params.append('search', filters.search)
 
       const response = await api.get(`/orders/${selectedAccount}?${params}`)
-      setOrders(response.data.orders || [])
+      console.log('Orders API response:', response.data)
+      
+      // Handle different response formats (same as Dashboard)
+      let ordersData = { orders: [], paging: { total: 0 } }
+      const resData = response.data
+      
+      if (resData?.success && resData?.data) {
+        ordersData = resData.data
+      } else if (resData?.orders) {
+        ordersData = resData
+      } else if (resData?.results) {
+        ordersData = { orders: resData.results, paging: resData.paging || { total: resData.results.length } }
+      } else if (Array.isArray(resData)) {
+        ordersData = { orders: resData, paging: { total: resData.length } }
+      }
+      
+      console.log('Parsed ordersData:', ordersData)
+      console.log('Orders array:', ordersData.orders)
+      
+      const ordersList = ordersData.orders || []
+      setOrders(ordersList)
+      
+      return ordersList
     } catch (err) {
+      console.error('Error loading orders:', err)
       setError('Erro ao carregar pedidos')
       setOrders([])
+      return []
     } finally {
-      setLoading(false)
+      if (setLoadingState) setLoading(false)
     }
   }
 
   const loadStats = async () => {
     try {
       const response = await api.get(`/orders/${selectedAccount}/stats`)
-      setStats(response.data)
+      console.log('Orders stats response:', response.data)
+      
+      // Handle different response formats
+      let statsData = null
+      const resData = response.data
+      
+      if (resData?.success && resData?.data) {
+        // Format: { success: true, data: { orders: { total, paid, pending }, revenue: { total } } }
+        const data = resData.data
+        statsData = {
+          total: data.orders?.total || 0,
+          paid: data.orders?.paid || 0,
+          pending: data.orders?.pending || 0,
+          cancelled: data.orders?.cancelled || 0,
+          totalRevenue: data.revenue?.total || 0
+        }
+      } else if (resData?.orders) {
+        // Format: { orders: { total, paid }, revenue: { total } }
+        statsData = {
+          total: resData.orders?.total || 0,
+          paid: resData.orders?.paid || 0,
+          pending: resData.orders?.pending || 0,
+          cancelled: resData.orders?.cancelled || 0,
+          totalRevenue: resData.revenue?.total || 0
+        }
+      } else if (resData?.total !== undefined) {
+        // Format: { total, paid, pending, totalRevenue }
+        statsData = resData
+      }
+      
+      console.log('Parsed stats:', statsData)
+      setStats(statsData)
     } catch (err) {
       console.error('Erro ao carregar estatisticas:', err)
     }
@@ -76,12 +208,24 @@ function Orders() {
 
   const syncOrders = async () => {
     setSyncing(true)
+    setError(null)
     try {
-      await api.post(`/orders/${selectedAccount}/sync`)
-      await loadOrders()
+      console.log('Syncing orders for account:', selectedAccount)
+      const syncResponse = await api.post(`/orders/${selectedAccount}/sync`, {
+        status: 'paid',
+        days: 90 // Get last 90 days of orders
+      })
+      console.log('Sync response:', syncResponse.data)
+      
+      // Reload orders after sync
+      const ordersList = await loadOrders(false)
       await loadStats()
+      
+      return ordersList
     } catch (err) {
+      console.error('Error syncing orders:', err)
       setError('Erro ao sincronizar pedidos')
+      return []
     } finally {
       setSyncing(false)
     }
@@ -90,9 +234,24 @@ function Orders() {
   const viewOrderDetails = async (orderId) => {
     try {
       const response = await api.get(`/orders/${selectedAccount}/${orderId}`)
-      setSelectedOrder(response.data.order)
+      console.log('Order details response:', response.data)
+      
+      // Handle different response formats
+      let orderData = null
+      const resData = response.data
+      
+      if (resData?.success && resData?.data) {
+        orderData = resData.data.order || resData.data
+      } else if (resData?.order) {
+        orderData = resData.order
+      } else {
+        orderData = resData
+      }
+      
+      setSelectedOrder(orderData)
       setShowModal(true)
     } catch (err) {
+      console.error('Error loading order details:', err)
       setError('Erro ao carregar detalhes do pedido')
     }
   }
@@ -137,7 +296,7 @@ function Orders() {
             onChange={(e) => setSelectedAccount(e.target.value)}
           >
             {accounts.map(acc => (
-              <option key={acc.id} value={acc.id}>
+              <option key={acc._id || acc.id} value={acc._id || acc.id}>
                 {acc.nickname || acc.mlUserId}
               </option>
             ))}
@@ -267,147 +426,172 @@ function Orders() {
               </tr>
             </thead>
             <tbody>
-              {orders.map(order => (
-                <tr key={order._id || order.mlOrderId}>
-                  <td className="order-id">#{order.mlOrderId}</td>
-                  <td>{formatDate(order.dateCreated)}</td>
-                  <td>
-                    <div className="buyer-info">
-                      <span>{order.buyer?.nickname || 'N/A'}</span>
-                    </div>
-                  </td>
-                  <td>
-                    <div className="items-preview">
-                      {order.orderItems?.slice(0, 2).map((item, idx) => (
-                        <span key={idx} className="item-title">
-                          {item.title?.substring(0, 30)}...
-                        </span>
-                      ))}
-                      {order.orderItems?.length > 2 && (
-                        <span className="more-items">+{order.orderItems.length - 2} mais</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="order-total">
-                    {formatCurrency(order.totalAmount, order.currencyId)}
-                  </td>
-                  <td>
-                    <span className={`badge ${getStatusBadgeClass(order.status)}`}>
-                      {order.status}
-                    </span>
-                  </td>
-                  <td>
-                    <div className="action-buttons">
-                      <button
-                        className="btn-icon"
-                        title="Ver detalhes"
-                        onClick={() => viewOrderDetails(order.mlOrderId)}
-                      >
-                        <span className="material-icons">visibility</span>
-                      </button>
-                      <a
-                        href={`https://www.mercadolivre.com.br/vendas/${order.mlOrderId}/detalhe`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="btn-icon"
-                        title="Ver no ML"
-                      >
-                        <span className="material-icons">open_in_new</span>
-                      </a>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {orders.map(order => {
+                // Handle both camelCase and snake_case field names from API
+                const orderId = order.id || order.mlOrderId || order.ml_order_id
+                const dateCreated = order.dateCreated || order.date_created
+                const totalAmount = order.totalAmount || order.total_amount || 0
+                const currencyId = order.currencyId || order.currency_id || 'BRL'
+                const orderItems = order.orderItems || order.order_items || []
+                
+                return (
+                  <tr key={order._id || orderId}>
+                    <td className="order-id">#{orderId}</td>
+                    <td>{formatDate(dateCreated)}</td>
+                    <td>
+                      <div className="buyer-info">
+                        <span>{order.buyer?.nickname || 'N/A'}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="items-preview">
+                        {orderItems.slice(0, 2).map((item, idx) => (
+                          <span key={idx} className="item-title">
+                            {(item.title || item.item?.title)?.substring(0, 30)}...
+                          </span>
+                        ))}
+                        {orderItems.length > 2 && (
+                          <span className="more-items">+{orderItems.length - 2} mais</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="order-total">
+                      {formatCurrency(totalAmount, currencyId)}
+                    </td>
+                    <td>
+                      <span className={`badge ${getStatusBadgeClass(order.status)}`}>
+                        {order.status}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="action-buttons">
+                        <button
+                          className="btn-icon"
+                          title="Ver detalhes"
+                          onClick={() => viewOrderDetails(orderId)}
+                        >
+                          <span className="material-icons">visibility</span>
+                        </button>
+                        <a
+                          href={`https://www.mercadolivre.com.br/vendas/${orderId}/detalhe`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn-icon"
+                          title="Ver no ML"
+                        >
+                          <span className="material-icons">open_in_new</span>
+                        </a>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         )}
       </div>
 
-      {showModal && selectedOrder && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>Pedido #{selectedOrder.mlOrderId}</h2>
-              <button className="btn-close" onClick={() => setShowModal(false)}>
-                <span className="material-icons">close</span>
-              </button>
-            </div>
-            <div className="modal-body">
-              <div className="order-detail-section">
-                <h3>Informacoes Gerais</h3>
-                <div className="detail-grid">
-                  <div className="detail-item">
-                    <label>Status</label>
-                    <span className={`badge ${getStatusBadgeClass(selectedOrder.status)}`}>
-                      {selectedOrder.status}
-                    </span>
-                  </div>
-                  <div className="detail-item">
-                    <label>Data</label>
-                    <span>{formatDate(selectedOrder.dateCreated)}</span>
-                  </div>
-                  <div className="detail-item">
-                    <label>Total</label>
-                    <span className="total-value">
-                      {formatCurrency(selectedOrder.totalAmount, selectedOrder.currencyId)}
-                    </span>
-                  </div>
-                </div>
+      {showModal && selectedOrder && (() => {
+        // Handle both camelCase and snake_case field names
+        const orderId = selectedOrder.id || selectedOrder.mlOrderId || selectedOrder.ml_order_id
+        const dateCreated = selectedOrder.dateCreated || selectedOrder.date_created
+        const totalAmount = selectedOrder.totalAmount || selectedOrder.total_amount || 0
+        const currencyId = selectedOrder.currencyId || selectedOrder.currency_id || 'BRL'
+        const orderItems = selectedOrder.orderItems || selectedOrder.order_items || []
+        
+        return (
+          <div className="modal-overlay" onClick={() => setShowModal(false)}>
+            <div className="modal-content" onClick={e => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2>Pedido #{orderId}</h2>
+                <button className="btn-close" onClick={() => setShowModal(false)}>
+                  <span className="material-icons">close</span>
+                </button>
               </div>
-
-              <div className="order-detail-section">
-                <h3>Comprador</h3>
-                <div className="detail-grid">
-                  <div className="detail-item">
-                    <label>Nickname</label>
-                    <span>{selectedOrder.buyer?.nickname}</span>
-                  </div>
-                  <div className="detail-item">
-                    <label>Email</label>
-                    <span>{selectedOrder.buyer?.email || 'N/A'}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="order-detail-section">
-                <h3>Itens do Pedido</h3>
-                <div className="order-items-list">
-                  {selectedOrder.orderItems?.map((item, idx) => (
-                    <div key={idx} className="order-item-card">
-                      {item.thumbnail && (
-                        <img src={item.thumbnail} alt={item.title} />
-                      )}
-                      <div className="item-details">
-                        <span className="item-title">{item.title}</span>
-                        <span className="item-qty">Qtd: {item.quantity}</span>
-                        <span className="item-price">
-                          {formatCurrency(item.unitPrice * item.quantity, selectedOrder.currencyId)}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {selectedOrder.shipping && (
+              <div className="modal-body">
                 <div className="order-detail-section">
-                  <h3>Envio</h3>
+                  <h3>Informacoes Gerais</h3>
                   <div className="detail-grid">
                     <div className="detail-item">
-                      <label>ID Envio</label>
-                      <span>{selectedOrder.shipping.id}</span>
+                      <label>Status</label>
+                      <span className={`badge ${getStatusBadgeClass(selectedOrder.status)}`}>
+                        {selectedOrder.status}
+                      </span>
                     </div>
                     <div className="detail-item">
-                      <label>Status</label>
-                      <span>{selectedOrder.shipping.status}</span>
+                      <label>Data</label>
+                      <span>{formatDate(dateCreated)}</span>
+                    </div>
+                    <div className="detail-item">
+                      <label>Total</label>
+                      <span className="total-value">
+                        {formatCurrency(totalAmount, currencyId)}
+                      </span>
                     </div>
                   </div>
                 </div>
-              )}
+
+                <div className="order-detail-section">
+                  <h3>Comprador</h3>
+                  <div className="detail-grid">
+                    <div className="detail-item">
+                      <label>Nickname</label>
+                      <span>{selectedOrder.buyer?.nickname}</span>
+                    </div>
+                    <div className="detail-item">
+                      <label>Email</label>
+                      <span>{selectedOrder.buyer?.email || 'N/A'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="order-detail-section">
+                  <h3>Itens do Pedido</h3>
+                  <div className="order-items-list">
+                    {orderItems.map((item, idx) => {
+                      const itemTitle = item.title || item.item?.title
+                      const itemThumbnail = item.thumbnail || item.item?.thumbnail
+                      const itemQty = item.quantity
+                      const itemPrice = item.unitPrice || item.unit_price || item.full_unit_price || 0
+                      
+                      return (
+                        <div key={idx} className="order-item-card">
+                          {itemThumbnail && (
+                            <img src={itemThumbnail} alt={itemTitle} />
+                          )}
+                          <div className="item-details">
+                            <span className="item-title">{itemTitle}</span>
+                            <span className="item-qty">Qtd: {itemQty}</span>
+                            <span className="item-price">
+                              {formatCurrency(itemPrice * itemQty, currencyId)}
+                            </span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {selectedOrder.shipping && (
+                  <div className="order-detail-section">
+                    <h3>Envio</h3>
+                    <div className="detail-grid">
+                      <div className="detail-item">
+                        <label>ID Envio</label>
+                        <span>{selectedOrder.shipping.id}</span>
+                      </div>
+                      <div className="detail-item">
+                        <label>Status</label>
+                        <span>{selectedOrder.shipping.status}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
     </div>
   )
 }

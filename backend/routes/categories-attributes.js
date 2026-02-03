@@ -62,6 +62,158 @@ const validateSiteId = (siteId) => {
 };
 
 /**
+ * GET /
+ * Listar categorias principais do site (MLB por padrão)
+ * Query params: site_id (default: MLB)
+ */
+router.get('/', async (req, res) => {
+  try {
+    const { site_id = 'MLB' } = req.query;
+    
+    // Check cache first
+    const cacheKey = `categories_${site_id}`;
+    const cachedData = getCachedData(cacheKey);
+    
+    if (cachedData) {
+      logger.info(`CATEGORIES_ATTRIBUTES - list_categories: Cache hit for site ${site_id}`);
+      return res.json({ 
+        success: true, 
+        data: cachedData,
+        cached: true,
+        cached_at: new Date(cache.get(cacheKey).timestamp).toISOString()
+      });
+    }
+    
+    const config = {
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    };
+    
+    logger.info(`CATEGORIES_ATTRIBUTES - list_categories: Fetching categories for site ${site_id}`);
+    
+    const response = await axios({
+      method: 'GET',
+      url: `${API_BASE_URL}/sites/${site_id}/categories`,
+      ...config,
+      timeout: 10000
+    });
+    
+    // Cache the response
+    setCachedData(cacheKey, response.data);
+    
+    logger.info(`CATEGORIES_ATTRIBUTES - list_categories: Success - ${response.data.length || 0} categories found`);
+    
+    res.json({ 
+      success: true, 
+      data: response.data,
+      pagination: {
+        total: response.data.length || 0,
+        limit: response.data.length || 0,
+        offset: 0
+      },
+      cached: false
+    });
+  } catch (error) {
+    const statusCode = error.response?.status || 500;
+    const errorData = error.response?.data || { message: error.message };
+    
+    logger.error(`CATEGORIES_ATTRIBUTES - list_categories: ${error.message}`, {
+      status: statusCode
+    });
+    
+    res.status(statusCode).json({
+      success: false,
+      error: 'Failed to fetch categories',
+      details: errorData
+    });
+  }
+});
+
+/**
+ * GET /:category_id/attributes
+ * Alias route - Listar atributos de uma categoria (frontend compatibility)
+ */
+router.get('/:category_id/attributes', async (req, res) => {
+  try {
+    const { category_id } = req.params;
+    
+    // Validate category ID
+    const idError = validateCategoryId(category_id);
+    if (idError) {
+      return res.status(400).json({
+        success: false,
+        error: 'Validation failed',
+        details: [idError]
+      });
+    }
+    
+    // Check cache first
+    const cacheKey = `category_attrs_${category_id}`;
+    const cachedData = getCachedData(cacheKey);
+    
+    if (cachedData) {
+      logger.info(`CATEGORIES_ATTRIBUTES - get_category_attributes: Cache hit for ${category_id}`);
+      return res.json({ 
+        success: true, 
+        data: cachedData,
+        cached: true,
+        cached_at: new Date(cache.get(cacheKey).timestamp).toISOString()
+      });
+    }
+    
+    const config = {
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    };
+    
+    logger.info(`CATEGORIES_ATTRIBUTES - get_category_attributes: Fetching attributes for category ${category_id}`);
+    
+    const response = await axios({
+      method: 'GET',
+      url: `${API_BASE_URL}/categories/${category_id}/attributes`,
+      ...config,
+      params: req.query,
+      timeout: 10000
+    });
+    
+    // Cache the response
+    setCachedData(cacheKey, response.data);
+    
+    // Separate attributes into required and optional
+    const attributeStats = {
+      total: response.data.length || 0,
+      required: response.data.filter(a => a.required).length || 0,
+      optional: response.data.filter(a => !a.required).length || 0
+    };
+    
+    logger.info(`CATEGORIES_ATTRIBUTES - get_category_attributes: Success - ${attributeStats.total} attributes found`);
+    
+    res.json({ 
+      success: true, 
+      data: response.data,
+      stats: attributeStats,
+      cached: false
+    });
+  } catch (error) {
+    const statusCode = error.response?.status || 500;
+    const errorData = error.response?.data || { message: error.message };
+    
+    logger.error(`CATEGORIES_ATTRIBUTES - get_category_attributes: ${error.message}`, {
+      category_id: req.params.category_id,
+      status: statusCode
+    });
+    
+    res.status(statusCode).json({
+      success: false,
+      error: 'Failed to fetch category attributes',
+      details: errorData
+    });
+  }
+});
+
+/**
  * GET /categories/{category_id}/attributes
  * Listar atributos obrigatórios/opcionais de uma categoria (com caching)
  */

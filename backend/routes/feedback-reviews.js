@@ -79,6 +79,113 @@ const validateReviewFilters = (query) => {
 };
 
 /**
+ * GET /
+ * Listar feedbacks/avaliações recebidas pelo vendedor
+ * Query params: limit, offset, rating, type
+ */
+router.get('/', authenticateToken, async (req, res) => {
+  try {
+    const { limit = 20, offset = 0, rating, type } = req.query;
+    
+    // Get seller ID from user token
+    const sellerId = req.user?.userId || req.user?.id;
+    
+    if (!sellerId) {
+      return res.status(400).json({
+        success: false,
+        error: 'User ID not found in token'
+      });
+    }
+    
+    // Validate filters
+    const filterErrors = validateReviewFilters(req.query);
+    if (filterErrors.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Validation failed',
+        details: filterErrors
+      });
+    }
+    
+    const config = {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${req.user?.token || ''}`
+      }
+    };
+    
+    // Build query params
+    const params = {
+      limit: parseInt(limit),
+      offset: parseInt(offset)
+    };
+    
+    if (rating) {
+      params.rating = parseInt(rating);
+    }
+    
+    if (type && VALID_FEEDBACK_TYPES.includes(type.toLowerCase())) {
+      params.type = type.toLowerCase();
+    }
+    
+    logger.info(`FEEDBACK_REVIEWS - list_feedback: Fetching feedback for seller ${sellerId}`, {
+      limit: params.limit,
+      offset: params.offset,
+      rating: params.rating,
+      type: params.type
+    });
+    
+    const response = await axios({
+      method: 'GET',
+      url: `${API_BASE_URL}/users/${sellerId}/feedback`,
+      ...config,
+      params,
+      timeout: 15000
+    });
+    
+    const feedbackList = response.data.feedback || response.data.results || [];
+    
+    // Calculate stats
+    const stats = {
+      total: feedbackList.length,
+      positive: feedbackList.filter(f => f.type === 'positive' || f.rating >= 4).length,
+      neutral: feedbackList.filter(f => f.type === 'neutral' || f.rating === 3).length,
+      negative: feedbackList.filter(f => f.type === 'negative' || f.rating <= 2).length,
+      average_rating: feedbackList.length > 0 
+        ? (feedbackList.reduce((sum, f) => sum + (f.rating || 0), 0) / feedbackList.length).toFixed(1)
+        : 0
+    };
+    
+    logger.info(`FEEDBACK_REVIEWS - list_feedback: Success - Found ${feedbackList.length} feedback entries`);
+    
+    res.json({ 
+      success: true, 
+      data: feedbackList,
+      stats,
+      pagination: {
+        total: response.data.paging?.total || feedbackList.length,
+        limit: parseInt(limit),
+        offset: parseInt(offset)
+      }
+    });
+  } catch (error) {
+    const statusCode = error.response?.status || 500;
+    const errorData = error.response?.data || { message: error.message };
+    
+    logger.error(`FEEDBACK_REVIEWS - list_feedback: ${error.message}`, {
+      status: statusCode,
+      errorDetails: errorData
+    });
+    
+    res.status(statusCode).json({
+      success: false,
+      error: 'Failed to list feedback',
+      details: errorData
+    });
+  }
+});
+
+/**
  * GET /items/{item_id}/reviews
  * Listar reviews/avaliações do item com filtro de rating
  */

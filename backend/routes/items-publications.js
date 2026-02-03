@@ -31,6 +31,115 @@ const validateItemId = (id) => {
 };
 
 /**
+ * GET /
+ * Listar items/publicações do usuário
+ * Query params: limit, offset, status, sort
+ */
+router.get('/', authenticateToken, async (req, res) => {
+  try {
+    const { limit = 20, offset = 0, status, sort = 'created_desc' } = req.query;
+    
+    const config = {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${req.user?.token || ''}`
+      }
+    };
+    
+    // Get user ID from token
+    const userId = req.user?.userId || req.user?.id;
+    
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        error: 'User ID not found in token'
+      });
+    }
+    
+    logger.info(`ITEMS_PUBLICATIONS - list_items: Fetching items for user ${userId}`);
+    
+    // Build query params for ML API
+    const params = {
+      limit: parseInt(limit),
+      offset: parseInt(offset)
+    };
+    
+    if (status) {
+      params.status = status;
+    }
+    
+    // Sort mapping
+    const sortMapping = {
+      'created_desc': 'date_created:desc',
+      'created_asc': 'date_created:asc',
+      'price_desc': 'price:desc',
+      'price_asc': 'price:asc'
+    };
+    
+    if (sort && sortMapping[sort]) {
+      params.sort = sortMapping[sort];
+    }
+    
+    const response = await axios({
+      method: 'GET',
+      url: `${API_BASE_URL}/users/${userId}/items/search`,
+      ...config,
+      params,
+      timeout: 15000
+    });
+    
+    // Get full item details if we have results
+    let items = [];
+    const results = response.data.results || [];
+    
+    if (results.length > 0) {
+      // Fetch item details in batches
+      const itemIds = results.slice(0, parseInt(limit));
+      const itemPromises = itemIds.map(id => 
+        axios.get(`${API_BASE_URL}/items/${id}`, { 
+          headers: config.headers,
+          timeout: 10000 
+        }).catch(err => {
+          logger.warn(`Failed to fetch item ${id}: ${err.message}`);
+          return null;
+        })
+      );
+      
+      const itemResponses = await Promise.all(itemPromises);
+      items = itemResponses
+        .filter(r => r !== null)
+        .map(r => r.data);
+    }
+    
+    logger.info(`ITEMS_PUBLICATIONS - list_items: Success - ${items.length} items retrieved`);
+    
+    res.json({ 
+      success: true, 
+      data: items,
+      pagination: {
+        total: response.data.paging?.total || 0,
+        limit: parseInt(limit),
+        offset: parseInt(offset)
+      }
+    });
+  } catch (error) {
+    const statusCode = error.response?.status || 500;
+    const errorData = error.response?.data || { message: error.message };
+    
+    logger.error(`ITEMS_PUBLICATIONS - list_items: ${error.message}`, {
+      status: statusCode,
+      errorDetails: errorData
+    });
+    
+    res.status(statusCode).json({
+      success: false,
+      error: 'Failed to list items',
+      details: errorData
+    });
+  }
+});
+
+/**
  * POST /
  * Criar novo item/publicação
  * Required: title, category_id, price

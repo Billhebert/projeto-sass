@@ -48,6 +48,103 @@ async function getMLAccount(req, res, next) {
 }
 
 /**
+ * GET /api/returns
+ * List all returns for the authenticated user (all accounts)
+ * Query params: offset, limit, status
+ */
+router.get('/', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { offset = 0, limit = 50, status } = req.query;
+
+    // Get all ML accounts for this user
+    const accounts = await MLAccount.find({ userId });
+    
+    if (!accounts || accounts.length === 0) {
+      return res.json({
+        success: true,
+        data: [],
+        pagination: {
+          total: 0,
+          limit: parseInt(limit),
+          offset: parseInt(offset)
+        }
+      });
+    }
+
+    // Fetch returns from all accounts
+    const allReturns = [];
+    
+    for (const account of accounts) {
+      if (account.isTokenExpired()) continue;
+      
+      try {
+        const params = {
+          seller_id: account.mlUserId,
+          offset: 0,
+          limit: 100,
+          resource_type: 'order',
+        };
+
+        if (status) {
+          params.status = status;
+        }
+
+        const response = await axios.get(
+          `${ML_API_BASE}/claims/search`,
+          {
+            headers: { Authorization: `Bearer ${account.accessToken}` },
+            params,
+            timeout: 10000
+          }
+        );
+
+        // Filter for return-related claims
+        const returns = (response.data.data || []).filter(claim => 
+          claim.type === 'return' || 
+          claim.reason?.includes('return') ||
+          claim.reason?.includes('devolu')
+        ).map(r => ({
+          ...r,
+          accountId: account.id,
+          accountNickname: account.nickname
+        }));
+
+        allReturns.push(...returns);
+      } catch (err) {
+        logger.warn(`Failed to fetch returns for account ${account.id}: ${err.message}`);
+      }
+    }
+
+    // Apply pagination
+    const paginatedReturns = allReturns.slice(
+      parseInt(offset), 
+      parseInt(offset) + parseInt(limit)
+    );
+
+    res.json({
+      success: true,
+      data: paginatedReturns,
+      pagination: {
+        total: allReturns.length,
+        limit: parseInt(limit),
+        offset: parseInt(offset)
+      }
+    });
+  } catch (error) {
+    logger.error('Error fetching returns:', {
+      error: error.message,
+    });
+
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch returns',
+      details: error.message
+    });
+  }
+});
+
+/**
  * GET /api/returns/:accountId
  * List all returns for the account
  */

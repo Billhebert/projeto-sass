@@ -60,6 +60,88 @@ const validatePackCreation = (body) => {
 };
 
 /**
+ * GET /
+ * Listar pedidos do vendedor (alias para /orders/search)
+ * Query params: limit, offset, status, seller_id
+ */
+router.get('/', authenticateToken, async (req, res) => {
+  try {
+    // Validate filters
+    const filterErrors = validateOrderFilters(req.query);
+    if (filterErrors.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Validation failed',
+        details: filterErrors
+      });
+    }
+    
+    // Get seller ID from user token or query
+    const sellerId = req.query.seller_id || req.user?.userId || req.user?.id;
+    
+    // Set default pagination values
+    const params = {
+      seller: sellerId,
+      limit: req.query.limit || 50,
+      offset: req.query.offset || 0
+    };
+    
+    if (req.query.status) {
+      params['order.status'] = req.query.status;
+    }
+    
+    const config = {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${req.user?.token || ''}`
+      }
+    };
+    
+    logger.info(`ORDERS_SALES - list_orders: Fetching orders for seller ${sellerId}`, {
+      limit: params.limit,
+      offset: params.offset
+    });
+    
+    const response = await axios({
+      method: 'GET',
+      url: `${API_BASE_URL}/orders/search`,
+      ...config,
+      params,
+      timeout: 15000
+    });
+    
+    // Transform response data
+    const orders = response.data.results || [];
+    
+    logger.info(`ORDERS_SALES - list_orders: Success - Found ${orders.length} orders`);
+    
+    res.json({ 
+      success: true, 
+      data: orders,
+      pagination: {
+        limit: parseInt(params.limit),
+        offset: parseInt(params.offset),
+        total: response.data.paging?.total || 0
+      }
+    });
+  } catch (error) {
+    const statusCode = error.response?.status || 500;
+    const errorData = error.response?.data || { message: error.message };
+    
+    logger.error(`ORDERS_SALES - list_orders: ${error.message}`, {
+      status: statusCode,
+      errorDetails: errorData
+    });
+    
+    res.status(statusCode).json({
+      success: false,
+      error: 'Failed to list orders',
+      details: errorData
+    });
+  }
+});
+
+/**
  * GET /orders/search
  * Buscar orders com filtros avançados (status, seller_id, etc)
  */

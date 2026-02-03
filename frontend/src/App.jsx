@@ -49,13 +49,16 @@ import FinancialReports from './pages/FinancialReports'
 import Conciliation from './pages/Conciliation'
 import Analytics from './pages/Analytics'
 
-// Phase 6 - New List Pages
-import ItemsList from './pages/ItemsList'
-import OrdersList from './pages/OrdersList'
-import ShippingList from './pages/ShippingList'
-import QuestionsList from './pages/QuestionsList'
-import FeedbackList from './pages/FeedbackList'
-import CategoriesList from './pages/CategoriesList'
+// Mercado Pago pages
+import MPDashboard from './pages/MPDashboard'
+import MPPayments from './pages/MPPayments'
+import MPCheckout from './pages/MPCheckout'
+import MPSubscriptions from './pages/MPSubscriptions'
+import MPCustomers from './pages/MPCustomers'
+import MPCheckoutSuccess from './pages/MPCheckoutSuccess'
+import MPCheckoutFailure from './pages/MPCheckoutFailure'
+import MPCheckoutPending from './pages/MPCheckoutPending'
+
 
 function App() {
   const { token, loadToken } = useAuthStore()
@@ -87,14 +90,7 @@ function App() {
             {/* Products - Global view */}
             <Route path="/products" element={<AllProducts />} />
             
-            {/* Phase 6 - New List Pages (Enhanced versions) */}
-            <Route path="/products-list" element={<ItemsList />} />
-            <Route path="/orders-list" element={<OrdersList />} />
-            <Route path="/shipping-list" element={<ShippingList />} />
-            <Route path="/questions-list" element={<QuestionsList />} />
-            <Route path="/feedback-list" element={<FeedbackList />} />
-            <Route path="/categories" element={<CategoriesList />} />
-            
+
             {/* Sales */}
             <Route path="/orders" element={<Orders />} />
             <Route path="/sales-dashboard" element={<SalesDashboard />} />
@@ -138,6 +134,16 @@ function App() {
             
             {/* Financial */}
             <Route path="/billing" element={<Billing />} />
+            
+            {/* Mercado Pago */}
+            <Route path="/mp" element={<MPDashboard />} />
+            <Route path="/mp/payments" element={<MPPayments />} />
+            <Route path="/mp/checkout" element={<MPCheckout />} />
+            <Route path="/mp/checkout/success" element={<MPCheckoutSuccess />} />
+            <Route path="/mp/checkout/failure" element={<MPCheckoutFailure />} />
+            <Route path="/mp/checkout/pending" element={<MPCheckoutPending />} />
+            <Route path="/mp/subscriptions" element={<MPSubscriptions />} />
+            <Route path="/mp/customers" element={<MPCustomers />} />
             
             {/* System */}
             <Route path="/notifications" element={<Notifications />} />

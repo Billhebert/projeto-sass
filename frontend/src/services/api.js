@@ -19,15 +19,26 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Only logout for 401 errors that are NOT related to ML token refresh
-    // ML token refresh failures should show an error, not logout the user
-    const isMLTokenRefresh = error.config?.url?.includes('/refresh-token')
-    
-    if (error.response?.status === 401 && !isMLTokenRefresh) {
-      localStorage.removeItem('token')
-      localStorage.removeItem('user')
-      window.location.href = '/login'
+    // Only logout for 401 errors from JWT authentication
+    // ML token errors now use 400 status code to avoid triggering logout
+    if (error.response?.status === 401) {
+      // Check if it's a JWT auth error (not ML token error)
+      const errorCode = error.response?.data?.code || ''
+      const isMLTokenError = errorCode.startsWith('ML_')
+      
+      if (!isMLTokenError) {
+        // JWT token expired or invalid - logout
+        localStorage.removeItem('token')
+        localStorage.removeItem('user')
+        window.location.href = '/login'
+      }
     }
+    
+    // Log ML token errors for debugging
+    if (error.response?.data?.code?.startsWith('ML_')) {
+      console.warn('ML Token Error:', error.response.data)
+    }
+    
     return Promise.reject(error)
   }
 )
@@ -99,15 +110,15 @@ export const usersAPI = {
 // ITEMS & PUBLICATIONS ENDPOINTS
 // ============================================
 export const itemsAPI = {
-  createItem: (data) => api.post('/items-publications', data),
-  getItem: (itemId) => api.get(`/items-publications/${itemId}`),
-  getItems: (params) => api.get('/items-publications', { params }),
-  updateItem: (itemId, data) => api.put(`/items-publications/${itemId}`, data),
-  deleteItem: (itemId) => api.delete(`/items-publications/${itemId}`),
-  getItemDescription: (itemId) => api.get(`/items-publications/${itemId}/description`),
-  updateItemDescription: (itemId, data) => api.post(`/items-publications/${itemId}/description`, data),
-  publishItem: (itemId) => api.post(`/items-publications/${itemId}/publish`, {}),
-  unpublishItem: (itemId) => api.post(`/items-publications/${itemId}/unpublish`, {}),
+  getItems: (accountId, params) => api.get(`/items/${accountId}`, { params }),
+  getItem: (accountId, itemId) => api.get(`/items/${accountId}/${itemId}`),
+  createItem: (accountId, data) => api.post(`/items/${accountId}`, data),
+  updateItem: (accountId, itemId, data) => api.put(`/items/${accountId}/${itemId}`, data),
+  deleteItem: (accountId, itemId) => api.delete(`/items/${accountId}/${itemId}`),
+  updateItemStatus: (accountId, itemId, status) => api.put(`/items/${accountId}/${itemId}/status`, { status }),
+  getItemDescription: (accountId, itemId) => api.get(`/items/${accountId}/${itemId}/description`),
+  updateItemDescription: (accountId, itemId, data) => api.put(`/items/${accountId}/${itemId}/description`, data),
+  syncItems: (accountId) => api.post(`/items/${accountId}/sync`),
 }
 
 // ============================================
@@ -124,61 +135,52 @@ export const searchAPI = {
 // ORDERS & SALES ENDPOINTS
 // ============================================
 export const ordersAPI = {
-  searchOrders: (params) => api.get('/orders-sales', { params }),
-  listOrders: (params) => api.get('/orders-sales', { params }),
-  getOrder: (orderId) => api.get(`/orders-sales/orders/${orderId}`),
-  updateOrder: (orderId, data) => api.put(`/orders-sales/orders/${orderId}`, data),
-  getPack: (packId) => api.get(`/orders-sales/packs/${packId}`),
-  createPack: (data) => api.post('/orders-sales/packs', data),
-  getOrderTimeline: (orderId) => api.get(`/orders-sales/orders/${orderId}/timeline`),
+  getOrders: (accountId, params) => api.get(`/orders/${accountId}`, { params }),
+  getOrder: (accountId, orderId) => api.get(`/orders/${accountId}/${orderId}`),
+  getOrderStats: (accountId) => api.get(`/orders/${accountId}/stats`),
+  syncOrders: (accountId) => api.post(`/orders/${accountId}/sync`),
 }
 
 // ============================================
 // SHIPPING ENDPOINTS
 // ============================================
 export const shippingAPI = {
-  listShipments: (params) => api.get('/shipping-ml', { params }),
-  getShipment: (shipmentId) => api.get(`/shipping-ml/${shipmentId}`),
-  updateShipment: (shipmentId, data) => api.put(`/shipping-ml/${shipmentId}`, data),
-  createShipment: (data) => api.post('/shipping-ml', data),
-  generateLabel: (shipmentId) => api.get(`/shipping-ml/${shipmentId}/label`),
-  getShippingOptions: (params) => api.get('/shipping-ml/options', { params }),
+  getShipments: (accountId, params) => api.get(`/shipping/${accountId}`, { params }),
+  getShipment: (accountId, shipmentId) => api.get(`/shipping/${accountId}/${shipmentId}`),
+  getShipmentStats: (accountId) => api.get(`/shipping/${accountId}/stats`),
+  syncShipments: (accountId) => api.post(`/shipping/${accountId}/sync`),
+  generateLabel: (accountId, shipmentId) => api.get(`/shipping/${accountId}/${shipmentId}/label`),
 }
 
 // ============================================
 // QUESTIONS & ANSWERS ENDPOINTS
 // ============================================
 export const questionsAPI = {
-  listQuestions: (params) => api.get('/questions-answers', { params }),
-  getItemQuestions: (itemId, params) => api.get(`/questions-answers/items/${itemId}/questions`, { params }),
-  createQuestion: (data) => api.post('/questions-answers/questions', data),
-  answerQuestion: (questionId, data) => api.put(`/questions-answers/questions/${questionId}`, data),
-  deleteQuestion: (questionId) => api.delete(`/questions-answers/questions/${questionId}`),
-  listMyQuestions: (params) => api.get('/questions-answers/my-questions', { params }),
+  getQuestions: (accountId, params) => api.get(`/questions/${accountId}`, { params }),
+  getQuestion: (accountId, questionId) => api.get(`/questions/${accountId}/${questionId}`),
+  answerQuestion: (accountId, questionId, data) => api.post(`/questions/${accountId}/${questionId}/answer`, data),
+  getQuestionStats: (accountId) => api.get(`/questions/${accountId}/stats`),
+  syncQuestions: (accountId) => api.post(`/questions/${accountId}/sync`),
 }
 
 // ============================================
 // FEEDBACK & REVIEWS ENDPOINTS
 // ============================================
 export const feedbackAPI = {
-  listFeedback: (params) => api.get('/feedback-reviews', { params }),
-  getItemReviews: (itemId, params) => api.get(`/feedback-reviews/items/${itemId}/reviews`, { params }),
-  createFeedback: (data) => api.post('/feedback-reviews/feedback', data),
-  getUserReviews: (userId) => api.get(`/feedback-reviews/users/${userId}/reviews`),
-  getUserReputation: (userId) => api.get(`/feedback-reviews/users/${userId}/reputation`),
-  listMyFeedback: (params) => api.get('/feedback-reviews/my-feedback', { params }),
+  getFeedback: (accountId, params) => api.get(`/feedback/${accountId}`, { params }),
+  getFeedbackStats: (accountId) => api.get(`/feedback/${accountId}/stats`),
+  syncFeedback: (accountId) => api.post(`/feedback/${accountId}/sync`),
+  replyFeedback: (accountId, feedbackId, data) => api.post(`/feedback/${accountId}/${feedbackId}/reply`, data),
 }
 
 // ============================================
 // CATEGORIES & ATTRIBUTES ENDPOINTS
 // ============================================
 export const categoriesAPI = {
-  listCategories: (params) => api.get('/categories-attributes', { params }),
-  getCategoryAttributes: (categoryId) => api.get(`/categories-attributes/${categoryId}/attributes`),
-  getDomain: (domainId) => api.get(`/categories-attributes/domains/${domainId}`),
-  getListingTypes: (siteId) => api.get(`/categories-attributes/sites/${siteId}/listing_types`),
-  clearCache: () => api.post('/categories-attributes/cache/clear', {}),
-  getCacheStats: () => api.get('/categories-attributes/cache/stats'),
+  getCategories: (siteId = 'MLB') => api.get(`/categories/sites/${siteId}`),
+  getCategory: (categoryId) => api.get(`/categories/${categoryId}`),
+  getCategoryAttributes: (categoryId) => api.get(`/categories/${categoryId}/attributes`),
+  predictCategory: (accountId, title) => api.get(`/categories/${accountId}/predict`, { params: { title } }),
 }
 
 // ============================================
@@ -231,12 +233,21 @@ export const analyticsAPI = {
 // CATALOG ENDPOINTS
 // ============================================
 export const catalogAPI = {
-  getCatalogItems: (params) => api.get('/catalog', { params }),
-  getCatalogItem: (catalogId) => api.get(`/catalog/${catalogId}`),
-  createCatalogItem: (data) => api.post('/catalog', data),
-  updateCatalogItem: (catalogId, data) => api.put(`/catalog/${catalogId}`, data),
-  deleteCatalogItem: (catalogId) => api.delete(`/catalog/${catalogId}`),
-  searchCatalog: (params) => api.get('/catalog/search', { params }),
+  getItems: (accountId) => api.get(`/catalog/${accountId}/items`),
+  getStats: (accountId) => api.get(`/catalog/${accountId}/stats`),
+  getItemEligibility: (accountId, itemId) => api.get(`/catalog/${accountId}/items/${itemId}/eligibility`),
+  searchProducts: (accountId, params) => api.get(`/catalog/${accountId}/products/search`, { params }),
+  publishToCatalog: (accountId, itemId, data) => api.post(`/catalog/${accountId}/items/${itemId}/catalog`, data),
+}
+
+// ============================================
+// FULFILLMENT ENDPOINTS
+// ============================================
+export const fulfillmentAPI = {
+  getInventory: (accountId) => api.get(`/fulfillment/${accountId}/inventory`),
+  getShipments: (accountId) => api.get(`/fulfillment/${accountId}/shipments`),
+  getStats: (accountId) => api.get(`/fulfillment/${accountId}/stats`),
+  createInbound: (accountId, data) => api.post(`/fulfillment/${accountId}/inbound`, data),
 }
 
 // ============================================

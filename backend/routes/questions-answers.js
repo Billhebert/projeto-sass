@@ -63,6 +63,106 @@ const validateQuestionCreation = (body) => {
 };
 
 /**
+ * GET /
+ * Listar todas as perguntas recebidas pelo vendedor
+ * Query params: limit, offset, status (unanswered, answered), sort
+ */
+router.get('/', authenticateToken, async (req, res) => {
+  try {
+    const { limit = 20, offset = 0, status, sort = 'created_desc' } = req.query;
+    
+    // Get seller ID from user token
+    const sellerId = req.user?.userId || req.user?.id;
+    
+    if (!sellerId) {
+      return res.status(400).json({
+        success: false,
+        error: 'User ID not found in token'
+      });
+    }
+    
+    // Validate filters
+    const filterErrors = validateQuestionFilters(req.query);
+    if (filterErrors.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Validation failed',
+        details: filterErrors
+      });
+    }
+    
+    const config = {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${req.user?.token || ''}`
+      }
+    };
+    
+    // Build query params
+    const params = {
+      seller_id: sellerId,
+      limit: parseInt(limit),
+      offset: parseInt(offset),
+      sort: sort
+    };
+    
+    if (status) {
+      params.status = status;
+    }
+    
+    logger.info(`QUESTIONS_ANSWERS - list_questions: Fetching questions for seller ${sellerId}`, {
+      limit: params.limit,
+      offset: params.offset,
+      status: params.status
+    });
+    
+    const response = await axios({
+      method: 'GET',
+      url: `${API_BASE_URL}/questions/search`,
+      ...config,
+      params,
+      timeout: 15000
+    });
+    
+    const questions = response.data.questions || response.data.results || [];
+    
+    // Calculate stats
+    const stats = {
+      total: questions.length,
+      unanswered: questions.filter(q => !q.answer || q.status === 'UNANSWERED').length,
+      answered: questions.filter(q => q.answer || q.status === 'ANSWERED').length
+    };
+    
+    logger.info(`QUESTIONS_ANSWERS - list_questions: Success - Found ${questions.length} questions`);
+    
+    res.json({ 
+      success: true, 
+      data: questions,
+      stats,
+      pagination: {
+        total: response.data.paging?.total || questions.length,
+        limit: parseInt(limit),
+        offset: parseInt(offset)
+      }
+    });
+  } catch (error) {
+    const statusCode = error.response?.status || 500;
+    const errorData = error.response?.data || { message: error.message };
+    
+    logger.error(`QUESTIONS_ANSWERS - list_questions: ${error.message}`, {
+      status: statusCode,
+      errorDetails: errorData
+    });
+    
+    res.status(statusCode).json({
+      success: false,
+      error: 'Failed to list questions',
+      details: errorData
+    });
+  }
+});
+
+/**
  * GET /items/{item_id}/questions
  * Listar perguntas de um item com suporte a sorting e paginação
  */

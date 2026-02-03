@@ -201,6 +201,17 @@ const questionsAnswersRoutes = require('./routes/questions-answers');
 const feedbackReviewsRoutes = require('./routes/feedback-reviews');
 const categoriesAttributesRoutes = require('./routes/categories-attributes');
 
+// Import Mercado Pago routes
+const {
+  ordersRoutes: mpOrdersRoutes,
+  paymentsRoutes: mpPaymentsRoutes,
+  preferencesRoutes: mpPreferencesRoutes,
+  webhooksRoutes: mpWebhooksRoutes,
+  customersRoutes: mpCustomersRoutes,
+  subscriptionsRoutes: mpSubscriptionsRoutes,
+  accountRoutes: mpAccountRoutes,
+} = require('./routes/mercadopago');
+
 // Import Swagger/OpenAPI
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpecs = require('./swagger');
@@ -278,6 +289,19 @@ app.use('/api/sales-dashboard', salesDashboardRoutes);
 // Premium Features - New Modules
 app.use('/api/global-selling', globalSellingRoutes);
 app.use('/api/price-automation', priceAutomationRoutes);
+
+// ============================================
+// MERCADO PAGO API ROUTES
+// Complete MP Payment Integration
+// ============================================
+
+app.use('/api/mp/orders', mpOrdersRoutes);           // MP Orders API v1
+app.use('/api/mp/payments', mpPaymentsRoutes);       // MP Payments API
+app.use('/api/mp/preferences', mpPreferencesRoutes); // Checkout Pro preferences
+app.use('/api/mp/webhooks', mpWebhooksRoutes);       // Webhook notifications
+app.use('/api/mp/customers', mpCustomersRoutes);     // Customer management
+app.use('/api/mp/subscriptions', mpSubscriptionsRoutes); // Subscriptions/Preapproval
+app.use('/api/mp/account', mpAccountRoutes);         // Account info, balance, reports
 
 // ============================================
 // AUTOMATICALLY GENERATED ML API ROUTES
