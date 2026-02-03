@@ -7,12 +7,15 @@ services:
       dockerfile: Dockerfile
     container_name: projeto-sass-api
     restart: unless-stopped
+    ports:
+      - "3011:3011"
     environment:
       NODE_ENV: production
       PORT: 3011
       MONGODB_URI: mongodb://admin:changeme@mongo:27017/projeto-sass?authSource=admin
       REDIS_URL: redis://:changeme@redis:6379
       JWT_SECRET: ${JWT_SECRET}
+      API_HOST: 0.0.0.0
     depends_on:
       mongo:
         condition: service_healthy
