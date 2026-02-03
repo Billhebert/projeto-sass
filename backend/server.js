@@ -16,6 +16,20 @@ const { v4: uuidv4 } = require('uuid');
 // Load environment variables
 dotenv.config({ path: path.join(__dirname, '.env') });
 
+// Validate environment variables on startup
+const { validateEnvironment } = require('./config/env-validator');
+const envValidation = validateEnvironment();
+
+if (!envValidation.success) {
+  console.error('\n❌ ERRO CRÍTICO: Variáveis de ambiente inválidas!');
+  console.error('Por favor, corrija os erros acima e reinicie o servidor.\n');
+  process.exit(1);
+}
+
+if (envValidation.hasWarnings) {
+  console.warn('\n⚠️  AVISO: Existem avisos de configuração. Verifique acima.\n');
+}
+
 // Initialize logger
 const logger = require('./logger');
 
