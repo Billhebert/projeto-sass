@@ -2,7 +2,7 @@ import axios from 'axios'
 import { cacheService } from './cache'
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3011/api',
+  baseURL: import.meta.env.VITE_API_URL || '/api',
   timeout: 10000,
 })
 
