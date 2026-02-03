@@ -1,10 +1,12 @@
 #!/bin/bash
 
 # Script de Deploy - Correção de Erro de Conexão
-# Execute na VPS: bash deploy-fix.sh
+# Execute na VPS: bash deploy-fix-v2.sh
+# Compatível com Docker Compose v2 (docker compose em vez de docker-compose)
 
 echo "======================================"
 echo "   DEPLOY - CORRIGINDO ERRO DE API"
+echo "   (Docker Compose v2)"
 echo "======================================"
 echo ""
 
@@ -21,13 +23,32 @@ if [ ! -f "docker-compose.yml" ]; then
     exit 1
 fi
 
+# Verificar qual versão do docker-compose está disponível
+echo -e "${BLUE}🔍 Passo 0: Verificando versão do Docker...${NC}"
+echo ""
+docker --version
+echo ""
+
+if command -v docker-compose &> /dev/null; then
+    echo -e "${GREEN}✓ Encontrado: docker-compose (v1)${NC}"
+    COMPOSE_CMD="docker-compose"
+elif docker compose version &> /dev/null; then
+    echo -e "${GREEN}✓ Encontrado: docker compose (v2)${NC}"
+    COMPOSE_CMD="docker compose"
+else
+    echo -e "${RED}❌ Docker Compose não encontrado!${NC}"
+    exit 1
+fi
+
+echo ""
+
 echo -e "${BLUE}📋 Passo 1: Verificando status atual${NC}"
 echo ""
 docker ps -a --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 echo ""
 
 echo -e "${BLUE}⏹️  Passo 2: Parando containers antigos${NC}"
-docker compose down --remove-orphans
+$COMPOSE_CMD down --remove-orphans
 
 echo ""
 echo -e "${BLUE}⏳ Aguardando 5 segundos...${NC}"
@@ -35,11 +56,11 @@ sleep 5
 
 echo ""
 echo -e "${BLUE}🔨 Passo 3: Reconstruindo imagens${NC}"
-docker compose build --no-cache api nginx
+$COMPOSE_CMD build --no-cache api nginx
 
 echo ""
 echo -e "${BLUE}🚀 Passo 4: Iniciando containers${NC}"
-docker compose up -d --build
+$COMPOSE_CMD up -d --build
 
 echo ""
 echo -e "${BLUE}⏳ Passo 5: Aguardando inicialização (40 segundos)${NC}"
@@ -103,8 +124,8 @@ echo ""
 echo "Se a API não responde:"
 echo ""
 echo "  📋 Ver logs: ${BLUE}docker logs projeto-sass-api${NC}"
-echo "  🔄 Reiniciar: ${BLUE}docker compose restart api${NC}"
-echo "  🧹 Limpar: ${BLUE}docker compose down -v && docker compose up -d${NC}"
+echo "  🔄 Reiniciar: ${BLUE}$COMPOSE_CMD restart api${NC}"
+echo "  🧹 Limpar: ${BLUE}$COMPOSE_CMD down -v && $COMPOSE_CMD up -d${NC}"
 echo ""
 
 echo -e "${YELLOW}════════════════════════════════════════${NC}"

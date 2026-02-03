@@ -15,7 +15,7 @@ NC='\033[0m'
 
 # Parar tudo
 echo -e "${YELLOW}[1] Parando containers...${NC}"
-docker-compose down
+docker compose down
 
 echo ""
 echo -e "${YELLOW}[2] Aguardando...${NC}"
@@ -23,7 +23,7 @@ sleep 5
 
 # Limpar volumes (opcional)
 echo -e "${YELLOW}[3] Reconstruindo containers...${NC}"
-docker-compose up -d --build
+docker compose up -d --build
 
 echo ""
 echo -e "${YELLOW}[4] Aguardando inicialização (30 segundos)...${NC}"

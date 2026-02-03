@@ -48,7 +48,7 @@ if docker ps | grep -q "projeto-sass-api"; then
 else
     echo -e "${RED}❌ Container NÃO está rodando!${NC}"
     echo "Tentando iniciar containers..."
-    docker-compose up -d
+    docker compose up -d
 fi
 
 echo ""
@@ -114,11 +114,11 @@ echo -e "${YELLOW}1. Verificar se há erros nos logs:${NC}"
 echo "   docker logs -f projeto-sass-api"
 echo ""
 echo -e "${YELLOW}2. Reiniciar todos os containers:${NC}"
-echo "   docker-compose restart"
+echo "   docker compose restart"
 echo ""
 echo -e "${YELLOW}3. Reconstruir a imagem do backend:${NC}"
-echo "   docker-compose up -d --build api"
+echo "   docker compose up -d --build api"
 echo ""
 echo -e "${YELLOW}4. Se tudo falhar, reiniciar tudo:${NC}"
-echo "   docker-compose down && docker-compose up -d"
+echo "   docker compose down && docker compose up -d"
 echo ""
