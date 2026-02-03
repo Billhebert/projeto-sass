@@ -1,105 +1,75 @@
-version: '3.8'
+version: "3.8"
 
 services:
-  # API Server
   api:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: projeto-sass-api
     restart: unless-stopped
-    ports:
-       - "3011:3011"
     environment:
-      NODE_ENV: ${NODE_ENV:-production}
+      NODE_ENV: production
       PORT: 3011
       MONGODB_URI: mongodb://admin:changeme@mongo:27017/projeto-sass?authSource=admin
       REDIS_URL: redis://:changeme@redis:6379
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-      JWT_SECRET: ${JWT_SECRET:-seu-jwt-secret-aqui}
-      MERCADO_LIBRE_ACCESS_TOKEN: ${MERCADO_LIBRE_ACCESS_TOKEN:-}
-      MERCADO_LIBRE_USER_ID: ${MERCADO_LIBRE_USER_ID:-}
+      JWT_SECRET: ${JWT_SECRET}
     depends_on:
       mongo:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - ./logs:/app/logs
     healthcheck:
-       test: ["CMD", "curl", "-f", "http://localhost:3011/health"]
-       interval: 30s
-       timeout: 10s
-       retries: 3
-       start_period: 5s
+      test: ["CMD", "curl", "-f", "http://localhost:3011/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
     networks:
-      - projeto-sass-network
+      - internal
 
-  # Frontend Service
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: projeto-sass-frontend
     restart: unless-stopped
-    ports:
-      - "5173:5173"
     environment:
-      VITE_API_URL: http://api:3011/api
-    depends_on:
-      - api
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5173"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
+      VITE_API_URL: /api
     networks:
-      - projeto-sass-network
+      - internal
 
-  # MongoDB
   mongo:
-    image: mongo:7.0
+    image: mongo:7
     container_name: projeto-sass-mongo
     restart: unless-stopped
-    ports:
-      - "27017:27017"
     environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-admin}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-changeme}
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: changeme
       MONGO_INITDB_DATABASE: projeto-sass
     volumes:
       - mongo-data:/data/db
-      - mongo-config:/data/configdb
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
     networks:
-      - projeto-sass-network
+      - internal
 
-  # Redis
   redis:
     image: redis:7-alpine
     container_name: projeto-sass-redis
     restart: unless-stopped
-    ports:
-      - "6379:6379"
-    command: redis-server --requirepass ${REDIS_PASSWORD:-changeme}
+    command: redis-server --requirepass changeme
     volumes:
       - redis-data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "changeme", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
     networks:
-      - projeto-sass-network
+      - internal
 
-  # Nginx Reverse Proxy
   nginx:
     image: nginx:latest
     container_name: projeto-sass-nginx
@@ -115,13 +85,12 @@ services:
       - api
       - frontend
     networks:
-      - projeto-sass-network
+      - internal
 
 volumes:
   mongo-data:
-  mongo-config:
   redis-data:
 
 networks:
-  projeto-sass-network:
+  internal:
     driver: bridge
