@@ -175,6 +175,12 @@ function Sidebar() {
           icon: "notifications_none",
         },
         { path: "/settings", label: "Configuracoes", icon: "settings" },
+        {
+          path: "/admin/users",
+          label: "Admin Usuarios",
+          icon: "people",
+          roles: ["admin"],
+        },
       ],
     },
   ];

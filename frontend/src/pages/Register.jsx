@@ -107,9 +107,9 @@ function Register() {
     });
 
     if (result.success) {
-      toast.success("Conta criada! Verifique seu email para confirmar.");
-      // Redirect to email verification page
-      navigate(`/verify-email?email=${encodeURIComponent(formData.email)}`);
+      toast.success("Conta criada com sucesso!");
+      // Redirect to login page
+      navigate("/login");
     } else {
       toast.error(
         result.message ||

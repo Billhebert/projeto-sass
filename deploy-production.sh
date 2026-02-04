@@ -125,10 +125,11 @@ check_ssl_certificate() {
 # Stop current deployment
 stop_current() {
     print_step "Parando deployments anteriores..."
-    
+
     docker compose down 2>/dev/null || true
     docker compose -f docker-compose.load-balanced.yml down 2>/dev/null || true
-    
+    docker compose -f "$COMPOSE_FILE" --env-file .env.production down 2>/dev/null || true
+
     sleep 2
     print_success "Deployments anteriores parados"
 }
@@ -136,18 +137,18 @@ stop_current() {
 # Build images
 build_images() {
     print_step "Compilando imagens Docker..."
-    
-    docker compose -f "$COMPOSE_FILE" build --no-cache
-    
+
+    docker compose -f "$COMPOSE_FILE" --env-file .env.production build --no-cache
+
     print_success "Imagens compiladas com sucesso"
 }
 
 # Start services
 start_services() {
     print_step "Iniciando serviços em produção..."
-    
-    docker compose -f "$COMPOSE_FILE" up -d
-    
+
+    docker compose -f "$COMPOSE_FILE" --env-file .env.production up -d
+
     print_success "Serviços iniciados"
 }
 
@@ -160,8 +161,8 @@ wait_health_checks() {
     local all_healthy=false
     
     while [ $attempt -lt $max_attempts ]; do
-        local status=$(docker compose -f "$COMPOSE_FILE" ps --quiet | wc -l)
-        local running=$(docker compose -f "$COMPOSE_FILE" ps --quiet 2>/dev/null || true | wc -l)
+        local status=$(docker compose -f "$COMPOSE_FILE" --env-file .env.production ps --quiet | wc -l)
+        local running=$(docker compose -f "$COMPOSE_FILE" --env-file .env.production ps --quiet 2>/dev/null || true | wc -l)
         
         if [ $running -gt 0 ]; then
             echo -n "."
@@ -181,7 +182,7 @@ validate_deployment() {
     print_step "Validando deployment..."
     
     # Check containers running
-    local api_running=$(docker compose -f "$COMPOSE_FILE" ps api-1 2>/dev/null | grep -c "Up" || echo 0)
+    local api_running=$(docker compose -f "$COMPOSE_FILE" --env-file .env.production ps api-1 2>/dev/null | grep -c "Up" || echo 0)
     if [ $api_running -eq 0 ]; then
         print_error "API não está rodando"
         exit 1
@@ -204,7 +205,7 @@ show_status() {
     print_header "STATUS DO DEPLOYMENT"
     echo ""
     
-    docker compose -f "$COMPOSE_FILE" ps
+    docker compose -f "$COMPOSE_FILE" --env-file .env.production ps
     
     echo ""
     print_success "Deployment em produção!"
@@ -217,10 +218,10 @@ show_status() {
     echo ""
     
     echo -e "${CYAN}COMANDOS ÚTEIS:${NC}"
-    echo "  Ver logs:           docker compose -f ${COMPOSE_FILE} logs -f"
-    echo "  Parar:              docker compose -f ${COMPOSE_FILE} down"
-    echo "  Status:             docker compose -f ${COMPOSE_FILE} ps"
-    echo "  Acessar Mongo:      docker compose -f ${COMPOSE_FILE} exec mongo mongosh"
+    echo "  Ver logs:           docker compose -f ${COMPOSE_FILE} --env-file .env.production logs -f"
+    echo "  Parar:              docker compose -f ${COMPOSE_FILE} --env-file .env.production down"
+    echo "  Status:             docker compose -f ${COMPOSE_FILE} --env-file .env.production ps"
+    echo "  Acessar Mongo:      docker compose -f ${COMPOSE_FILE} --env-file .env.production exec mongo mongosh"
     echo ""
 }
 

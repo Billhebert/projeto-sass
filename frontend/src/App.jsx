@@ -63,6 +63,9 @@ import MPCheckoutSuccess from "./pages/MPCheckoutSuccess";
 import MPCheckoutFailure from "./pages/MPCheckoutFailure";
 import MPCheckoutPending from "./pages/MPCheckoutPending";
 
+// Admin pages
+import AdminUsers from "./pages/AdminUsers";
+
 function App() {
   const { token, loadToken } = useAuthStore();
 
@@ -83,6 +86,12 @@ function App() {
         <Route
           path="/admin"
           element={<ProtectedRoute element={<Admin />} requiredRole="admin" />}
+        />
+        <Route
+          path="/admin/users"
+          element={
+            <ProtectedRoute element={<AdminUsers />} requiredRole="admin" />
+          }
         />
 
         {!token ? (

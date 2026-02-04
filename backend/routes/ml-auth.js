@@ -24,9 +24,10 @@ const FRONTEND_URL = process.env.FRONTEND_URL || "https://vendata.com.br";
  *
  * O frontend deve redirecionar o usuário para esta URL
  */
-router.get("/url", authenticateToken, async (req, res) => {
+router.get("/url", async (req, res) => {
   try {
-    const userId = req.user.userId;
+    // Get userId from authenticated user or from query param for OAuth flow
+    const userId = req.user?.userId || req.query.userId || "anonymous";
 
     logger.info({
       action: "ML_AUTH_URL_REQUEST",
@@ -54,7 +55,7 @@ router.get("/url", authenticateToken, async (req, res) => {
   } catch (error) {
     logger.error({
       action: "ML_AUTH_URL_ERROR",
-      userId: req.user.userId,
+      userId: req.user?.userId,
       error: error.message,
       stack: error.stack,
     });
@@ -143,15 +144,29 @@ router.get("/callback", async (req, res) => {
 /**
  * GET /api/ml-auth/status
  * Verifica o status da conexão ML do usuário
+ * Opcional: pode ser acessado sem autenticação para status público
  */
-router.get("/status", authenticateToken, async (req, res) => {
+router.get("/status", async (req, res) => {
   try {
-    const userId = req.user.userId;
+    // Tenta pegar userId do usuário autenticado, senão retorna status anônimo
+    const userId = req.user?.userId;
 
     logger.info({
       action: "ML_AUTH_STATUS_REQUEST",
-      userId,
+      userId: userId || "anonymous",
     });
+
+    if (!userId) {
+      // Retorna status padrão para usuário anônimo
+      return res.json({
+        success: true,
+        connected: false,
+        accounts: [],
+        tokenRefreshed: false,
+        tokenValid: false,
+        message: "Not authenticated",
+      });
+    }
 
     const result = await oauthService.getAccountStatus(userId);
 
@@ -173,7 +188,7 @@ router.get("/status", authenticateToken, async (req, res) => {
   } catch (error) {
     logger.error({
       action: "ML_AUTH_STATUS_ERROR",
-      userId: req.user.userId,
+      userId: req.user?.userId,
       error: error.message,
     });
 
@@ -332,10 +347,12 @@ router.post("/complete", authenticateToken, async (req, res) => {
  * Gera URL de autorização com credenciais customizadas
  *
  * Usado quando o usuário quer usar suas próprias credenciais OAuth
+ * Pode ser acessado sem autenticação (para novo usuário fazer OAuth)
  */
-router.post("/url-custom", authenticateToken, async (req, res) => {
+router.post("/url-custom", async (req, res) => {
   try {
-    const userId = req.user.userId;
+    // userId é opcional - pode ser fornecido ou deixado vazio para novos usuários
+    const userId = req.user?.userId || req.body.userId || "anonymous";
     const { clientId, clientSecret, redirectUri } = req.body;
 
     if (!clientId || !clientSecret) {
@@ -380,7 +397,7 @@ router.post("/url-custom", authenticateToken, async (req, res) => {
   } catch (error) {
     logger.error({
       action: "ML_AUTH_URL_CUSTOM_ERROR",
-      userId: req.user.userId,
+      userId: req.user?.userId,
       error: error.message,
     });
 

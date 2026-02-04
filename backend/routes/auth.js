@@ -67,41 +67,23 @@ router.post("/register", async (req, res) => {
     }
 
     // Create user (password will be hashed by pre-save middleware)
+    // Users require admin approval to login
     const user = new User({
       email: email.toLowerCase(),
       password, // Pre-save hook will hash this
       firstName,
       lastName,
-      emailVerified: false, // User must verify email
+      emailVerified: false, // Requires admin approval
     });
 
-    // Generate email verification token
-    const verificationToken = user.generateEmailVerificationToken();
+    // Skip email sending - admin approves users manually
     await user.save();
 
-    // Try to send verification email
-    try {
-      const emailService = require("../services/email");
-      await emailService.sendVerificationEmail(
-        user.email,
-        verificationToken,
-        user.firstName,
-      );
-    } catch (emailError) {
-      logger.error({
-        action: "VERIFICATION_EMAIL_FAILED",
-        email: user.email,
-        error: emailError.message,
-        timestamp: new Date().toISOString(),
-      });
-      // Continue even if email fails, user can resend later
-    }
-
-    // Return success but inform user they need to verify email
+    // Return success
     return res.status(201).json({
       success: true,
       message:
-        "Registration successful! Please check your email to verify your account.",
+        "Registro realizado! Aguarde a aprovação do administrador para fazer login.",
       data: {
         user: {
           id: user.id,
@@ -109,6 +91,7 @@ router.post("/register", async (req, res) => {
           firstName: user.firstName,
           lastName: user.lastName,
           emailVerified: user.emailVerified,
+          status: user.status,
         },
       },
     });
@@ -149,7 +132,25 @@ router.post("/login", async (req, res) => {
     if (!user) {
       return res.status(401).json({
         success: false,
-        error: "Invalid email or password",
+        error: "Email ou senha inválidos",
+      });
+    }
+
+    // Check if user is approved by admin
+    if (!user.emailVerified) {
+      return res.status(403).json({
+        success: false,
+        error:
+          "Sua conta está aguardando aprovação. Entre em contato com o administrador.",
+      });
+    }
+
+    // Check if user is active
+    if (user.status !== "active") {
+      return res.status(403).json({
+        success: false,
+        error:
+          "Sua conta está desativada. Entre em contato com o administrador.",
       });
     }
 
@@ -285,6 +286,48 @@ router.post("/ml-oauth-url", (req, res) => {
     });
   } catch (error) {
     console.error("Error generating ML OAuth URL:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to generate authorization URL",
+    });
+  }
+});
+
+/**
+ * GET /api/ml-auth/url
+ *
+ * Alias endpoint for compatibility with MLAuth component.
+ * Uses environment variables for app credentials.
+ * This endpoint is for the default app configuration.
+ */
+router.get("/ml-auth/url", (req, res) => {
+  try {
+    const CLIENT_ID = process.env.ML_CLIENT_ID;
+    const CLIENT_SECRET = process.env.ML_CLIENT_SECRET;
+    const REDIRECT_URI = process.env.ML_REDIRECT_URI;
+
+    if (!CLIENT_ID || !CLIENT_SECRET || !REDIRECT_URI) {
+      return res.status(400).json({
+        success: false,
+        error:
+          "ML_CLIENT_ID, ML_CLIENT_SECRET, and ML_REDIRECT_URI environment variables are not configured",
+      });
+    }
+
+    // Generate random state for CSRF protection
+    const state = crypto.randomBytes(32).toString("hex");
+
+    const authUrl = `${ML_AUTH_URL}?client_id=${encodeURIComponent(CLIENT_ID)}&response_type=code&platform_id=MLB&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&state=${state}`;
+
+    return res.json({
+      success: true,
+      data: {
+        authUrl,
+        state,
+      },
+    });
+  } catch (error) {
+    console.error("Error generating ML auth URL:", error);
     return res.status(500).json({
       success: false,
       error: "Failed to generate authorization URL",
@@ -1168,6 +1211,125 @@ router.get("/email-status/:email", async (req, res) => {
     return res.status(500).json({
       success: false,
       error: "Failed to check email status",
+    });
+  }
+});
+
+/**
+ * POST /api/auth/ml-compressed-callback
+ *
+ * Handle Mercado Livre's compressed URL format.
+ * ML sometimes returns the OAuth response as gzip-compressed base64 in the URL path.
+ *
+ * Request body:
+ * {
+ *   compressedData: string,  // The compressed data from ML URL path
+ *   clientId: string,         // User's ML App ID
+ *   clientSecret: string,     // User's ML App Secret
+ *   redirectUri: string       // OAuth redirect URI
+ * }
+ */
+router.post("/ml-compressed-callback", async (req, res) => {
+  try {
+    const { compressedData, clientId, clientSecret, redirectUri } = req.body;
+
+    if (!compressedData || !clientId || !clientSecret || !redirectUri) {
+      return res.status(400).json({
+        success: false,
+        error:
+          "compressedData, clientId, clientSecret, and redirectUri are required",
+      });
+    }
+
+    logger.info({
+      action: "ML_COMPRESSED_CALLBACK_START",
+      clientId: clientId.substring(0, 8) + "***",
+      timestamp: new Date().toISOString(),
+    });
+
+    // Decode the compressed data
+    let decoded;
+    try {
+      const binaryString = Buffer.from(compressedData, "base64");
+      const zlib = require("zlib");
+      decoded = JSON.parse(zlib.gunzipSync(binaryString).toString("utf8"));
+    } catch (decodeError) {
+      // Try alternative decoding
+      try {
+        const binaryString = atob(compressedData);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        const zlib = require("zlib");
+        decoded = JSON.parse(zlib.gunzipSync(bytes).toString("utf8"));
+      } catch (altError) {
+        logger.error({
+          action: "ML_COMPRESSED_DECODE_ERROR",
+          error: decodeError.message,
+          altError: altError.message,
+        });
+        return res.status(400).json({
+          success: false,
+          error: "Failed to decode compressed data",
+        });
+      }
+    }
+
+    logger.info({
+      action: "ML_COMPRESSED_DECODED",
+      hasCode: !!decoded.code,
+      hasAccessToken: !!decoded.access_token,
+      keys: Object.keys(decoded),
+    });
+
+    // If we got tokens directly, return them
+    if (decoded.access_token) {
+      return res.json({
+        success: true,
+        data: {
+          accessToken: decoded.access_token,
+          refreshToken: decoded.refresh_token,
+          expiresIn: decoded.expires_in,
+          userId: decoded.user_id,
+        },
+      });
+    }
+
+    // Exchange code for tokens
+    if (decoded.code) {
+      const tokenResponse = await exchangeCodeForTokenWithCredentials(
+        decoded.code,
+        clientId,
+        clientSecret,
+        redirectUri,
+      );
+
+      return res.json({
+        success: true,
+        data: {
+          accessToken: tokenResponse.access_token,
+          refreshToken: tokenResponse.refresh_token,
+          expiresIn: tokenResponse.expires_in,
+          userId: tokenResponse.user_id,
+        },
+      });
+    }
+
+    return res.status(400).json({
+      success: false,
+      error: "No authorization code or access token in compressed data",
+    });
+  } catch (error) {
+    logger.error({
+      action: "ML_COMPRESSED_CALLBACK_ERROR",
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+    return res.status(500).json({
+      success: false,
+      error: "Failed to process compressed callback",
+      details: error.message,
     });
   }
 });
