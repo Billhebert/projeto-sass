@@ -48,6 +48,11 @@ export const useAuthStore = create((set) => ({
           case 401:
             message = data.error || "Invalid credentials";
             break;
+          case 403:
+            message =
+              data.error ||
+              "Your account is waiting for admin approval. Please contact the administrator.";
+            break;
           case 409:
             message = data.error || "Account already exists";
             break;
@@ -91,6 +96,10 @@ export const useAuthStore = create((set) => ({
         switch (status) {
           case 400:
             message = data.error || "Invalid input data";
+            break;
+          case 403:
+            message =
+              data.error || "Registration is not available at this time";
             break;
           case 409:
             message = data.error || "Email already registered";
@@ -142,6 +151,10 @@ export const useAuthStore = create((set) => ({
           case 400:
             message = data.error || "Invalid or expired token";
             break;
+          case 403:
+            message =
+              data.error || "Email verification is not allowed at this time";
+            break;
           case 404:
             message = data.error || "User not found";
             break;
@@ -184,6 +197,10 @@ export const useAuthStore = create((set) => ({
         switch (status) {
           case 400:
             message = data.error || "Invalid email address";
+            break;
+          case 403:
+            message =
+              data.error || "Email resend is not available at this time";
             break;
           case 404:
             message = data.error || "User not found";
