@@ -14,6 +14,7 @@ import Settings from "./pages/Settings";
 import OAuthCallback from "./pages/OAuthCallback";
 import Layout from "./components/Layout";
 import Toast from "./components/Toast";
+import { ProtectedRoute } from "./components/ProtectedRoute";
 
 // New pages
 import Orders from "./pages/Orders";
@@ -78,8 +79,11 @@ function App() {
         {/* OAuth Callback - accessible without authentication */}
         <Route path="/auth/callback" element={<OAuthCallback />} />
 
-        {/* Admin Panel - accessible without authentication */}
-        <Route path="/admin" element={<Admin />} />
+        {/* Admin Panel - requires admin role */}
+        <Route
+          path="/admin"
+          element={<ProtectedRoute element={<Admin />} requiredRole="admin" />}
+        />
 
         {!token ? (
           <>

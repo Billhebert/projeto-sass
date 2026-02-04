@@ -3,20 +3,20 @@
  * User registration, login, password reset, and email verification
  */
 
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const jwt = require('jsonwebtoken');
-const User = require('../db/models/User');
-const logger = require('../logger');
-const emailService = require('../services/email');
-const { authenticateToken } = require('../middleware/auth');
-const { validateEmail, validatePassword } = require('../middleware/validation');
+const jwt = require("jsonwebtoken");
+const User = require("../db/models/User");
+const logger = require("../logger");
+const emailService = require("../services/email");
+const { authenticateToken } = require("../middleware/auth");
+const { validateEmail, validatePassword } = require("../middleware/validation");
 
 // ============================================
 // REGISTER - Create new user account
 // ============================================
 
-router.post('/register', validateEmail, validatePassword, async (req, res) => {
+router.post("/register", validateEmail, validatePassword, async (req, res) => {
   try {
     const { email, password, firstName, lastName } = req.body;
 
@@ -25,8 +25,8 @@ router.post('/register', validateEmail, validatePassword, async (req, res) => {
     if (existingUser) {
       return res.status(409).json({
         success: false,
-        message: 'Email already registered',
-        code: 'EMAIL_EXISTS',
+        message: "Email already registered",
+        code: "EMAIL_EXISTS",
       });
     }
 
@@ -34,8 +34,8 @@ router.post('/register', validateEmail, validatePassword, async (req, res) => {
     const user = new User({
       email,
       password, // Will be hashed by pre-save hook
-      firstName: firstName || email.split('@')[0],
-      lastName: lastName || '',
+      firstName: firstName || email.split("@")[0],
+      lastName: lastName || "",
     });
 
     await user.save();
@@ -45,7 +45,7 @@ router.post('/register', validateEmail, validatePassword, async (req, res) => {
     await user.save();
 
     logger.info({
-      action: 'USER_REGISTERED',
+      action: "USER_REGISTERED",
       email: user.email,
       userId: user.id,
       timestamp: new Date().toISOString(),
@@ -56,11 +56,11 @@ router.post('/register', validateEmail, validatePassword, async (req, res) => {
       await emailService.sendVerificationEmail(
         user.email,
         verificationToken,
-        user.firstName
+        user.firstName,
       );
     } catch (emailError) {
       logger.error({
-        action: 'EMAIL_SEND_FAILED_DURING_REGISTER',
+        action: "EMAIL_SEND_FAILED_DURING_REGISTER",
         email: user.email,
         error: emailError.message,
         timestamp: new Date().toISOString(),
@@ -71,7 +71,7 @@ router.post('/register', validateEmail, validatePassword, async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: 'User registered successfully. Please verify your email.',
+      message: "User registered successfully. Please verify your email.",
       data: {
         user: user.getProfile(),
         verificationRequired: true,
@@ -80,15 +80,15 @@ router.post('/register', validateEmail, validatePassword, async (req, res) => {
     });
   } catch (error) {
     logger.error({
-      action: 'REGISTER_ERROR',
+      action: "REGISTER_ERROR",
       error: error.message,
       timestamp: new Date().toISOString(),
     });
 
     res.status(500).json({
       success: false,
-      message: 'Registration failed',
-      code: 'REGISTRATION_ERROR',
+      message: "Registration failed",
+      code: "REGISTRATION_ERROR",
     });
   }
 });
@@ -97,26 +97,26 @@ router.post('/register', validateEmail, validatePassword, async (req, res) => {
 // LOGIN - Authenticate user and create session
 // ============================================
 
-router.post('/login', async (req, res) => {
+router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({
         success: false,
-        message: 'Email and password are required',
-        code: 'MISSING_CREDENTIALS',
+        message: "Email and password are required",
+        code: "MISSING_CREDENTIALS",
       });
     }
 
     // Find user (need to include password)
-    const user = await User.findOne({ email }).select('+password');
+    const user = await User.findOne({ email }).select("+password");
 
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid email or password',
-        code: 'INVALID_CREDENTIALS',
+        message: "Invalid email or password",
+        code: "INVALID_CREDENTIALS",
       });
     }
 
@@ -124,8 +124,9 @@ router.post('/login', async (req, res) => {
     if (user.isAccountLocked()) {
       return res.status(429).json({
         success: false,
-        message: 'Account locked due to multiple failed login attempts. Try again in 30 minutes.',
-        code: 'ACCOUNT_LOCKED',
+        message:
+          "Account locked due to multiple failed login attempts. Try again in 30 minutes.",
+        code: "ACCOUNT_LOCKED",
       });
     }
 
@@ -138,8 +139,8 @@ router.post('/login', async (req, res) => {
 
       return res.status(401).json({
         success: false,
-        message: 'Invalid email or password',
-        code: 'INVALID_CREDENTIALS',
+        message: "Invalid email or password",
+        code: "INVALID_CREDENTIALS",
       });
     }
 
@@ -147,8 +148,8 @@ router.post('/login', async (req, res) => {
     if (!user.emailVerified) {
       return res.status(403).json({
         success: false,
-        message: 'Please verify your email before logging in',
-        code: 'EMAIL_NOT_VERIFIED',
+        message: "Please verify your email before logging in",
+        code: "EMAIL_NOT_VERIFIED",
       });
     }
 
@@ -162,8 +163,9 @@ router.post('/login', async (req, res) => {
         email: user.email,
         role: user.role,
       },
-      process.env.JWT_SECRET || 'dev_jwt_secret_min_32_characters_long_1234567890',
-      { expiresIn: '24h' }
+      process.env.JWT_SECRET ||
+        "dev_jwt_secret_min_32_characters_long_1234567890",
+      { expiresIn: "24h" },
     );
 
     // Update last login
@@ -172,7 +174,7 @@ router.post('/login', async (req, res) => {
     await user.save();
 
     logger.info({
-      action: 'USER_LOGIN',
+      action: "USER_LOGIN",
       email: user.email,
       userId: user.id,
       ipAddress: req.ip,
@@ -181,24 +183,24 @@ router.post('/login', async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Login successful',
+      message: "Login successful",
       data: {
         user: user.getProfile(),
         token,
-        expiresIn: '24h',
+        expiresIn: "24h",
       },
     });
   } catch (error) {
     logger.error({
-      action: 'LOGIN_ERROR',
+      action: "LOGIN_ERROR",
       error: error.message,
       timestamp: new Date().toISOString(),
     });
 
     res.status(500).json({
       success: false,
-      message: 'Login failed',
-      code: 'LOGIN_ERROR',
+      message: "Login failed",
+      code: "LOGIN_ERROR",
     });
   }
 });
@@ -207,32 +209,32 @@ router.post('/login', async (req, res) => {
 // LOGOUT - Revoke current session
 // ============================================
 
-router.post('/logout', authenticateToken, async (req, res) => {
+router.post("/logout", authenticateToken, async (req, res) => {
   try {
     // In a real app, you might want to blacklist the token
     // or remove the session from the user's sessions array
 
     logger.info({
-      action: 'USER_LOGOUT',
+      action: "USER_LOGOUT",
       userId: req.user.userId,
       timestamp: new Date().toISOString(),
     });
 
     res.json({
       success: true,
-      message: 'Logged out successfully',
+      message: "Logged out successfully",
     });
   } catch (error) {
     logger.error({
-      action: 'LOGOUT_ERROR',
+      action: "LOGOUT_ERROR",
       error: error.message,
       timestamp: new Date().toISOString(),
     });
 
     res.status(500).json({
       success: false,
-      message: 'Logout failed',
-      code: 'LOGOUT_ERROR',
+      message: "Logout failed",
+      code: "LOGOUT_ERROR",
     });
   }
 });
@@ -241,59 +243,67 @@ router.post('/logout', authenticateToken, async (req, res) => {
 // VERIFY EMAIL - Confirm email ownership
 // ============================================
 
-router.post('/verify-email', async (req, res) => {
+router.post("/verify-email", async (req, res) => {
   try {
     const { token } = req.body;
+    console.log("VERIFY_EMAIL: Received token", token);
 
     if (!token) {
       return res.status(400).json({
         success: false,
-        message: 'Verification token is required',
-        code: 'MISSING_TOKEN',
+        message: "Verification token is required",
+        code: "MISSING_TOKEN",
       });
     }
 
+    // Hash the token to find matching user
+    const crypto = require("crypto");
+    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+    console.log("VERIFY_EMAIL: Hashed token", hashedToken);
+
     // Find user with this token
-    const user = await User.findOne({
-      emailVerificationToken: user.constructor.hashToken(token),
+    const foundUser = await User.findOne({
+      emailVerificationToken: hashedToken,
       emailVerificationExpires: { $gt: new Date() },
     });
+    console.log("VERIFY_EMAIL: Found user?", !!foundUser);
 
-    if (!user) {
+    if (!foundUser) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid or expired verification token',
-        code: 'INVALID_TOKEN',
+        message: "Invalid or expired verification token",
+        code: "INVALID_TOKEN",
       });
     }
 
     // Verify email
-    user.verifyEmail(token);
-    await user.save();
+    foundUser.verifyEmail(token);
+    await foundUser.save();
 
     logger.info({
-      action: 'EMAIL_VERIFIED',
-      email: user.email,
-      userId: user.id,
+      action: "EMAIL_VERIFIED",
+      email: foundUser.email,
+      userId: foundUser.id,
       timestamp: new Date().toISOString(),
     });
 
     res.json({
       success: true,
-      message: 'Email verified successfully',
-      data: { user: user.getProfile() },
+      message: "Email verified successfully",
+      data: { user: foundUser.getProfile() },
     });
   } catch (error) {
     logger.error({
-      action: 'VERIFY_EMAIL_ERROR',
+      action: "VERIFY_EMAIL_ERROR",
       error: error.message,
       timestamp: new Date().toISOString(),
     });
+    console.error("VERIFY_EMAIL ERROR:", error);
 
     res.status(500).json({
       success: false,
-      message: 'Email verification failed',
-      code: 'VERIFICATION_ERROR',
+      message: "Email verification failed",
+      code: "VERIFICATION_ERROR",
     });
   }
 });
@@ -302,15 +312,15 @@ router.post('/verify-email', async (req, res) => {
 // FORGOT PASSWORD - Request password reset
 // ============================================
 
-router.post('/forgot-password', async (req, res) => {
+router.post("/forgot-password", async (req, res) => {
   try {
     const { email } = req.body;
 
     if (!email) {
       return res.status(400).json({
         success: false,
-        message: 'Email is required',
-        code: 'MISSING_EMAIL',
+        message: "Email is required",
+        code: "MISSING_EMAIL",
       });
     }
 
@@ -320,7 +330,8 @@ router.post('/forgot-password', async (req, res) => {
     if (!user) {
       return res.json({
         success: true,
-        message: 'If an account exists, password reset instructions have been sent.',
+        message:
+          "If an account exists, password reset instructions have been sent.",
       });
     }
 
@@ -329,7 +340,7 @@ router.post('/forgot-password', async (req, res) => {
     await user.save();
 
     logger.info({
-      action: 'PASSWORD_RESET_REQUESTED',
+      action: "PASSWORD_RESET_REQUESTED",
       email: user.email,
       userId: user.id,
       timestamp: new Date().toISOString(),
@@ -337,15 +348,15 @@ router.post('/forgot-password', async (req, res) => {
 
     // Send password reset email with token
     try {
-      const resetLink = `${process.env.FRONTEND_URL || 'https://vendata.com.br'}/reset-password/${resetToken}`;
+      const resetLink = `${process.env.FRONTEND_URL || "https://vendata.com.br"}/reset-password/${resetToken}`;
       await emailService.sendPasswordResetEmail(
         user.email,
         resetToken,
-        user.firstName
+        user.firstName,
       );
     } catch (emailError) {
       logger.error({
-        action: 'EMAIL_SEND_FAILED_DURING_PASSWORD_RESET',
+        action: "EMAIL_SEND_FAILED_DURING_PASSWORD_RESET",
         email: user.email,
         error: emailError.message,
         timestamp: new Date().toISOString(),
@@ -356,19 +367,20 @@ router.post('/forgot-password', async (req, res) => {
 
     res.json({
       success: true,
-      message: 'If an account exists, password reset instructions have been sent.',
+      message:
+        "If an account exists, password reset instructions have been sent.",
     });
   } catch (error) {
     logger.error({
-      action: 'FORGOT_PASSWORD_ERROR',
+      action: "FORGOT_PASSWORD_ERROR",
       error: error.message,
       timestamp: new Date().toISOString(),
     });
 
     res.status(500).json({
       success: false,
-      message: 'Password reset request failed',
-      code: 'RESET_REQUEST_ERROR',
+      message: "Password reset request failed",
+      code: "RESET_REQUEST_ERROR",
     });
   }
 });
@@ -377,7 +389,7 @@ router.post('/forgot-password', async (req, res) => {
 // RESET PASSWORD - Set new password
 // ============================================
 
-router.post('/reset-password/:token', validatePassword, async (req, res) => {
+router.post("/reset-password/:token", validatePassword, async (req, res) => {
   try {
     const { token } = req.params;
     const { password } = req.body;
@@ -390,8 +402,8 @@ router.post('/reset-password/:token', validatePassword, async (req, res) => {
     if (!user) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid or expired reset token',
-        code: 'INVALID_TOKEN',
+        message: "Invalid or expired reset token",
+        code: "INVALID_TOKEN",
       });
     }
 
@@ -399,8 +411,8 @@ router.post('/reset-password/:token', validatePassword, async (req, res) => {
     if (!user.verifyPasswordResetToken(token)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid reset token',
-        code: 'INVALID_TOKEN',
+        message: "Invalid reset token",
+        code: "INVALID_TOKEN",
       });
     }
 
@@ -411,7 +423,7 @@ router.post('/reset-password/:token', validatePassword, async (req, res) => {
     await user.save();
 
     logger.info({
-      action: 'PASSWORD_RESET',
+      action: "PASSWORD_RESET",
       email: user.email,
       userId: user.id,
       timestamp: new Date().toISOString(),
@@ -419,19 +431,19 @@ router.post('/reset-password/:token', validatePassword, async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Password reset successfully',
+      message: "Password reset successfully",
     });
   } catch (error) {
     logger.error({
-      action: 'RESET_PASSWORD_ERROR',
+      action: "RESET_PASSWORD_ERROR",
       error: error.message,
       timestamp: new ISOString(),
     });
 
     res.status(500).json({
       success: false,
-      message: 'Password reset failed',
-      code: 'RESET_ERROR',
+      message: "Password reset failed",
+      code: "RESET_ERROR",
     });
   }
 });
@@ -440,71 +452,76 @@ router.post('/reset-password/:token', validatePassword, async (req, res) => {
 // CHANGE PASSWORD - Update password when logged in
 // ============================================
 
-router.post('/change-password', authenticateToken, validatePassword, async (req, res) => {
-  try {
-    const { currentPassword, newPassword } = req.body;
-    const user = await User.findById(req.user.userId).select('+password');
+router.post(
+  "/change-password",
+  authenticateToken,
+  validatePassword,
+  async (req, res) => {
+    try {
+      const { currentPassword, newPassword } = req.body;
+      const user = await User.findById(req.user.userId).select("+password");
 
-    if (!user) {
-      return res.status(404).json({
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found",
+          code: "USER_NOT_FOUND",
+        });
+      }
+
+      // Verify current password
+      const isValid = await user.comparePassword(currentPassword);
+      if (!isValid) {
+        return res.status(401).json({
+          success: false,
+          message: "Current password is incorrect",
+          code: "INVALID_PASSWORD",
+        });
+      }
+
+      // Update password
+      user.password = newPassword;
+      await user.save();
+
+      logger.info({
+        action: "PASSWORD_CHANGED",
+        userId: user.id,
+        timestamp: new Date().toISOString(),
+      });
+
+      res.json({
+        success: true,
+        message: "Password changed successfully",
+      });
+    } catch (error) {
+      logger.error({
+        action: "CHANGE_PASSWORD_ERROR",
+        error: error.message,
+        timestamp: new Date().toISOString(),
+      });
+
+      res.status(500).json({
         success: false,
-        message: 'User not found',
-        code: 'USER_NOT_FOUND',
+        message: "Password change failed",
+        code: "CHANGE_PASSWORD_ERROR",
       });
     }
-
-    // Verify current password
-    const isValid = await user.comparePassword(currentPassword);
-    if (!isValid) {
-      return res.status(401).json({
-        success: false,
-        message: 'Current password is incorrect',
-        code: 'INVALID_PASSWORD',
-      });
-    }
-
-    // Update password
-    user.password = newPassword;
-    await user.save();
-
-    logger.info({
-      action: 'PASSWORD_CHANGED',
-      userId: user.id,
-      timestamp: new Date().toISOString(),
-    });
-
-    res.json({
-      success: true,
-      message: 'Password changed successfully',
-    });
-  } catch (error) {
-    logger.error({
-      action: 'CHANGE_PASSWORD_ERROR',
-      error: error.message,
-      timestamp: new Date().toISOString(),
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Password change failed',
-      code: 'CHANGE_PASSWORD_ERROR',
-    });
-  }
-});
+  },
+);
 
 // ============================================
 // GET PROFILE - Get current user profile
 // ============================================
 
-router.get('/profile', authenticateToken, async (req, res) => {
+router.get("/profile", authenticateToken, async (req, res) => {
   try {
     const user = await User.findById(req.user.userId);
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'User not found',
-        code: 'USER_NOT_FOUND',
+        message: "User not found",
+        code: "USER_NOT_FOUND",
       });
     }
 
@@ -514,15 +531,15 @@ router.get('/profile', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     logger.error({
-      action: 'GET_PROFILE_ERROR',
+      action: "GET_PROFILE_ERROR",
       error: error.message,
       timestamp: new Date().toISOString(),
     });
 
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch profile',
-      code: 'FETCH_PROFILE_ERROR',
+      message: "Failed to fetch profile",
+      code: "FETCH_PROFILE_ERROR",
     });
   }
 });
@@ -531,7 +548,7 @@ router.get('/profile', authenticateToken, async (req, res) => {
 // UPDATE PROFILE - Update user information
 // ============================================
 
-router.put('/profile', authenticateToken, async (req, res) => {
+router.put("/profile", authenticateToken, async (req, res) => {
   try {
     const { firstName, lastName, phone, company, avatar } = req.body;
     const user = await User.findById(req.user.userId);
@@ -539,8 +556,8 @@ router.put('/profile', authenticateToken, async (req, res) => {
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'User not found',
-        code: 'USER_NOT_FOUND',
+        message: "User not found",
+        code: "USER_NOT_FOUND",
       });
     }
 
@@ -554,27 +571,27 @@ router.put('/profile', authenticateToken, async (req, res) => {
     await user.save();
 
     logger.info({
-      action: 'PROFILE_UPDATED',
+      action: "PROFILE_UPDATED",
       userId: user.id,
       timestamp: new Date().toISOString(),
     });
 
     res.json({
       success: true,
-      message: 'Profile updated successfully',
+      message: "Profile updated successfully",
       data: { user: user.getProfile() },
     });
   } catch (error) {
     logger.error({
-      action: 'UPDATE_PROFILE_ERROR',
+      action: "UPDATE_PROFILE_ERROR",
       error: error.message,
       timestamp: new Date().toISOString(),
     });
 
     res.status(500).json({
       success: false,
-      message: 'Profile update failed',
-      code: 'UPDATE_PROFILE_ERROR',
+      message: "Profile update failed",
+      code: "UPDATE_PROFILE_ERROR",
     });
   }
 });
@@ -583,15 +600,15 @@ router.put('/profile', authenticateToken, async (req, res) => {
 // RESEND VERIFICATION EMAIL - Send verification email again
 // ============================================
 
-router.post('/resend-verification-email', async (req, res) => {
+router.post("/resend-verification-email", async (req, res) => {
   try {
     const { email } = req.body;
 
     if (!email) {
       return res.status(400).json({
         success: false,
-        message: 'Email is required',
-        code: 'MISSING_EMAIL',
+        message: "Email is required",
+        code: "MISSING_EMAIL",
       });
     }
 
@@ -600,7 +617,7 @@ router.post('/resend-verification-email', async (req, res) => {
     if (!user) {
       return res.json({
         success: true,
-        message: 'If an account exists, a verification email has been sent.',
+        message: "If an account exists, a verification email has been sent.",
       });
     }
 
@@ -608,8 +625,8 @@ router.post('/resend-verification-email', async (req, res) => {
     if (user.emailVerified) {
       return res.status(400).json({
         success: false,
-        message: 'Email is already verified',
-        code: 'EMAIL_ALREADY_VERIFIED',
+        message: "Email is already verified",
+        code: "EMAIL_ALREADY_VERIFIED",
       });
     }
 
@@ -622,24 +639,24 @@ router.post('/resend-verification-email', async (req, res) => {
       await emailService.sendVerificationEmail(
         user.email,
         verificationToken,
-        user.firstName
+        user.firstName,
       );
     } catch (emailError) {
       logger.error({
-        action: 'EMAIL_SEND_FAILED_RESEND_VERIFICATION',
+        action: "EMAIL_SEND_FAILED_RESEND_VERIFICATION",
         email: user.email,
         error: emailError.message,
         timestamp: new Date().toISOString(),
       });
       return res.status(500).json({
         success: false,
-        message: 'Failed to send verification email',
-        code: 'EMAIL_SEND_ERROR',
+        message: "Failed to send verification email",
+        code: "EMAIL_SEND_ERROR",
       });
     }
 
     logger.info({
-      action: 'VERIFICATION_EMAIL_RESENT',
+      action: "VERIFICATION_EMAIL_RESENT",
       email: user.email,
       userId: user.id,
       timestamp: new Date().toISOString(),
@@ -647,19 +664,19 @@ router.post('/resend-verification-email', async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Verification email has been sent. Please check your inbox.',
+      message: "Verification email has been sent. Please check your inbox.",
     });
   } catch (error) {
     logger.error({
-      action: 'RESEND_VERIFICATION_ERROR',
+      action: "RESEND_VERIFICATION_ERROR",
       error: error.message,
       timestamp: new Date().toISOString(),
     });
 
     res.status(500).json({
       success: false,
-      message: 'Failed to resend verification email',
-      code: 'RESEND_ERROR',
+      message: "Failed to resend verification email",
+      code: "RESEND_ERROR",
     });
   }
 });
@@ -668,25 +685,25 @@ router.post('/resend-verification-email', async (req, res) => {
 // DELETE ACCOUNT - Soft delete user account
 // ============================================
 
-router.delete('/account', authenticateToken, async (req, res) => {
+router.delete("/account", authenticateToken, async (req, res) => {
   try {
     const user = await User.findById(req.user.userId);
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'User not found',
-        code: 'USER_NOT_FOUND',
+        message: "User not found",
+        code: "USER_NOT_FOUND",
       });
     }
 
     // Soft delete
-    user.status = 'deleted';
+    user.status = "deleted";
     user.deletedAt = new Date();
     await user.save();
 
     logger.info({
-      action: 'ACCOUNT_DELETED',
+      action: "ACCOUNT_DELETED",
       userId: user.id,
       email: user.email,
       timestamp: new Date().toISOString(),
@@ -694,19 +711,19 @@ router.delete('/account', authenticateToken, async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Account deleted successfully',
+      message: "Account deleted successfully",
     });
   } catch (error) {
     logger.error({
-      action: 'DELETE_ACCOUNT_ERROR',
+      action: "DELETE_ACCOUNT_ERROR",
       error: error.message,
       timestamp: new Date().toISOString(),
     });
 
     res.status(500).json({
       success: false,
-      message: 'Account deletion failed',
-      code: 'DELETE_ACCOUNT_ERROR',
+      message: "Account deletion failed",
+      code: "DELETE_ACCOUNT_ERROR",
     });
   }
 });
