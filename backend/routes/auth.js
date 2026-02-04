@@ -1382,4 +1382,240 @@ router.post("/ml-compressed-callback", async (req, res) => {
   }
 });
 
+/**
+ * POST /api/auth/forgot-password
+ * Request a password reset token
+ *
+ * Request body:
+ * {
+ *   email: string  // User's email address
+ * }
+ *
+ * Response:
+ * {
+ *   success: boolean,
+ *   message: string,
+ *   data: {
+ *     resetToken: string  // Token to use for password reset
+ *   }
+ * }
+ */
+router.post("/forgot-password", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    // Validation
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        error: "Email is required",
+      });
+    }
+
+    // Find user by email
+    const user = await User.findOne({ email: email.toLowerCase() });
+
+    if (!user) {
+      // For security, don't reveal if email exists or not
+      return res.status(200).json({
+        success: true,
+        message:
+          "Se essa conta existe, você receberá um link para resetar sua senha.",
+      });
+    }
+
+    // Generate password reset token
+    const resetToken = user.generatePasswordResetToken();
+    await user.save();
+
+    // Log the token (in production, send via email)
+    logger.info({
+      action: "PASSWORD_RESET_REQUESTED",
+      email: user.email,
+      resetToken,
+      expiresIn: "30 minutes",
+      timestamp: new Date().toISOString(),
+    });
+
+    // Return reset token (in production, don't expose this directly)
+    // Instead, send it via email and only return success message
+    return res.status(200).json({
+      success: true,
+      message:
+        "Se essa conta existe, você receberá um link para resetar sua senha.",
+      data: {
+        resetToken, // For testing purposes - remove in production
+      },
+    });
+  } catch (error) {
+    logger.error({
+      action: "FORGOT_PASSWORD_ERROR",
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+    return res.status(500).json({
+      success: false,
+      error: "Failed to process password reset request",
+    });
+  }
+});
+
+/**
+ * POST /api/auth/reset-password
+ * Reset password using a reset token
+ *
+ * Request body:
+ * {
+ *   email: string,          // User's email address
+ *   resetToken: string,     // Token from forgot-password endpoint
+ *   newPassword: string     // New password (min 8 characters)
+ * }
+ *
+ * Response:
+ * {
+ *   success: boolean,
+ *   message: string,
+ *   data: {
+ *     user: object  // Updated user profile
+ *   }
+ * }
+ */
+router.post("/reset-password", async (req, res) => {
+  try {
+    const { email, resetToken, newPassword } = req.body;
+
+    // Validation
+    if (!email || !resetToken || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        error: "Email, reset token, and new password are required",
+      });
+    }
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({
+        success: false,
+        error: "Password must be at least 8 characters",
+      });
+    }
+
+    // Find user by email
+    const user = await User.findOne({ email: email.toLowerCase() }).select(
+      "+password",
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: "User not found",
+      });
+    }
+
+    // Verify reset token
+    if (!user.verifyPasswordResetToken(resetToken)) {
+      return res.status(400).json({
+        success: false,
+        error:
+          "Invalid or expired reset token. Please request a new password reset.",
+      });
+    }
+
+    // Update password
+    user.password = newPassword;
+    user.passwordResetToken = null;
+    user.passwordResetExpires = null;
+    await user.save();
+
+    logger.info({
+      action: "PASSWORD_RESET_SUCCESSFUL",
+      userId: user.id,
+      email: user.email,
+      timestamp: new Date().toISOString(),
+    });
+
+    // Return user profile without sensitive data
+    const userProfile = user.getProfile();
+
+    return res.status(200).json({
+      success: true,
+      message: "Senha resetada com sucesso. Você pode fazer login agora.",
+      data: {
+        user: userProfile,
+      },
+    });
+  } catch (error) {
+    logger.error({
+      action: "RESET_PASSWORD_ERROR",
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+    return res.status(500).json({
+      success: false,
+      error: "Failed to reset password",
+    });
+  }
+});
+
+/**
+ * POST /api/auth/verify-reset-token
+ * Verify if a reset token is valid
+ *
+ * Request body:
+ * {
+ *   email: string,      // User's email address
+ *   resetToken: string  // Token to verify
+ * }
+ *
+ * Response:
+ * {
+ *   success: boolean,
+ *   valid: boolean      // Whether token is valid and not expired
+ * }
+ */
+router.post("/verify-reset-token", async (req, res) => {
+  try {
+    const { email, resetToken } = req.body;
+
+    // Validation
+    if (!email || !resetToken) {
+      return res.status(400).json({
+        success: false,
+        error: "Email and reset token are required",
+      });
+    }
+
+    // Find user by email
+    const user = await User.findOne({ email: email.toLowerCase() });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        valid: false,
+        error: "User not found",
+      });
+    }
+
+    // Verify reset token
+    const isValid = user.verifyPasswordResetToken(resetToken);
+
+    return res.status(200).json({
+      success: true,
+      valid: isValid,
+      message: isValid
+        ? "Reset token is valid"
+        : "Reset token is invalid or expired",
+    });
+  } catch (error) {
+    logger.error({
+      action: "VERIFY_RESET_TOKEN_ERROR",
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+    return res.status(500).json({
+      success: false,
+      error: "Failed to verify reset token",
+    });
+  }
+});
+
 module.exports = router;
