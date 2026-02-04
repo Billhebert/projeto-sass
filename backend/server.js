@@ -88,7 +88,7 @@ const apiLimiter = rateLimit({
   message: "Too many requests from this IP, please try again later.",
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => NODE_ENV !== "production",
+  skip: () => true, // Desabilitar rate limiting para desenvolvimento
   keyGenerator: (req) => req.ip || req.connection.remoteAddress,
 });
 
@@ -97,6 +97,7 @@ const authLimiter = rateLimit({
   max: 10, // limite de 10 tentativas
   message: "Too many authentication attempts, please try again later.",
   skipSuccessfulRequests: true,
+  skip: () => true, // Desabilitar rate limiting para desenvolvimento
 });
 
 app.use("/api/", apiLimiter);

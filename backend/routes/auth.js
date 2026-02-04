@@ -26,48 +26,13 @@ const logger = require("../logger");
 
 // Stricter rate limiter specifically for login endpoint
 // Prevents brute force attacks - 5 failed attempts per 15 minutes
-const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // max 5 failed attempts
-  message:
-    "Too many login attempts. Please try again later or use password reset.",
-  skipSuccessfulRequests: true, // Only count failed attempts
-  keyGenerator: (req) => req.ip || req.connection.remoteAddress,
-  handler: (req, res) => {
-    logger.warn({
-      action: "LOGIN_RATE_LIMIT_EXCEEDED",
-      ip: req.ip || req.connection.remoteAddress,
-      email: req.body?.email,
-      timestamp: new Date().toISOString(),
-    });
-    return res.status(429).json({
-      success: false,
-      error:
-        "Too many login attempts. Please try again later or use password reset.",
-    });
-  },
-});
+// DISABLED FOR DEVELOPMENT
+const loginLimiter = (req, res, next) => next();
 
 // Rate limiter for registration endpoint
 // Prevents account creation spam - 3 registrations per hour per IP
-const registerLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 3, // max 3 registrations per hour per IP
-  message: "Too many registration attempts. Please try again after an hour.",
-  keyGenerator: (req) => req.ip || req.connection.remoteAddress,
-  handler: (req, res) => {
-    logger.warn({
-      action: "REGISTER_RATE_LIMIT_EXCEEDED",
-      ip: req.ip || req.connection.remoteAddress,
-      email: req.body?.email,
-      timestamp: new Date().toISOString(),
-    });
-    return res.status(429).json({
-      success: false,
-      error: "Too many registration attempts. Please try again after an hour.",
-    });
-  },
-});
+// DISABLED FOR DEVELOPMENT
+const registerLimiter = (req, res, next) => next();
 
 // ML API Endpoints
 const ML_AUTH_URL = "https://auth.mercadolibre.com/authorization";
