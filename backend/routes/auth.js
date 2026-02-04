@@ -978,69 +978,65 @@ router.post("/verify-email", async (req, res) => {
       });
     }
 
-     // Hash the token
-     const crypto = require("crypto");
-     const hashedToken = crypto
-       .createHash("sha256")
-       .update(token)
-       .digest("hex");
+    // Hash the token
+    const crypto = require("crypto");
+    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
 
-     // Find user with this verification token
-     const user = await User.findOne({
-       emailVerificationToken: hashedToken,
-       emailVerificationExpires: { $gt: new Date() },
-     });
+    // Find user with this verification token
+    const user = await User.findOne({
+      emailVerificationToken: hashedToken,
+      emailVerificationExpires: { $gt: new Date() },
+    });
 
-     if (!user) {
-       return res.status(404).json({
-         success: false,
-         error: "Invalid or expired verification token",
-       });
-      }
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: "Invalid or expired verification token",
+      });
+    }
 
-      // This block is no longer needed since we fixed the query above
-      // but keeping variable name as foundUser for rest of the code
-      const foundUser = user;
+    // This block is no longer needed since we fixed the query above
+    // but keeping variable name as foundUser for rest of the code
+    const foundUser = user;
 
-       // Verify email
-       foundUser.emailVerified = true;
-       foundUser.emailVerificationToken = null;
-       foundUser.emailVerificationExpires = null;
-       await foundUser.save();
+    // Verify email
+    foundUser.emailVerified = true;
+    foundUser.emailVerificationToken = null;
+    foundUser.emailVerificationExpires = null;
+    await foundUser.save();
 
-       logger.info({
-         action: "EMAIL_VERIFIED",
-         userId: foundUser.id,
-         email: foundUser.email,
-         timestamp: new Date().toISOString(),
-       });
+    logger.info({
+      action: "EMAIL_VERIFIED",
+      userId: foundUser.id,
+      email: foundUser.email,
+      timestamp: new Date().toISOString(),
+    });
 
-       // Generate JWT token
-       if (!process.env.JWT_SECRET) {
-         throw new Error("JWT_SECRET environment variable is required");
-       }
+    // Generate JWT token
+    if (!process.env.JWT_SECRET) {
+      throw new Error("JWT_SECRET environment variable is required");
+    }
 
-       const jwtToken = jwt.sign(
-         { userId: foundUser.id, email: foundUser.email },
-         process.env.JWT_SECRET,
-         { expiresIn: "7d" },
-       );
+    const jwtToken = jwt.sign(
+      { userId: foundUser.id, email: foundUser.email },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" },
+    );
 
-       return res.status(200).json({
-         success: true,
-         message: "Email verified successfully!",
-         data: {
-           user: {
-             id: foundUser.id,
-             email: foundUser.email,
-             firstName: foundUser.firstName,
-             lastName: foundUser.lastName,
-             emailVerified: foundUser.emailVerified,
-           },
-           token: jwtToken,
-         },
-       });
-     }
+    return res.status(200).json({
+      success: true,
+      message: "Email verified successfully!",
+      data: {
+        user: {
+          id: foundUser.id,
+          email: foundUser.email,
+          firstName: foundUser.firstName,
+          lastName: foundUser.lastName,
+          emailVerified: foundUser.emailVerified,
+        },
+        token: jwtToken,
+      },
+    });
   } catch (error) {
     logger.error({
       action: "EMAIL_VERIFICATION_ERROR",
