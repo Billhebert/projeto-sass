@@ -1,74 +1,76 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { useAuthStore } from './store/authStore'
-import { useEffect } from 'react'
-import Login from './pages/Login'
-import Register from './pages/Register'
-import Dashboard from './pages/Dashboard'
-import Accounts from './pages/Accounts'
-import Products from './pages/Products'
-import AllProducts from './pages/AllProducts'
-import Reports from './pages/Reports'
-import Settings from './pages/Settings'
-import OAuthCallback from './pages/OAuthCallback'
-import Layout from './components/Layout'
-import Toast from './components/Toast'
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useAuthStore } from "./store/authStore";
+import { useEffect } from "react";
+import Login from "./pages/Login";
+import Register from "./pages/Register";
+import Dashboard from "./pages/Dashboard";
+import Accounts from "./pages/Accounts";
+import Products from "./pages/Products";
+import AllProducts from "./pages/AllProducts";
+import Reports from "./pages/Reports";
+import Settings from "./pages/Settings";
+import OAuthCallback from "./pages/OAuthCallback";
+import Layout from "./components/Layout";
+import Toast from "./components/Toast";
 
 // New pages
-import Orders from './pages/Orders'
-import Questions from './pages/Questions'
-import Shipments from './pages/Shipments'
-import Messages from './pages/Messages'
-import Promotions from './pages/Promotions'
-import Claims from './pages/Claims'
-import Notifications from './pages/Notifications'
-import Items from './pages/Items'
-import ItemCreate from './pages/ItemCreate'
-import ItemEdit from './pages/ItemEdit'
-import Metrics from './pages/Metrics'
-import Invoices from './pages/Invoices'
-import Billing from './pages/Billing'
-import Moderations from './pages/Moderations'
-import Reviews from './pages/Reviews'
-import Inventory from './pages/Inventory'
-import SalesDashboard from './pages/SalesDashboard'
+import Orders from "./pages/Orders";
+import Questions from "./pages/Questions";
+import Shipments from "./pages/Shipments";
+import Messages from "./pages/Messages";
+import Promotions from "./pages/Promotions";
+import Claims from "./pages/Claims";
+import Notifications from "./pages/Notifications";
+import Items from "./pages/Items";
+import ItemCreate from "./pages/ItemCreate";
+import ItemEdit from "./pages/ItemEdit";
+import Metrics from "./pages/Metrics";
+import Invoices from "./pages/Invoices";
+import Billing from "./pages/Billing";
+import Moderations from "./pages/Moderations";
+import Reviews from "./pages/Reviews";
+import Inventory from "./pages/Inventory";
+import SalesDashboard from "./pages/SalesDashboard";
 
 // Premium pages
-import Reputation from './pages/Reputation'
-import Quality from './pages/Quality'
-import Trends from './pages/Trends'
-import Competitors from './pages/Competitors'
-import Advertising from './pages/Advertising'
+import Reputation from "./pages/Reputation";
+import Quality from "./pages/Quality";
+import Trends from "./pages/Trends";
+import Competitors from "./pages/Competitors";
+import Advertising from "./pages/Advertising";
 
 // New Premium pages
-import Catalog from './pages/Catalog'
-import Fulfillment from './pages/Fulfillment'
-import ProfitCalculator from './pages/ProfitCalculator'
-import PriceAutomation from './pages/PriceAutomation'
-import GlobalSelling from './pages/GlobalSelling'
-import FinancialReports from './pages/FinancialReports'
-import Conciliation from './pages/Conciliation'
-import Analytics from './pages/Analytics'
+import Catalog from "./pages/Catalog";
+import Fulfillment from "./pages/Fulfillment";
+import ProfitCalculator from "./pages/ProfitCalculator";
+import PriceAutomation from "./pages/PriceAutomation";
+import GlobalSelling from "./pages/GlobalSelling";
+import FinancialReports from "./pages/FinancialReports";
+import Conciliation from "./pages/Conciliation";
+import Analytics from "./pages/Analytics";
+import MLAuth from "./pages/MLAuth";
 
 // Mercado Pago pages
-import MPDashboard from './pages/MPDashboard'
-import MPPayments from './pages/MPPayments'
-import MPCheckout from './pages/MPCheckout'
-import MPSubscriptions from './pages/MPSubscriptions'
-import MPCustomers from './pages/MPCustomers'
-import MPCheckoutSuccess from './pages/MPCheckoutSuccess'
-import MPCheckoutFailure from './pages/MPCheckoutFailure'
-import MPCheckoutPending from './pages/MPCheckoutPending'
-
+import MPDashboard from "./pages/MPDashboard";
+import MPPayments from "./pages/MPPayments";
+import MPCheckout from "./pages/MPCheckout";
+import MPSubscriptions from "./pages/MPSubscriptions";
+import MPCustomers from "./pages/MPCustomers";
+import MPCheckoutSuccess from "./pages/MPCheckoutSuccess";
+import MPCheckoutFailure from "./pages/MPCheckoutFailure";
+import MPCheckoutPending from "./pages/MPCheckoutPending";
 
 function App() {
-  const { token, loadToken } = useAuthStore()
+  const { token, loadToken } = useAuthStore();
 
   useEffect(() => {
-    loadToken()
-  }, [loadToken])
+    loadToken();
+  }, [loadToken]);
 
   return (
-    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <BrowserRouter
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
       <Toast />
       <Routes>
         {/* OAuth Callback - accessible without authentication */}
@@ -84,40 +86,38 @@ function App() {
           <Route element={<Layout />}>
             {/* Main */}
             <Route path="/" element={<Dashboard />} />
-            <Route path="/accounts" element={<Accounts />} />
-            <Route path="/accounts/:accountId/products" element={<Products />} />
-            
+            <Route path="/ml-auth" element={<MLAuth />} />
+
             {/* Products - Global view */}
             <Route path="/products" element={<AllProducts />} />
-            
 
             {/* Sales */}
             <Route path="/orders" element={<Orders />} />
             <Route path="/sales-dashboard" element={<SalesDashboard />} />
             <Route path="/shipments" element={<Shipments />} />
             <Route path="/invoices" element={<Invoices />} />
-            
+
             {/* Support */}
             <Route path="/questions" element={<Questions />} />
             <Route path="/messages" element={<Messages />} />
             <Route path="/claims" element={<Claims />} />
-            
+
             {/* Listings */}
             <Route path="/items" element={<Items />} />
             <Route path="/items/create" element={<ItemCreate />} />
             <Route path="/items/:itemId/edit" element={<ItemEdit />} />
             <Route path="/promotions" element={<Promotions />} />
-            
+
             {/* Analytics */}
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/metrics" element={<Metrics />} />
-            
+
             {/* Inventory & Quality */}
             <Route path="/inventory" element={<Inventory />} />
             <Route path="/moderations" element={<Moderations />} />
             <Route path="/reviews" element={<Reviews />} />
-            
+
             {/* Premium Features */}
             <Route path="/reputation" element={<Reputation />} />
             <Route path="/quality" element={<Quality />} />
@@ -131,30 +131,39 @@ function App() {
             <Route path="/global-selling" element={<GlobalSelling />} />
             <Route path="/financial-reports" element={<FinancialReports />} />
             <Route path="/conciliation" element={<Conciliation />} />
-            
+
             {/* Financial */}
             <Route path="/billing" element={<Billing />} />
-            
+
             {/* Mercado Pago */}
             <Route path="/mp" element={<MPDashboard />} />
             <Route path="/mp/payments" element={<MPPayments />} />
             <Route path="/mp/checkout" element={<MPCheckout />} />
-            <Route path="/mp/checkout/success" element={<MPCheckoutSuccess />} />
-            <Route path="/mp/checkout/failure" element={<MPCheckoutFailure />} />
-            <Route path="/mp/checkout/pending" element={<MPCheckoutPending />} />
+            <Route
+              path="/mp/checkout/success"
+              element={<MPCheckoutSuccess />}
+            />
+            <Route
+              path="/mp/checkout/failure"
+              element={<MPCheckoutFailure />}
+            />
+            <Route
+              path="/mp/checkout/pending"
+              element={<MPCheckoutPending />}
+            />
             <Route path="/mp/subscriptions" element={<MPSubscriptions />} />
             <Route path="/mp/customers" element={<MPCustomers />} />
-            
+
             {/* System */}
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/settings" element={<Settings />} />
-            
+
             <Route path="*" element={<Navigate to="/" />} />
           </Route>
         )}
       </Routes>
     </BrowserRouter>
-  )
+  );
 }
 
-export default App
+export default App;

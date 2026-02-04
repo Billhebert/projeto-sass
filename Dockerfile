@@ -20,12 +20,12 @@ COPY frontend/dist ./frontend/dist
 # Create logs directory
 RUN mkdir -p logs data
 
-EXPOSE 3000
+EXPOSE 3011
 
 ENV NODE_ENV=production
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:3000/health || exit 1
+  CMD curl -f http://localhost:3011/health || exit 1
 
 ENTRYPOINT ["/sbin/tini", "--"]
 

@@ -14,8 +14,11 @@ services:
       PORT: 3011
       MONGODB_URI: mongodb://admin:changeme@mongo:27017/projeto-sass?authSource=admin
       REDIS_URL: redis://:changeme@redis:6379
-      JWT_SECRET: ${JWT_SECRET}
+      JWT_SECRET: ${JWT_SECRET:-T2pD8F3O4Gc07hlniseEqeEczhjlAl9zyitfruCngeo=}
       API_HOST: 0.0.0.0
+      FRONTEND_URL: http://localhost:5173
+      DEBUG: false
+      LOG_LEVEL: info
     depends_on:
       mongo:
         condition: service_healthy

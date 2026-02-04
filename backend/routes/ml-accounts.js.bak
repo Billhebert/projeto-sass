@@ -1,0 +1,907 @@
+/**
+ * ML Accounts Routes
+ * Gerenciamento de múltiplas contas Mercado Livre por usuário
+ *
+ * Endpoints OAuth Invisível:
+ * POST   /api/ml-accounts/connect         - Iniciar OAuth (retorna URL de autorização)
+ * GET    /api/ml-accounts/callback        - Callback do ML após autorização
+ *
+ * Endpoints de Gerenciamento:
+ * GET    /api/ml-accounts                 - Listar contas do usuário
+ * GET    /api/ml-accounts/:accountId     - Obter dados de uma conta
+ * POST   /api/ml-accounts                 - Adicionar nova conta (token manual)
+ * PUT    /api/ml-accounts/:accountId      - Atualizar conta
+ * DELETE /api/ml-accounts/:accountId      - Remover conta
+ * POST   /api/ml-accounts/:accountId/sync - Sincronizar conta
+ * POST   /api/ml-accounts/sync-all       - Sincronizar todas as contas
+ * PUT    /api/ml-accounts/:accountId/pause   - Pausar sincronização
+ * PUT    /api/ml-accounts/:accountId/resume  - Retomar sincronização
+ * PUT    /api/ml-accounts/:accountId/refresh-token - Refresh token manualmente
+ */
+
+const express = require("express");
+const axios = require("axios");
+const logger = require("../logger");
+const { authenticateToken } = require("../middleware/auth");
+const { validateMLToken } = require("../middleware/ml-token-validation");
+const MLAccount = require("../db/models/MLAccount");
+const MLTokenManager = require("../utils/ml-token-manager");
+const User = require("../db/models/User");
+
+const router = express.Router();
+
+const ML_API_BASE = "https://api.mercadolibre.com";
+
+/**
+ * POST /api/ml-accounts/connect
+ * Iniciar fluxo OAuth invisível com Mercado Livre
+ *
+ * Retorna a URL de autorização para onde o frontend deve redirecionar
+ * O usuário é redirecionado automaticamente para o ML, faz login e volta
+ *
+ * Fluxo:
+ * 1. Frontend chama este endpoint
+ * 2. Backend gera URL de autorização
+ * 3. Frontend redireciona usuário para ML
+ * 4. Após login, ML redireciona para callback
+ * 5. Backend troca code por tokens e salva
+ * 6. Frontend é notificado (via callback)
+ */
+router.post("/connect", authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    logger.info({
+      action: "OAUTH_CONNECT_START",
+      userId,
+      timestamp: new Date().toISOString(),
+    });
+
+    const oauthService = require("../services/ml-oauth");
+
+    const authUrl = oauthService.getAuthorizationUrl(
+      userId,
+      oauthService.generateState(),
+    );
+
+    logger.info({
+      action: "OAUTH_CONNECT_URL_GENERATED",
+      userId,
+      authUrl: authUrl.substring(0, 100) + "...",
+    });
+
+    res.json({
+      success: true,
+      data: {
+        authorizationUrl: authUrl,
+        expiresIn: 600,
+        message: "Redirecione o usuário para esta URL para completar a conexão",
+      },
+    });
+  } catch (error) {
+    logger.error({
+      action: "OAUTH_CONNECT_ERROR",
+      userId: req.user.userId,
+      error: error.message,
+      stack: error.stack,
+    });
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to generate authorization URL",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/ml-accounts/callback
+ * Callback do OAuth Mercado Livre
+ *
+ * O ML redireciona aqui após o usuário conceder permissão
+ * O código de autorização é trocado por tokens
+ * Tokens são salvos no banco de dados
+ */
+router.get("/callback", async (req, res) => {
+  try {
+    const { code, state, error, error_description } = req.query;
+
+    logger.info({
+      action: "OAUTH_CALLBACK_RECEIVED",
+      hasCode: !!code,
+      hasError: !!error,
+      timestamp: new Date().toISOString(),
+    });
+
+    if (error) {
+      logger.warn({
+        action: "OAUTH_CALLBACK_ERROR",
+        error,
+        errorDescription: error_description,
+      });
+
+      return res.redirect(
+        `${process.env.FRONTEND_URL || "http://localhost:5173"}/accounts?oauth=error&message=${encodeURIComponent(error_description || error)}`,
+      );
+    }
+
+    if (!code || !state) {
+      return res.redirect(
+        `${process.env.FRONTEND_URL || "http://localhost:5173"}/accounts?oauth=error&message=${encodeURIComponent("Código de autorização não recebido")}`,
+      );
+    }
+
+    const oauthService = require("../services/ml-oauth");
+    const result = await oauthService.completeOAuthConnection(code, state);
+
+    if (!result.success) {
+      logger.error({
+        action: "OAUTH_CALLBACK_FAILED",
+        code: result.code,
+        error: result.error,
+      });
+
+      return res.redirect(
+        `${process.env.FRONTEND_URL || "http://localhost:5173"}/accounts?oauth=error&message=${encodeURIComponent(result.error)}`,
+      );
+    }
+
+    logger.info({
+      action: "OAUTH_CALLBACK_SUCCESS",
+      userId: result.user?.mlUserId,
+      accountId: result.accountId,
+      isNewAccount: result.isNewAccount,
+    });
+
+    res.redirect(
+      `${process.env.FRONTEND_URL || "http://localhost:5173"}/accounts?oauth=success&accountId=${result.accountId}&isNew=${result.isNewAccount}`,
+    );
+  } catch (error) {
+    logger.error({
+      action: "OAUTH_CALLBACK_UNEXPECTED_ERROR",
+      error: error.message,
+      stack: error.stack,
+    });
+
+    res.redirect(
+      `${process.env.FRONTEND_URL || "http://localhost:5173"}/accounts?oauth=error&message=${encodeURIComponent("Erro inesperado durante conexão")}`,
+    );
+  }
+});
+
+/**
+ * GET /api/ml-accounts
+ * Listar todas as contas ML do usuário
+ */
+router.get("/", authenticateToken, async (req, res) => {
+  try {
+    const accounts = await MLAccount.findByUserId(req.user.userId);
+
+    res.json({
+      success: true,
+      data: {
+        accounts: accounts.map((acc) => acc.getSummary()),
+        total: accounts.length,
+      },
+    });
+  } catch (error) {
+    logger.error({
+      action: "GET_ML_ACCOUNTS_ERROR",
+      userId: req.user.userId,
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch ML accounts",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/ml-accounts/:accountId
+ * Obter dados de uma conta específica
+ */
+router.get("/:accountId", authenticateToken, async (req, res) => {
+  try {
+    const account = await MLAccount.findOne({
+      id: req.params.accountId,
+      userId: req.user.userId,
+    });
+
+    if (!account) {
+      return res.status(404).json({
+        success: false,
+        message: "Account not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: account.getSummary(),
+    });
+  } catch (error) {
+    logger.error({
+      action: "GET_ML_ACCOUNT_ERROR",
+      accountId: req.params.accountId,
+      userId: req.user.userId,
+      error: error.message,
+    });
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch account",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * POST /api/ml-accounts
+ * Adicionar nova conta ML
+ *
+ * Aceita dois formatos:
+ * 1. Token Manual: { accessToken, accountName? }
+ *    - Usuário forneceu token manualmente
+ *    - Sistema não pode renovar (sem refreshToken)
+ *
+ * 2. OAuth: { accessToken, refreshToken, expiresIn, clientId, clientSecret, redirectUri, accountName? }
+ *    - Usuário fez OAuth/login autorizado
+ *    - Sistema pode renovar automaticamente com refreshToken + clientId + clientSecret
+ *
+ * Sistema automaticamente busca info do usuário e salva tudo
+ */
+router.post("/", authenticateToken, async (req, res) => {
+  try {
+    const {
+      accessToken,
+      refreshToken,
+      expiresIn,
+      accountName,
+      accountType,
+      clientId,
+      clientSecret,
+      redirectUri,
+    } = req.body;
+
+    // Validação
+    if (!accessToken) {
+      return res.status(400).json({
+        success: false,
+        message: "Access token is required",
+        required: ["accessToken"],
+      });
+    }
+
+    // Buscar informações do usuário na API ML
+    let mlUserInfo;
+    try {
+      const response = await axios.get(`${ML_API_BASE}/users/me`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        timeout: 15000,
+      });
+      mlUserInfo = response.data;
+    } catch (error) {
+      logger.error({
+        action: "GET_ML_USER_INFO_ERROR",
+        error: error.response?.data || error.message,
+      });
+
+      return res.status(401).json({
+        success: false,
+        message:
+          "Invalid access token. Could not retrieve user information from Mercado Livre.",
+        error: error.response?.data?.message || error.message,
+      });
+    }
+
+    // Verificar se usuário já tem essa conta
+    const existingAccount = await MLAccount.findOne({
+      userId: req.user.userId,
+      mlUserId: mlUserInfo.id,
+    });
+
+    if (existingAccount) {
+      return res.status(409).json({
+        success: false,
+        message: "This Mercado Livre account is already connected",
+      });
+    }
+
+    // Verificar se é a primeira conta (será primária)
+    const existingAccounts = await MLAccount.findByUserId(req.user.userId);
+    const isPrimary = existingAccounts.length === 0;
+
+    // Calcular expiração do token
+    // Se vem do OAuth, tem expiresIn
+    // Se vem manual, assume 6 horas (padrão ML para user tokens)
+    const tokenExpiresAtTime = expiresIn
+      ? Date.now() + expiresIn * 1000
+      : Date.now() + 6 * 60 * 60 * 1000; // 6 horas como fallback
+
+    // Criar nova conta
+    const newAccount = new MLAccount({
+      userId: req.user.userId,
+      mlUserId: mlUserInfo.id,
+      nickname: mlUserInfo.nickname,
+      email: mlUserInfo.email,
+      accessToken,
+      refreshToken: refreshToken || null, // OAuth tem refreshToken, manual não
+      tokenExpiresAt: new Date(tokenExpiresAtTime),
+      // OAuth Credentials - needed for automatic token refresh
+      clientId: clientId || null,
+      clientSecret: clientSecret || null,
+      redirectUri: redirectUri || null,
+      accountName: accountName || mlUserInfo.nickname,
+      accountType: accountType || "individual",
+      isPrimary,
+      status: "active",
+      // Setup token refresh tracking
+      lastTokenRefresh: refreshToken ? new Date() : null, // Marca como "já renovado" se tem refreshToken
+      nextTokenRefreshNeeded: new Date(tokenExpiresAtTime - 5 * 60 * 1000), // 5 min antes de expirar
+      tokenRefreshStatus: refreshToken ? "success" : null, // Sucesso se veio do OAuth
+    });
+
+    await newAccount.save();
+
+    // Atualizar contador de contas do usuário
+    await User.updateOne(
+      { id: req.user.userId },
+      {
+        $inc: { "metadata.totalAccounts": 1 },
+        $set: {
+          "metadata.accountsLimit": Math.max(5, existingAccounts.length + 1),
+        },
+      },
+    );
+
+    logger.info({
+      action: "ML_ACCOUNT_ADDED",
+      userId: req.user.userId,
+      accountId: newAccount.id,
+      mlUserId: mlUserInfo.id,
+      nickname: mlUserInfo.nickname,
+      hasRefreshToken: !!refreshToken,
+      hasClientCredentials: !!(clientId && clientSecret),
+      timestamp: new Date().toISOString(),
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Account added successfully",
+      data: {
+        ...newAccount.getSummary(),
+        canAutoRefresh: !!(refreshToken && clientId && clientSecret), // Can auto-refresh if has all 3
+      },
+    });
+  } catch (error) {
+    logger.error({
+      action: "ADD_ML_ACCOUNT_ERROR",
+      userId: req.user.userId,
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to add account",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * PUT /api/ml-accounts/:accountId
+ * Atualizar dados da conta
+ */
+router.put("/:accountId", authenticateToken, async (req, res) => {
+  try {
+    const { accountName, isPrimary, syncInterval, notificationsEnabled } =
+      req.body;
+
+    const account = await MLAccount.findOne({
+      id: req.params.accountId,
+      userId: req.user.userId,
+    });
+
+    if (!account) {
+      return res.status(404).json({
+        success: false,
+        message: "Account not found",
+      });
+    }
+
+    // Atualizar campos permitidos
+    if (accountName) account.accountName = accountName;
+    if (syncInterval) account.syncInterval = syncInterval;
+    if (notificationsEnabled !== undefined)
+      account.notificationsEnabled = notificationsEnabled;
+
+    // Se marcar como primária, desmarcar outras
+    if (isPrimary === true && !account.isPrimary) {
+      await MLAccount.updateMany(
+        { userId: req.user.userId, isPrimary: true },
+        { isPrimary: false },
+      );
+      account.isPrimary = true;
+    }
+
+    await account.save();
+
+    logger.info({
+      action: "ML_ACCOUNT_UPDATED",
+      userId: req.user.userId,
+      accountId: account.id,
+      timestamp: new Date().toISOString(),
+    });
+
+    res.json({
+      success: true,
+      message: "Account updated successfully",
+      data: account.getSummary(),
+    });
+  } catch (error) {
+    logger.error({
+      action: "UPDATE_ML_ACCOUNT_ERROR",
+      accountId: req.params.accountId,
+      userId: req.user.userId,
+      error: error.message,
+    });
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to update account",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * DELETE /api/ml-accounts/:accountId
+ * Remover conta
+ */
+router.delete("/:accountId", authenticateToken, async (req, res) => {
+  try {
+    const accountId = req.params.accountId;
+    const userId = req.user.userId;
+
+    logger.info({
+      action: "DELETE_ML_ACCOUNT_START",
+      accountId,
+      userId,
+    });
+
+    // Find account
+    const account = await MLAccount.findOne({
+      id: accountId,
+      userId: userId,
+    });
+
+    if (!account) {
+      logger.warn({
+        action: "DELETE_ML_ACCOUNT_NOT_FOUND",
+        accountId,
+        userId,
+      });
+
+      return res.status(404).json({
+        success: false,
+        message: "Account not found",
+      });
+    }
+
+    logger.info({
+      action: "DELETE_ML_ACCOUNT_FOUND",
+      accountId,
+      userId,
+      mlUserId: account.mlUserId,
+      nickname: account.nickname,
+    });
+
+    // Se era primária, tornar outra como primária
+    if (account.isPrimary) {
+      const nextAccount = await MLAccount.findOne({
+        userId: userId,
+        id: { $ne: accountId },
+      }).sort({ createdAt: 1 });
+
+      if (nextAccount) {
+        nextAccount.isPrimary = true;
+        await nextAccount.save();
+        logger.info({
+          action: "DELETE_ML_ACCOUNT_PRIMARY_REASSIGNED",
+          fromAccount: accountId,
+          toAccount: nextAccount.id,
+        });
+      }
+    }
+
+    // Delete account
+    const deleteResult = await MLAccount.deleteOne({
+      id: accountId,
+      userId: userId,
+    });
+
+    if (deleteResult.deletedCount === 0) {
+      logger.warn({
+        action: "DELETE_ML_ACCOUNT_DELETE_FAILED",
+        accountId,
+        userId,
+      });
+
+      return res.status(400).json({
+        success: false,
+        message: "Failed to delete account",
+      });
+    }
+
+    // Update user account count
+    await User.updateOne(
+      { id: userId },
+      { $inc: { "metadata.totalAccounts": -1 } },
+    );
+
+    logger.info({
+      action: "DELETE_ML_ACCOUNT_SUCCESS",
+      accountId,
+      userId,
+      mlUserId: account.mlUserId,
+    });
+
+    res.json({
+      success: true,
+      message: "Account removed successfully",
+      data: {
+        accountId,
+        mlUserId: account.mlUserId,
+      },
+    });
+  } catch (error) {
+    logger.error({
+      action: "DELETE_ML_ACCOUNT_ERROR",
+      accountId: req.params.accountId,
+      userId: req.user.userId,
+      error: error.message,
+      stack: error.stack,
+    });
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to remove account",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * POST /api/ml-accounts/:accountId/sync
+ * Sincronizar uma conta específica
+ *
+ * Middleware validateMLToken:
+ * - Verifies token is not expired
+ * - Auto-refreshes if about to expire (if refreshToken available)
+ * - Returns error if token is invalid/expired
+ */
+router.post(
+  "/:accountId/sync",
+  authenticateToken,
+  validateMLToken("accountId"),
+  async (req, res) => {
+    try {
+      const account = req.mlAccount; // From middleware
+
+      await account.updateSyncStatus("in_progress");
+
+      // Buscar dados
+      const accountData = await fetchMLAccountData(
+        account.mlUserId,
+        account.accessToken,
+      );
+      await account.updateCachedData(accountData);
+      await account.updateSyncStatus("success");
+
+      await account.touchLastActivity();
+
+      logger.info({
+        action: "ML_ACCOUNT_SYNCED",
+        accountId: account.id,
+        userId: req.user.userId,
+        timestamp: new Date().toISOString(),
+      });
+
+      res.json({
+        success: true,
+        message: "Account synchronized successfully",
+        data: {
+          accountId: account.id,
+          syncedAt: account.lastSync,
+          data: account.cachedData,
+        },
+      });
+    } catch (error) {
+      const account = await MLAccount.findOne({
+        id: req.params.accountId,
+        userId: req.user.userId,
+      });
+
+      if (account) {
+        await account.updateSyncStatus("failed", error.message);
+
+        if (error.response?.status === 401) {
+          account.status = "expired";
+          await account.save();
+        }
+      }
+
+      logger.error({
+        action: "ML_ACCOUNT_SYNC_ERROR",
+        accountId: req.params.accountId,
+        userId: req.user.userId,
+        error: error.message,
+        timestamp: new Date().toISOString(),
+      });
+
+      res.status(500).json({
+        success: false,
+        message: "Failed to refresh token",
+        error: error.message,
+      });
+    }
+  }
+});
+
+/**
+ * POST /api/ml-accounts/:accountId/refresh
+ * Renovar token (POST alternative to PUT)
+ * 
+ * Funciona APENAS se conta tem refreshToken
+ */
+router.post("/:accountId/refresh", authenticateToken, async (req, res) => {
+  try {
+    const account = await MLAccount.findOne({
+      id: req.params.accountId,
+      userId: req.user.userId,
+    });
+
+    if (!account) {
+      return res.status(404).json({
+        success: false,
+        message: "Account not found",
+      });
+    }
+
+    if (!account.refreshToken) {
+      return res.status(400).json({
+        success: false,
+        message: "This account does not have automatic token refresh capability.",
+        code: "NO_REFRESH_TOKEN",
+      });
+    }
+
+    logger.info({
+      action: "TOKEN_REFRESH_POST",
+      accountId: account.id,
+      mlUserId: account.mlUserId,
+    });
+
+    const clientId =
+      account.clientId ||
+      process.env.ML_APP_CLIENT_ID ||
+      process.env.ML_CLIENT_ID;
+    const clientSecret =
+      account.clientSecret ||
+      process.env.ML_APP_CLIENT_SECRET ||
+      process.env.ML_CLIENT_SECRET;
+
+    if (!clientId || !clientSecret) {
+      return res.status(400).json({
+        success: false,
+        message: "No OAuth credentials available",
+        code: "NO_OAUTH_CREDENTIALS",
+      });
+    }
+
+    const result = await MLTokenManager.refreshToken(
+      account.refreshToken,
+      clientId,
+      clientSecret
+    );
+
+    if (!result.success) {
+      account.status = "error";
+      account.tokenRefreshError = result.error;
+      await account.save();
+
+      return res.status(400).json({
+        success: false,
+        message: result.mlError === "invalid_grant"
+          ? "Refresh token expired. Please reconnect your account."
+          : `Token refresh failed: ${result.error}`,
+        code: result.mlError === "invalid_grant" ? "INVALID_REFRESH_TOKEN" : "TOKEN_REFRESH_FAILED",
+      });
+    }
+
+    await account.refreshedTokens(
+      result.accessToken,
+      result.refreshToken,
+      result.expiresIn
+    );
+
+    if (account.status === "expired") {
+      account.status = "active";
+      await account.save();
+    }
+
+    logger.info({
+      action: "TOKEN_REFRESH_POST_SUCCESS",
+      accountId: account.id,
+      expiresIn: result.expiresIn,
+    });
+
+    res.json({
+      success: true,
+      message: "Token refreshed successfully",
+      data: {
+        accountId: account.id,
+        tokenExpiresAt: account.tokenExpiresAt,
+        expiresIn: result.expiresIn,
+      },
+    });
+  } catch (error) {
+    logger.error({
+      action: "TOKEN_REFRESH_POST_ERROR",
+      accountId: req.params.accountId,
+      error: error.message,
+    });
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to refresh token",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * DEBUG ENDPOINT - Get current user info and all their accounts
+ * GET /api/ml-accounts/debug/user-info
+ */
+router.get("/debug/user-info", authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    const accounts = await MLAccount.find({ userId });
+
+    res.json({
+      debug: true,
+      userFromToken: {
+        userId,
+        username: req.user.username,
+      },
+      accountsFound: accounts.length,
+      accounts: accounts.map((acc) => ({
+        id: acc.id,
+        mlUserId: acc.mlUserId,
+        nickname: acc.nickname,
+        email: acc.email,
+        status: acc.status,
+        isPrimary: acc.isPrimary,
+      })),
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * PUT /api/ml-accounts/:accountId/oauth-credentials
+ * Update OAuth credentials for an existing account
+ *
+ * Use case:
+ * - Account was added manually (just accessToken)
+ * - User now wants to enable automatic token refresh
+ * - User provides their ML app's clientId, clientSecret, and optionally refreshToken
+ *
+ * Request body:
+ * {
+ *   clientId: string,       // Required: ML App Client ID
+ *   clientSecret: string,   // Required: ML App Client Secret
+ *   redirectUri?: string,   // Optional: OAuth redirect URI
+ *   refreshToken?: string   // Optional: If user has a refresh token to add
+ * }
+ */
+router.put(
+  "/:accountId/oauth-credentials",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { clientId, clientSecret, redirectUri, refreshToken } = req.body;
+
+      // Validation
+      if (!clientId || !clientSecret) {
+        return res.status(400).json({
+          success: false,
+          message: "clientId and clientSecret are required",
+          required: ["clientId", "clientSecret"],
+        });
+      }
+
+      const account = await MLAccount.findOne({
+        id: req.params.accountId,
+        userId: req.user.userId,
+      });
+
+      if (!account) {
+        return res.status(404).json({
+          success: false,
+          message: "Account not found",
+        });
+      }
+
+      // Update OAuth credentials
+      account.clientId = clientId;
+      account.clientSecret = clientSecret;
+      if (redirectUri) account.redirectUri = redirectUri;
+      if (refreshToken) {
+        account.refreshToken = refreshToken;
+        // If we now have all credentials, set up token refresh tracking
+        account.lastTokenRefresh = new Date();
+        account.nextTokenRefreshNeeded = new Date(
+          account.tokenExpiresAt.getTime() - 5 * 60 * 1000,
+        );
+        account.tokenRefreshStatus = "success";
+      }
+
+      await account.save();
+
+      const canAutoRefresh = !!(
+        account.refreshToken &&
+        account.clientId &&
+        account.clientSecret
+      );
+
+      logger.info({
+        action: "ML_ACCOUNT_OAUTH_CREDENTIALS_UPDATED",
+        accountId: account.id,
+        userId: req.user.userId,
+        mlUserId: account.mlUserId,
+        canAutoRefresh,
+        timestamp: new Date().toISOString(),
+      });
+
+      res.json({
+        success: true,
+        message: "OAuth credentials updated successfully",
+        data: {
+          accountId: account.id,
+          canAutoRefresh,
+          hasRefreshToken: !!account.refreshToken,
+          hasClientCredentials: !!(account.clientId && account.clientSecret),
+        },
+      });
+    } catch (error) {
+      logger.error({
+        action: "UPDATE_OAUTH_CREDENTIALS_ERROR",
+        accountId: req.params.accountId,
+        userId: req.user.userId,
+        error: error.message,
+      });
+
+      res.status(500).json({
+        success: false,
+        message: "Failed to update OAuth credentials",
+        error: error.message,
+      });
+    }
+  },
+);
+
+module.exports = router;

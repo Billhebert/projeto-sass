@@ -4,15 +4,16 @@
  * Allows one user to have multiple ML accounts
  */
 
-const mongoose = require('mongoose');
-const crypto = require('crypto');
+const mongoose = require("mongoose");
+const crypto = require("crypto");
 
 const mlAccountSchema = new mongoose.Schema(
   {
     // Unique Identifier
     id: {
       type: String,
-      default: () => `ml_${Date.now()}_${crypto.randomBytes(6).toString('hex')}`,
+      default: () =>
+        `ml_${Date.now()}_${crypto.randomBytes(6).toString("hex")}`,
       unique: true,
       index: true,
     },
@@ -20,34 +21,35 @@ const mlAccountSchema = new mongoose.Schema(
     // User Link
     userId: {
       type: String,
-      ref: 'User',
-      required: [true, 'userId is required'],
+      ref: "User",
+      required: [true, "userId is required"],
       index: true,
     },
 
     // Mercado Livre Identifiers
     mlUserId: {
       type: String,
-      required: [true, 'Mercado Livre user ID is required'],
+      required: [true, "Mercado Livre user ID is required"],
       index: true,
     },
     nickname: {
       type: String,
-      required: [true, 'Nickname is required'],
+      required: [true, "Nickname is required"],
       trim: true,
     },
     email: {
       type: String,
-      required: [true, 'Email is required'],
+      required: [true, "Email is required"],
       lowercase: true,
       trim: true,
+      match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, "Invalid email format"],
       index: true,
     },
 
     // OAuth Tokens (encrypted)
     // accessToken: Used for API calls to Mercado Livre
     // refreshToken: Used to get new accessToken when it expires
-    // 
+    //
     // Lifecycle:
     // 1. User provides accessToken (manual) or gets it via OAuth
     // 2. If refreshToken is provided, system can auto-renew accessToken
@@ -56,7 +58,7 @@ const mlAccountSchema = new mongoose.Schema(
     // 5. Both are stored for next refresh cycle
     accessToken: {
       type: String,
-      required: [true, 'Access token is required'],
+      required: [true, "Access token is required"],
       trim: true,
     },
     refreshToken: {
@@ -66,13 +68,13 @@ const mlAccountSchema = new mongoose.Schema(
     },
     tokenExpiresAt: {
       type: Date,
-      required: [true, 'Token expiration time is required'],
+      required: [true, "Token expiration time is required"],
     },
 
     // OAuth Client Credentials
     // These are the client's own Mercado Livre app credentials
     // Used for automatic token refresh (refresh_token grant)
-    // 
+    //
     // Flow:
     // 1. Client provides: client_id, client_secret, code, redirect_uri
     // 2. We exchange code for tokens
@@ -98,8 +100,8 @@ const mlAccountSchema = new mongoose.Schema(
     // Account Status
     status: {
       type: String,
-      enum: ['active', 'paused', 'error', 'expired'],
-      default: 'active',
+      enum: ["active", "paused", "error", "expired"],
+      default: "active",
       index: true,
     },
 
@@ -122,7 +124,7 @@ const mlAccountSchema = new mongoose.Schema(
     },
     lastSyncStatus: {
       type: String,
-      enum: ['success', 'failed', 'in_progress', null],
+      enum: ["success", "failed", "in_progress", null],
       default: null,
     },
     lastSyncError: {
@@ -154,8 +156,8 @@ const mlAccountSchema = new mongoose.Schema(
     },
     accountType: {
       type: String,
-      enum: ['store', 'individual', 'business'],
-      default: 'individual',
+      enum: ["store", "individual", "business"],
+      default: "individual",
     },
     isPrimary: {
       type: Boolean,
@@ -214,7 +216,7 @@ const mlAccountSchema = new mongoose.Schema(
     },
     tokenRefreshStatus: {
       type: String,
-      enum: ['pending', 'in_progress', 'success', 'failed', null],
+      enum: ["pending", "in_progress", "success", "failed", null],
       default: null,
     },
     tokenRefreshError: {
@@ -239,8 +241,8 @@ const mlAccountSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-    collection: 'ml_accounts',
-  }
+    collection: "ml_accounts",
+  },
 );
 
 // Indexes for performance (additional, non-duplicated)
@@ -262,9 +264,12 @@ mlAccountSchema.methods.touchLastActivity = async function () {
 };
 
 // Update sync status
-mlAccountSchema.methods.updateSyncStatus = async function (status, error = null) {
+mlAccountSchema.methods.updateSyncStatus = async function (
+  status,
+  error = null,
+) {
   this.lastSyncStatus = status;
-  if (status === 'in_progress') {
+  if (status === "in_progress") {
     this.nextSync = new Date(Date.now() + this.syncInterval);
   }
   if (error) {
@@ -301,14 +306,14 @@ mlAccountSchema.methods.updateCachedData = async function (data) {
 // Pause synchronization
 mlAccountSchema.methods.pauseSync = async function () {
   this.syncEnabled = false;
-  this.status = 'paused';
+  this.status = "paused";
   return this.save();
 };
 
 // Resume synchronization
 mlAccountSchema.methods.resumeSync = async function () {
   this.syncEnabled = true;
-  this.status = 'active';
+  this.status = "active";
   this.nextSync = new Date(); // Trigger sync immediately
   return this.save();
 };
@@ -330,35 +335,46 @@ mlAccountSchema.methods.addError = async function (error, statusCode = null) {
 };
 
 // Update token refresh status
-mlAccountSchema.methods.updateTokenRefreshStatus = async function (status, error = null) {
+mlAccountSchema.methods.updateTokenRefreshStatus = async function (
+  status,
+  error = null,
+) {
   this.tokenRefreshStatus = status;
-  
-  if (status === 'success') {
+
+  if (status === "success") {
     this.lastTokenRefresh = new Date();
     this.tokenRefreshError = null;
     // Next refresh needed in ~5.5 hours (refresh when 5 min left)
-    this.nextTokenRefreshNeeded = new Date(this.tokenExpiresAt.getTime() - 5 * 60 * 1000);
-  } else if (status === 'failed' && error) {
+    this.nextTokenRefreshNeeded = new Date(
+      this.tokenExpiresAt.getTime() - 5 * 60 * 1000,
+    );
+  } else if (status === "failed" && error) {
     this.tokenRefreshError = error;
     // Retry refresh in 1 hour if it failed
     this.nextTokenRefreshNeeded = new Date(Date.now() + 60 * 60 * 1000);
   }
-  
+
   return this.save();
 };
 
 // Mark tokens as refreshed (call this when new tokens are received)
-mlAccountSchema.methods.refreshedTokens = async function (newAccessToken, newRefreshToken, expiresInSeconds) {
+mlAccountSchema.methods.refreshedTokens = async function (
+  newAccessToken,
+  newRefreshToken,
+  expiresInSeconds,
+) {
   this.accessToken = newAccessToken;
   if (newRefreshToken) {
     this.refreshToken = newRefreshToken;
   }
   this.tokenExpiresAt = new Date(Date.now() + expiresInSeconds * 1000);
   this.lastTokenRefresh = new Date();
-  this.nextTokenRefreshNeeded = new Date(this.tokenExpiresAt.getTime() - 5 * 60 * 1000);
-  this.tokenRefreshStatus = 'success';
+  this.nextTokenRefreshNeeded = new Date(
+    this.tokenExpiresAt.getTime() - 5 * 60 * 1000,
+  );
+  this.tokenRefreshStatus = "success";
   this.tokenRefreshError = null;
-  
+
   return this.save();
 };
 
@@ -374,7 +390,7 @@ mlAccountSchema.methods.isTokenRefreshNeeded = function () {
 
 // Disconnect account
 mlAccountSchema.methods.disconnect = async function () {
-  this.status = 'error';
+  this.status = "error";
   this.syncEnabled = false;
   this.disconnectedAt = new Date();
   return this.save();
@@ -397,6 +413,8 @@ mlAccountSchema.methods.getSummary = function () {
     cachedData: this.cachedData,
     errorCount: this.errorCount,
     createdAt: this.createdAt,
+    tokenExpiresAt: this.tokenExpiresAt,
+    lastTokenRefresh: this.lastTokenRefresh,
     // Token refresh info
     // canAutoRefresh: true if account has refreshToken (uses .env credentials as fallback)
     canAutoRefresh: !!this.refreshToken,
@@ -419,7 +437,7 @@ mlAccountSchema.statics.findPrimaryAccount = function (userId) {
 mlAccountSchema.statics.findAccountsToSync = function () {
   return this.find({
     syncEnabled: true,
-    status: { $in: ['active', 'paused'] },
+    status: { $in: ["active", "paused"] },
     $or: [{ nextSync: { $lte: new Date() } }, { lastSync: null }],
   });
 };
@@ -428,8 +446,8 @@ mlAccountSchema.statics.findAccountsToSync = function () {
 mlAccountSchema.statics.findAccountsWithExpiredTokens = function () {
   return this.find({
     tokenExpiresAt: { $lte: new Date() },
-    status: { $ne: 'error' },
+    status: { $ne: "error" },
   });
 };
 
-module.exports = mongoose.model('MLAccount', mlAccountSchema);
+module.exports = mongoose.model("MLAccount", mlAccountSchema);

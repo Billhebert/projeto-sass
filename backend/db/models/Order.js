@@ -3,15 +3,16 @@
  * Stores orders/sales from Mercado Livre
  */
 
-const mongoose = require('mongoose');
-const crypto = require('crypto');
+const mongoose = require("mongoose");
+const crypto = require("crypto");
 
 const orderSchema = new mongoose.Schema(
   {
     // Unique Identifier
     id: {
       type: String,
-      default: () => `order_${Date.now()}_${crypto.randomBytes(6).toString('hex')}`,
+      default: () =>
+        `order_${Date.now()}_${crypto.randomBytes(6).toString("hex")}`,
       unique: true,
       index: true,
     },
@@ -19,21 +20,21 @@ const orderSchema = new mongoose.Schema(
     // Relationship
     accountId: {
       type: String,
-      ref: 'MLAccount',
-      required: [true, 'Account ID is required'],
+      ref: "MLAccount",
+      required: [true, "Account ID is required"],
       index: true,
     },
     userId: {
       type: String,
-      ref: 'User',
-      required: [true, 'User ID is required'],
+      ref: "User",
+      required: [true, "User ID is required"],
       index: true,
     },
 
     // Mercado Livre Order Info
     mlOrderId: {
       type: String,
-      required: [true, 'Mercado Livre order ID is required'],
+      required: [true, "Mercado Livre order ID is required"],
       index: true,
     },
     packId: {
@@ -45,8 +46,17 @@ const orderSchema = new mongoose.Schema(
     // Order Status
     status: {
       type: String,
-      enum: ['confirmed', 'payment_required', 'payment_in_process', 'partially_paid', 'paid', 'partially_refunded', 'pending_cancel', 'cancelled'],
-      default: 'confirmed',
+      enum: [
+        "confirmed",
+        "payment_required",
+        "payment_in_process",
+        "partially_paid",
+        "paid",
+        "partially_refunded",
+        "pending_cancel",
+        "cancelled",
+      ],
+      default: "confirmed",
       index: true,
     },
     statusDetail: {
@@ -103,10 +113,12 @@ const orderSchema = new mongoose.Schema(
         title: String,
         categoryId: String,
         variationId: String,
-        variationAttributes: [{
-          name: String,
-          valueName: String,
-        }],
+        variationAttributes: [
+          {
+            name: String,
+            valueName: String,
+          },
+        ],
         quantity: Number,
         unitPrice: Number,
         fullUnitPrice: Number,
@@ -234,7 +246,7 @@ const orderSchema = new mongoose.Schema(
     grossAmount: {
       type: Number,
       default: 0,
-      description: 'Total amount before discounts'
+      description: "Total amount before discounts",
     },
     paidAmount: {
       type: Number,
@@ -262,7 +274,7 @@ const orderSchema = new mongoose.Schema(
     // Currency
     currencyId: {
       type: String,
-      default: 'BRL',
+      default: "BRL",
     },
 
     // Marketplace
@@ -326,8 +338,8 @@ const orderSchema = new mongoose.Schema(
     },
     syncStatus: {
       type: String,
-      enum: ['synced', 'pending', 'failed'],
-      default: 'synced',
+      enum: ["synced", "pending", "failed"],
+      default: "synced",
     },
 
     // Billing Info
@@ -349,8 +361,8 @@ const orderSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-    collection: 'orders',
-  }
+    collection: "orders",
+  },
 );
 
 // Indexes for performance
@@ -358,7 +370,7 @@ orderSchema.index({ accountId: 1, status: 1 });
 orderSchema.index({ userId: 1, status: 1 });
 orderSchema.index({ mlOrderId: 1, accountId: 1 }, { unique: true });
 orderSchema.index({ dateCreated: -1 });
-orderSchema.index({ 'buyer.id': 1 });
+orderSchema.index({ "buyer.id": 1 });
 orderSchema.index({ packId: 1 });
 
 // Methods
@@ -413,30 +425,30 @@ orderSchema.methods.getDetails = function () {
 // Static: Find orders by account
 orderSchema.statics.findByAccountId = function (accountId, options = {}) {
   const query = this.find({ accountId });
-  
-  if (options.status) query.where('status').equals(options.status);
+
+  if (options.status) query.where("status").equals(options.status);
   if (options.limit) query.limit(options.limit);
   if (options.sort) query.sort(options.sort);
   if (options.skip) query.skip(options.skip);
-  
+
   return query;
 };
 
 // Static: Find orders by user
 orderSchema.statics.findByUserId = function (userId, options = {}) {
   const query = this.find({ userId });
-  
-  if (options.status) query.where('status').equals(options.status);
+
+  if (options.status) query.where("status").equals(options.status);
   if (options.limit) query.limit(options.limit);
   if (options.sort) query.sort(options.sort);
-  
+
   return query;
 };
 
 // Static: Get order statistics
 orderSchema.statics.getStats = async function (accountId, dateRange = {}) {
   const match = { accountId };
-  
+
   if (dateRange.start) {
     match.dateCreated = { $gte: new Date(dateRange.start) };
   }
@@ -448,10 +460,10 @@ orderSchema.statics.getStats = async function (accountId, dateRange = {}) {
     { $match: match },
     {
       $group: {
-        _id: '$status',
+        _id: "$status",
         count: { $sum: 1 },
-        totalAmount: { $sum: '$totalAmount' },
-        paidAmount: { $sum: '$paidAmount' },
+        totalAmount: { $sum: "$totalAmount" },
+        paidAmount: { $sum: "$paidAmount" },
       },
     },
   ]);
@@ -459,4 +471,11 @@ orderSchema.statics.getStats = async function (accountId, dateRange = {}) {
   return stats;
 };
 
-module.exports = mongoose.model('Order', orderSchema);
+// Indexes for performance optimization
+orderSchema.index({ userId: 1, accountId: 1 });
+orderSchema.index({ dateCreated: -1 });
+orderSchema.index({ status: 1, dateCreated: -1 });
+orderSchema.index({ accountId: 1, status: 1 });
+orderSchema.index({ mlOrderId: 1, accountId: 1 });
+
+module.exports = mongoose.model("Order", orderSchema);
