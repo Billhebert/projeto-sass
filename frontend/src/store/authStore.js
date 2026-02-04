@@ -19,13 +19,14 @@ export const useAuthStore = create((set) => ({
     set({ loading: true, error: null });
     try {
       const response = await api.post("/auth/login", { email, password });
-      const { data, token, user } = response.data;
 
-      // Handle both response formats
-      const actualToken = token || data?.token;
-      const actualUser = user || data?.user;
+      // API returns { success: true, data: { user, token } }
+      const responseData = response.data.data || response.data;
+      const actualToken = responseData.token;
+      const actualUser = responseData.user;
 
       if (!actualToken || !actualUser) {
+        console.error("Invalid response format:", response.data);
         throw new Error("Invalid response format: missing token or user");
       }
 

@@ -11,8 +11,11 @@ COPY package.json ./
 # Install dependencies
 RUN npm install
 
-# Copy source code
+# Copy source code including .env files
 COPY . .
+
+# Create a default .env if it doesn't exist
+RUN if [ ! -f .env ]; then echo "VITE_API_URL=/api" > .env; fi
 
 # Build the app
 RUN npm run build
