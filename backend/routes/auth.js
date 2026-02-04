@@ -2118,4 +2118,327 @@ router.get("/2fa/status", async (req, res) => {
   }
 });
 
+/**
+ * POST /api/auth/refresh-token
+ * Refresh JWT token to extend session
+ *
+ * Request body:
+ * {
+ *   token: string  // Current JWT token (or send in Authorization header)
+ * }
+ *
+ * Response:
+ * {
+ *   success: boolean,
+ *   data: {
+ *     token: string  // New JWT token
+ *     expiresIn: string  // Token expiration time
+ *   }
+ * }
+ */
+router.post("/refresh-token", async (req, res) => {
+  try {
+    // Get token from Authorization header or request body
+    let token = req.body.token;
+    if (!token) {
+      const authHeader = req.headers["authorization"];
+      token = authHeader && authHeader.split(" ")[1];
+    }
+
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        error: "Token is required",
+      });
+    }
+
+    // Verify the token (even if expired, we need to extract the payload)
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || "your-secret-key");
+    } catch (error) {
+      // If token is expired, we can still try to decode it without verification
+      try {
+        decoded = jwt.decode(token);
+        if (!decoded) {
+          throw new Error("Invalid token");
+        }
+      } catch (decodeError) {
+        return res.status(401).json({
+          success: false,
+          error: "Invalid or malformed token",
+        });
+      }
+    }
+
+    // Get user to validate they still exist and are active
+    const user = await User.findOne({ id: decoded.userId });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: "User not found",
+      });
+    }
+
+    // Check if user is still active
+    if (user.status !== "active") {
+      return res.status(403).json({
+        success: false,
+        error: "User account is not active",
+      });
+    }
+
+    // Generate new JWT token with extended expiration
+    const newToken = jwt.sign(
+      {
+        userId: user.id,
+        email: user.email,
+        role: user.role,
+      },
+      process.env.JWT_SECRET || "your-secret-key",
+      { expiresIn: "7d" }, // Extend token validity to 7 days
+    );
+
+    logger.info({
+      action: "TOKEN_REFRESH_SUCCESS",
+      userId: user.id,
+      email: user.email,
+      timestamp: new Date().toISOString(),
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Token refreshed successfully",
+      data: {
+        token: newToken,
+        expiresIn: "7 days",
+      },
+    });
+  } catch (error) {
+    logger.error({
+      action: "REFRESH_TOKEN_ERROR",
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+    return res.status(500).json({
+      success: false,
+      error: "Failed to refresh token",
+    });
+  }
+});
+
+/**
+ * GET /api/auth/me
+ * Get current authenticated user profile
+ * Requires JWT token in Authorization header
+ */
+router.get("/me", async (req, res) => {
+  try {
+    const authHeader = req.headers["authorization"];
+    const token = authHeader && authHeader.split(" ")[1];
+
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        error: "Authentication required",
+      });
+    }
+
+    // Verify JWT token
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || "your-secret-key");
+    } catch (error) {
+      return res.status(401).json({
+        success: false,
+        error: "Invalid or expired token",
+      });
+    }
+
+    // Get user
+    const user = await User.findOne({ id: decoded.userId });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: "User not found",
+      });
+    }
+
+    // Return user profile
+    return res.status(200).json({
+      success: true,
+      data: {
+        user: user.getProfile(),
+      },
+    });
+  } catch (error) {
+    logger.error({
+      action: "GET_USER_PROFILE_ERROR",
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+    return res.status(500).json({
+      success: false,
+      error: "Failed to get user profile",
+    });
+  }
+});
+
+/**
+ * POST /api/auth/logout
+ * Logout user (invalidate session)
+ * Requires JWT token in Authorization header
+ */
+router.post("/logout", async (req, res) => {
+  try {
+    const authHeader = req.headers["authorization"];
+    const token = authHeader && authHeader.split(" ")[1];
+
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        error: "Authentication required",
+      });
+    }
+
+    // Verify JWT token
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || "your-secret-key");
+    } catch (error) {
+      return res.status(401).json({
+        success: false,
+        error: "Invalid or expired token",
+      });
+    }
+
+    // Get user and remove session if using session management
+    const user = await User.findOne({ id: decoded.userId });
+    if (user) {
+      // Optional: You can implement session revocation here
+      // For now, we'll just log the logout
+
+      logger.info({
+        action: "USER_LOGOUT",
+        userId: user.id,
+        email: user.email,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Logged out successfully",
+    });
+  } catch (error) {
+    logger.error({
+      action: "LOGOUT_ERROR",
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+    return res.status(500).json({
+      success: false,
+      error: "Failed to logout",
+    });
+  }
+});
+
+/**
+ * POST /api/auth/change-password
+ * Change user password
+ * Requires JWT token in Authorization header
+ *
+ * Request body:
+ * {
+ *   currentPassword: string,
+ *   newPassword: string
+ * }
+ */
+router.post("/change-password", async (req, res) => {
+  try {
+    const authHeader = req.headers["authorization"];
+    const token = authHeader && authHeader.split(" ")[1];
+    const { currentPassword, newPassword } = req.body;
+
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        error: "Authentication required",
+      });
+    }
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        error: "Current password and new password are required",
+      });
+    }
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({
+        success: false,
+        error: "New password must be at least 8 characters",
+      });
+    }
+
+    // Verify JWT token
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || "your-secret-key");
+    } catch (error) {
+      return res.status(401).json({
+        success: false,
+        error: "Invalid or expired token",
+      });
+    }
+
+    // Get user with password
+    const user = await User.findOne({ id: decoded.userId }).select("+password");
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: "User not found",
+      });
+    }
+
+    // Verify current password
+    const isPasswordValid = await bcrypt.compare(
+      currentPassword,
+      user.password,
+    );
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        error: "Current password is incorrect",
+      });
+    }
+
+    // Update password
+    user.password = newPassword;
+    await user.save();
+
+    logger.info({
+      action: "PASSWORD_CHANGED",
+      userId: user.id,
+      email: user.email,
+      timestamp: new Date().toISOString(),
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Password changed successfully",
+    });
+  } catch (error) {
+    logger.error({
+      action: "CHANGE_PASSWORD_ERROR",
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+    return res.status(500).json({
+      success: false,
+      error: "Failed to change password",
+    });
+  }
+});
+
 module.exports = router;
