@@ -111,8 +111,8 @@ router.post("/users/:id/approve", checkAdminToken, async (req, res) => {
   try {
     const { id } = req.params;
 
-    const user = await User.findByIdAndUpdate(
-      id,
+    const user = await User.findOneAndUpdate(
+      { id: id },
       {
         emailVerified: true,
         status: "active",
@@ -162,7 +162,7 @@ router.post("/users/:id/reject", checkAdminToken, async (req, res) => {
     const { id } = req.params;
     const { reason } = req.body;
 
-    const user = await User.findByIdAndDelete(id);
+    const user = await User.findOneAndDelete({ id: id });
 
     if (!user) {
       return res.status(404).json({
@@ -205,7 +205,7 @@ router.post("/users/:id/toggle-status", checkAdminToken, async (req, res) => {
   try {
     const { id } = req.params;
 
-    const user = await User.findById(id);
+    const user = await User.findOne({ id: id });
 
     if (!user) {
       return res.status(404).json({
@@ -216,8 +216,8 @@ router.post("/users/:id/toggle-status", checkAdminToken, async (req, res) => {
 
     const newStatus = user.status === "active" ? "inactive" : "active";
 
-    const updatedUser = await User.findByIdAndUpdate(
-      id,
+    const updatedUser = await User.findOneAndUpdate(
+      { id: id },
       { status: newStatus },
       { new: true },
     ).select("-password");
@@ -257,8 +257,8 @@ router.post("/users/:id/make-admin", checkAdminToken, async (req, res) => {
   try {
     const { id } = req.params;
 
-    const updatedUser = await User.findByIdAndUpdate(
-      id,
+    const updatedUser = await User.findOneAndUpdate(
+      { id: id },
       {
         role: "admin",
         permissions: ["all"],
