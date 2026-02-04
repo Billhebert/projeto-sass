@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import VerifyEmail from "./pages/VerifyEmail";
+import Admin from "./pages/Admin";
 import Dashboard from "./pages/Dashboard";
 import Accounts from "./pages/Accounts";
 import Products from "./pages/Products";
@@ -76,6 +77,9 @@ function App() {
       <Routes>
         {/* OAuth Callback - accessible without authentication */}
         <Route path="/auth/callback" element={<OAuthCallback />} />
+
+        {/* Admin Panel - accessible without authentication */}
+        <Route path="/admin" element={<Admin />} />
 
         {!token ? (
           <>

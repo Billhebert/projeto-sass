@@ -170,6 +170,7 @@ app.get("/health", (req, res) => {
 // Import route handlers - Core
 const authRoutes = require("./routes/auth");
 const authUserRoutes = require("./routes/auth-user");
+const adminRoutes = require("./routes/admin");
 const webhookRoutes = require("./routes/webhooks");
 const accountRoutes = require("./routes/accounts");
 const syncRoutes = require("./routes/sync");
@@ -263,6 +264,7 @@ app.get("/api-docs/swagger.json", (req, res) => {
 // Core Authentication & User Management
 app.use("/api/auth", authRoutes);
 app.use("/api/user", authUserRoutes);
+app.use("/api/admin", adminRoutes);
 app.use("/api/webhooks", webhookRoutes);
 app.use("/api/accounts", accountRoutes);
 app.use("/api/sync", syncRoutes);
