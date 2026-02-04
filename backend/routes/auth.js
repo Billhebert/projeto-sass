@@ -15,6 +15,8 @@ const path = require("path");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const rateLimit = require("express-rate-limit");
+const speakeasy = require("speakeasy");
+const QRCode = require("qrcode");
 
 const router = express.Router();
 
@@ -1614,6 +1616,504 @@ router.post("/verify-reset-token", async (req, res) => {
     return res.status(500).json({
       success: false,
       error: "Failed to verify reset token",
+    });
+  }
+});
+
+/**
+ * POST /api/auth/2fa/setup
+ * Setup two-factor authentication for a user (admin only)
+ * Requires JWT token in Authorization header
+ *
+ * Request body:
+ * (empty - just needs to be authenticated)
+ *
+ * Response:
+ * {
+ *   success: boolean,
+ *   message: string,
+ *   data: {
+ *     secret: string,      // Secret key for TOTP
+ *     qrCode: string       // QR code URL (data:image/png;base64,...)
+ *   }
+ * }
+ */
+router.post("/2fa/setup", async (req, res) => {
+  try {
+    // Check if user is authenticated
+    const authHeader = req.headers["authorization"];
+    const token = authHeader && authHeader.split(" ")[1];
+
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        error: "Authentication required",
+      });
+    }
+
+    // Verify JWT token
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || "your-secret-key");
+    } catch (error) {
+      return res.status(401).json({
+        success: false,
+        error: "Invalid or expired token",
+      });
+    }
+
+    // Get user
+    const user = await User.findOne({ id: decoded.userId });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: "User not found",
+      });
+    }
+
+    // Only allow admins to enable 2FA
+    if (user.role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        error: "Only admins can enable 2FA",
+      });
+    }
+
+    // Generate TOTP secret
+    const secret = speakeasy.generateSecret({
+      name: `Projeto SASS (${user.email})`,
+      issuer: "Projeto SASS",
+      length: 32,
+    });
+
+    // Generate QR code
+    const qrCode = await QRCode.toDataURL(secret.otpauth_url);
+
+    // Store the secret temporarily (not yet enabled)
+    user.twoFactorSecret = secret.base32;
+
+    // Generate backup codes
+    const backupCodes = [];
+    for (let i = 0; i < 10; i++) {
+      backupCodes.push({
+        code: crypto.randomBytes(4).toString("hex").toUpperCase(),
+        used: false,
+      });
+    }
+    user.backupCodes = backupCodes;
+    await user.save();
+
+    logger.info({
+      action: "2FA_SETUP_INITIATED",
+      userId: user.id,
+      email: user.email,
+      timestamp: new Date().toISOString(),
+    });
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "2FA setup initiated. Please verify with your authenticator app.",
+      data: {
+        secret: secret.base32,
+        qrCode,
+        backupCodes: backupCodes.map((b) => b.code),
+      },
+    });
+  } catch (error) {
+    logger.error({
+      action: "2FA_SETUP_ERROR",
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+    return res.status(500).json({
+      success: false,
+      error: "Failed to setup 2FA",
+    });
+  }
+});
+
+/**
+ * POST /api/auth/2fa/verify
+ * Verify 2FA code and enable 2FA for account
+ *
+ * Request body:
+ * {
+ *   code: string  // 6-digit TOTP code
+ * }
+ *
+ * Response:
+ * {
+ *   success: boolean,
+ *   message: string,
+ *   data: {
+ *     backupCodes: string[]
+ *   }
+ * }
+ */
+router.post("/2fa/verify", async (req, res) => {
+  try {
+    const authHeader = req.headers["authorization"];
+    const token = authHeader && authHeader.split(" ")[1];
+    const { code } = req.body;
+
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        error: "Authentication required",
+      });
+    }
+
+    if (!code) {
+      return res.status(400).json({
+        success: false,
+        error: "Verification code is required",
+      });
+    }
+
+    // Verify JWT token
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || "your-secret-key");
+    } catch (error) {
+      return res.status(401).json({
+        success: false,
+        error: "Invalid or expired token",
+      });
+    }
+
+    // Get user
+    const user = await User.findOne({ id: decoded.userId }).select(
+      "+twoFactorSecret",
+    );
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: "User not found",
+      });
+    }
+
+    // Check if user has a pending 2FA setup
+    if (!user.twoFactorSecret) {
+      return res.status(400).json({
+        success: false,
+        error: "No pending 2FA setup found. Start setup first.",
+      });
+    }
+
+    // Verify the TOTP code
+    const verified = speakeasy.totp.verify({
+      secret: user.twoFactorSecret,
+      encoding: "base32",
+      token: code,
+      window: 2,
+    });
+
+    if (!verified) {
+      logger.warn({
+        action: "2FA_VERIFY_FAILED",
+        userId: user.id,
+        email: user.email,
+        timestamp: new Date().toISOString(),
+      });
+      return res.status(400).json({
+        success: false,
+        error: "Invalid verification code",
+      });
+    }
+
+    // Enable 2FA
+    user.twoFactorEnabled = true;
+    await user.save();
+
+    logger.info({
+      action: "2FA_ENABLED",
+      userId: user.id,
+      email: user.email,
+      timestamp: new Date().toISOString(),
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "2FA enabled successfully",
+      data: {
+        backupCodes: user.backupCodes.map((b) => b.code),
+      },
+    });
+  } catch (error) {
+    logger.error({
+      action: "2FA_VERIFY_ERROR",
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+    return res.status(500).json({
+      success: false,
+      error: "Failed to verify 2FA code",
+    });
+  }
+});
+
+/**
+ * POST /api/auth/2fa/login
+ * Complete login with 2FA code for users with 2FA enabled
+ *
+ * Request body:
+ * {
+ *   code: string  // 6-digit TOTP code or backup code
+ * }
+ *
+ * Response:
+ * {
+ *   success: boolean,
+ *   message: string,
+ *   data: {
+ *     token: string  // JWT token
+ *   }
+ * }
+ */
+router.post("/2fa/login", async (req, res) => {
+  try {
+    const { code } = req.body;
+    const userId = req.query.userId; // Should be passed from initial login
+
+    if (!code || !userId) {
+      return res.status(400).json({
+        success: false,
+        error: "Code and userId are required",
+      });
+    }
+
+    // Get user
+    const user = await User.findOne({ id: userId }).select("+twoFactorSecret");
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: "User not found",
+      });
+    }
+
+    // Check if 2FA is enabled
+    if (!user.twoFactorEnabled) {
+      return res.status(400).json({
+        success: false,
+        error: "2FA is not enabled for this account",
+      });
+    }
+
+    // Try to verify TOTP code first
+    let verified = speakeasy.totp.verify({
+      secret: user.twoFactorSecret,
+      encoding: "base32",
+      token: code,
+      window: 2,
+    });
+
+    // If TOTP fails, try backup codes
+    if (!verified) {
+      const backupCodeIndex = user.backupCodes.findIndex(
+        (b) => b.code === code && !b.used,
+      );
+      if (backupCodeIndex !== -1) {
+        verified = true;
+        user.backupCodes[backupCodeIndex].used = true;
+        user.backupCodes[backupCodeIndex].usedAt = new Date();
+      }
+    }
+
+    if (!verified) {
+      logger.warn({
+        action: "2FA_LOGIN_FAILED",
+        userId: user.id,
+        email: user.email,
+        timestamp: new Date().toISOString(),
+      });
+      return res.status(400).json({
+        success: false,
+        error: "Invalid 2FA code",
+      });
+    }
+
+    // Save backup code usage if applicable
+    if (user.isModified("backupCodes")) {
+      await user.save();
+    }
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { userId: user.id, email: user.email, role: user.role },
+      process.env.JWT_SECRET || "your-secret-key",
+      { expiresIn: "7d" },
+    );
+
+    logger.info({
+      action: "2FA_LOGIN_SUCCESS",
+      userId: user.id,
+      email: user.email,
+      timestamp: new Date().toISOString(),
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "2FA verification successful",
+      data: {
+        token,
+      },
+    });
+  } catch (error) {
+    logger.error({
+      action: "2FA_LOGIN_ERROR",
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+    return res.status(500).json({
+      success: false,
+      error: "Failed to verify 2FA code",
+    });
+  }
+});
+
+/**
+ * POST /api/auth/2fa/disable
+ * Disable 2FA for a user
+ *
+ * Request body:
+ * {
+ *   password: string  // User's password for confirmation
+ * }
+ */
+router.post("/2fa/disable", async (req, res) => {
+  try {
+    const authHeader = req.headers["authorization"];
+    const token = authHeader && authHeader.split(" ")[1];
+    const { password } = req.body;
+
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        error: "Authentication required",
+      });
+    }
+
+    if (!password) {
+      return res.status(400).json({
+        success: false,
+        error: "Password is required for disabling 2FA",
+      });
+    }
+
+    // Verify JWT token
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || "your-secret-key");
+    } catch (error) {
+      return res.status(401).json({
+        success: false,
+        error: "Invalid or expired token",
+      });
+    }
+
+    // Get user
+    const user = await User.findOne({ id: decoded.userId }).select(
+      "+password +twoFactorSecret",
+    );
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: "User not found",
+      });
+    }
+
+    // Verify password
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        error: "Invalid password",
+      });
+    }
+
+    // Disable 2FA
+    user.twoFactorEnabled = false;
+    user.twoFactorSecret = null;
+    user.backupCodes = [];
+    await user.save();
+
+    logger.info({
+      action: "2FA_DISABLED",
+      userId: user.id,
+      email: user.email,
+      timestamp: new Date().toISOString(),
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "2FA disabled successfully",
+    });
+  } catch (error) {
+    logger.error({
+      action: "2FA_DISABLE_ERROR",
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+    return res.status(500).json({
+      success: false,
+      error: "Failed to disable 2FA",
+    });
+  }
+});
+
+/**
+ * GET /api/auth/2fa/status
+ * Get 2FA status for current user
+ */
+router.get("/2fa/status", async (req, res) => {
+  try {
+    const authHeader = req.headers["authorization"];
+    const token = authHeader && authHeader.split(" ")[1];
+
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        error: "Authentication required",
+      });
+    }
+
+    // Verify JWT token
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || "your-secret-key");
+    } catch (error) {
+      return res.status(401).json({
+        success: false,
+        error: "Invalid or expired token",
+      });
+    }
+
+    // Get user
+    const user = await User.findOne({ id: decoded.userId });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: "User not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        twoFactorEnabled: user.twoFactorEnabled,
+        backupCodesRemaining: user.backupCodes.filter((b) => !b.used).length,
+      },
+    });
+  } catch (error) {
+    logger.error({
+      action: "2FA_STATUS_ERROR",
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+    return res.status(500).json({
+      success: false,
+      error: "Failed to get 2FA status",
     });
   }
 });
