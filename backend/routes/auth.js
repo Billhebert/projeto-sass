@@ -14,12 +14,58 @@ const crypto = require("crypto");
 const path = require("path");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+const rateLimit = require("express-rate-limit");
 
 const router = express.Router();
 
 // Models
 const User = require("../db/models/User");
 const logger = require("../logger");
+
+// Stricter rate limiter specifically for login endpoint
+// Prevents brute force attacks - 5 failed attempts per 15 minutes
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // max 5 failed attempts
+  message:
+    "Too many login attempts. Please try again later or use password reset.",
+  skipSuccessfulRequests: true, // Only count failed attempts
+  keyGenerator: (req) => req.ip || req.connection.remoteAddress,
+  handler: (req, res) => {
+    logger.warn({
+      action: "LOGIN_RATE_LIMIT_EXCEEDED",
+      ip: req.ip || req.connection.remoteAddress,
+      email: req.body?.email,
+      timestamp: new Date().toISOString(),
+    });
+    return res.status(429).json({
+      success: false,
+      error:
+        "Too many login attempts. Please try again later or use password reset.",
+    });
+  },
+});
+
+// Rate limiter for registration endpoint
+// Prevents account creation spam - 3 registrations per hour per IP
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 3, // max 3 registrations per hour per IP
+  message: "Too many registration attempts. Please try again after an hour.",
+  keyGenerator: (req) => req.ip || req.connection.remoteAddress,
+  handler: (req, res) => {
+    logger.warn({
+      action: "REGISTER_RATE_LIMIT_EXCEEDED",
+      ip: req.ip || req.connection.remoteAddress,
+      email: req.body?.email,
+      timestamp: new Date().toISOString(),
+    });
+    return res.status(429).json({
+      success: false,
+      error: "Too many registration attempts. Please try again after an hour.",
+    });
+  },
+});
 
 // ML API Endpoints
 const ML_AUTH_URL = "https://auth.mercadolibre.com/authorization";
@@ -37,8 +83,9 @@ const {
 /**
  * POST /api/auth/register
  * Register a new user
+ * Rate limited to 3 registrations per hour per IP
  */
-router.post("/register", async (req, res) => {
+router.post("/register", registerLimiter, async (req, res) => {
   try {
     const { email, password, firstName, lastName } = req.body;
 
@@ -111,8 +158,9 @@ router.post("/register", async (req, res) => {
 /**
  * POST /api/auth/login
  * Login user with email and password
+ * Rate limited to 5 failed attempts per 15 minutes
  */
-router.post("/login", async (req, res) => {
+router.post("/login", loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
 
