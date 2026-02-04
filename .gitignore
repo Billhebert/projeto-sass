@@ -11,6 +11,12 @@ node_modules/
 backend/data/
 backend/logs/
 
+# Frontend dist build
+frontend/dist/
+
+# Nginx logs
+data/nginx-logs/
+
 # IDE
 .vscode/
 .idea/
@@ -27,3 +33,4 @@ yarn.lock
 
 *storybook.log
 storybook-static
+
