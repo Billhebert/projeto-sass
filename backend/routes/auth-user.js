@@ -8,6 +8,7 @@ const router = express.Router();
 const jwt = require('jsonwebtoken');
 const User = require('../db/models/User');
 const logger = require('../logger');
+const emailService = require('../services/email');
 const { authenticateToken } = require('../middleware/auth');
 const { validateEmail, validatePassword } = require('../middleware/validation');
 
@@ -50,8 +51,23 @@ router.post('/register', validateEmail, validatePassword, async (req, res) => {
       timestamp: new Date().toISOString(),
     });
 
-    // TODO: Send verification email with token
-    // await sendVerificationEmail(user.email, verificationToken);
+    // Send verification email with token
+    try {
+      await emailService.sendVerificationEmail(
+        user.email,
+        verificationToken,
+        user.firstName
+      );
+    } catch (emailError) {
+      logger.error({
+        action: 'EMAIL_SEND_FAILED_DURING_REGISTER',
+        email: user.email,
+        error: emailError.message,
+        timestamp: new Date().toISOString(),
+      });
+      // Don't fail the registration if email sending fails
+      // The user can request to resend verification email later
+    }
 
     res.status(201).json({
       success: true,
@@ -59,6 +75,7 @@ router.post('/register', validateEmail, validatePassword, async (req, res) => {
       data: {
         user: user.getProfile(),
         verificationRequired: true,
+        emailSent: true,
       },
     });
   } catch (error) {
@@ -318,9 +335,24 @@ router.post('/forgot-password', async (req, res) => {
       timestamp: new Date().toISOString(),
     });
 
-    // TODO: Send password reset email with token
-    // const resetLink = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
-    // await sendPasswordResetEmail(user.email, resetLink);
+    // Send password reset email with token
+    try {
+      const resetLink = `${process.env.FRONTEND_URL || 'https://vendata.com.br'}/reset-password/${resetToken}`;
+      await emailService.sendPasswordResetEmail(
+        user.email,
+        resetToken,
+        user.firstName
+      );
+    } catch (emailError) {
+      logger.error({
+        action: 'EMAIL_SEND_FAILED_DURING_PASSWORD_RESET',
+        email: user.email,
+        error: emailError.message,
+        timestamp: new Date().toISOString(),
+      });
+      // Don't fail the request if email sending fails
+      // User might try again
+    }
 
     res.json({
       success: true,
@@ -543,6 +575,91 @@ router.put('/profile', authenticateToken, async (req, res) => {
       success: false,
       message: 'Profile update failed',
       code: 'UPDATE_PROFILE_ERROR',
+    });
+  }
+});
+
+// ============================================
+// RESEND VERIFICATION EMAIL - Send verification email again
+// ============================================
+
+router.post('/resend-verification-email', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required',
+        code: 'MISSING_EMAIL',
+      });
+    }
+
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.json({
+        success: true,
+        message: 'If an account exists, a verification email has been sent.',
+      });
+    }
+
+    // Check if already verified
+    if (user.emailVerified) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is already verified',
+        code: 'EMAIL_ALREADY_VERIFIED',
+      });
+    }
+
+    // Generate new verification token
+    const verificationToken = user.generateEmailVerificationToken();
+    await user.save();
+
+    // Send verification email
+    try {
+      await emailService.sendVerificationEmail(
+        user.email,
+        verificationToken,
+        user.firstName
+      );
+    } catch (emailError) {
+      logger.error({
+        action: 'EMAIL_SEND_FAILED_RESEND_VERIFICATION',
+        email: user.email,
+        error: emailError.message,
+        timestamp: new Date().toISOString(),
+      });
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to send verification email',
+        code: 'EMAIL_SEND_ERROR',
+      });
+    }
+
+    logger.info({
+      action: 'VERIFICATION_EMAIL_RESENT',
+      email: user.email,
+      userId: user.id,
+      timestamp: new Date().toISOString(),
+    });
+
+    res.json({
+      success: true,
+      message: 'Verification email has been sent. Please check your inbox.',
+    });
+  } catch (error) {
+    logger.error({
+      action: 'RESEND_VERIFICATION_ERROR',
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to resend verification email',
+      code: 'RESEND_ERROR',
     });
   }
 });
