@@ -381,3 +381,14 @@
 2026/02/04 09:27:20 [warn] 1#1: conflicting server name "www.vendata.com.br" on 0.0.0.0:443, ignored
 2026/02/04 09:27:20 [warn] 1#1: conflicting server name "www.vendata.com.br" on [::]:443, ignored
 2026/02/04 09:27:20 [warn] 1#1: 4096 worker_connections exceed open file resource limit: 1024
+2026/02/04 11:24:31 [warn] 1#1: the "listen ... http2" directive is deprecated, use the "http2" directive instead in /etc/nginx/nginx.conf:97
+2026/02/04 11:24:31 [warn] 1#1: the "listen ... http2" directive is deprecated, use the "http2" directive instead in /etc/nginx/nginx.conf:98
+2026/02/04 11:24:31 [warn] 1#1: the "listen ... http2" directive is deprecated, use the "http2" directive instead in /etc/nginx/nginx.conf:221
+2026/02/04 11:24:31 [warn] 1#1: the "listen ... http2" directive is deprecated, use the "http2" directive instead in /etc/nginx/nginx.conf:222
+2026/02/04 11:24:31 [warn] 1#1: the "listen ... http2" directive is deprecated, use the "http2" directive instead in /etc/nginx/nginx.conf:293
+2026/02/04 11:24:31 [warn] 1#1: the "listen ... http2" directive is deprecated, use the "http2" directive instead in /etc/nginx/nginx.conf:294
+2026/02/04 11:24:31 [warn] 1#1: the "listen ... http2" directive is deprecated, use the "http2" directive instead in /etc/nginx/nginx.conf:307
+2026/02/04 11:24:31 [warn] 1#1: the "listen ... http2" directive is deprecated, use the "http2" directive instead in /etc/nginx/nginx.conf:308
+2026/02/04 11:24:31 [warn] 1#1: conflicting server name "www.vendata.com.br" on 0.0.0.0:443, ignored
+2026/02/04 11:24:31 [warn] 1#1: conflicting server name "www.vendata.com.br" on [::]:443, ignored
+2026/02/04 11:24:31 [warn] 1#1: 4096 worker_connections exceed open file resource limit: 1024

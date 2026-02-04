@@ -50,6 +50,10 @@ const wss = new WebSocket.Server({ server, path: "/ws" });
 const PORT = process.env.PORT || 3011;
 const NODE_ENV = process.env.NODE_ENV || "development";
 
+// Trust proxy - required when behind nginx/load balancer
+// This allows express to trust X-Forwarded-For header from nginx
+app.set("trust proxy", 1);
+
 // ============================================
 // SECURITY MIDDLEWARE
 // ============================================
