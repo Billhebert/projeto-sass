@@ -4,6 +4,7 @@ import { cacheService } from "./cache";
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "/api",
   timeout: 10000,
+  withCredentials: true, // Enable CORS with credentials
 });
 
 // Add token to requests

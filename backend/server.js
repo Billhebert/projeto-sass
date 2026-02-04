@@ -143,14 +143,59 @@ app.use((req, res, next) => {
 // ============================================
 
 const corsOptions = {
-  origin: process.env.FRONTEND_URL || "http://localhost:5000",
+  origin: function (origin, callback) {
+    const allowedOrigins = [
+      process.env.FRONTEND_URL || "http://localhost:5000",
+      "http://localhost:5173",
+      "http://localhost:3000",
+      "https://vendata.com.br",
+      "https://www.vendata.com.br",
+    ];
+
+    // Allow requests with no origin (mobile apps, curl requests)
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      // Also allow for development with wildcard
+      if (NODE_ENV !== "production") {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    }
+  },
   credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Request-ID"],
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "X-Request-ID",
+    "X-Admin-Token",
+    "Accept",
+  ],
+  exposedHeaders: ["Content-Type", "Authorization"],
   maxAge: 86400, // 24 horas
 };
 
 app.use(cors(corsOptions));
+
+// Explicit CORS preflight handling
+app.options("*", cors(corsOptions));
+
+// Debug CORS headers
+app.use((req, res, next) => {
+  const origin = req.get("origin");
+  if (NODE_ENV !== "production") {
+    logger.debug({
+      context: "CORS_DEBUG",
+      origin,
+      method: req.method,
+      path: req.path,
+      corsEnabled: !!res.get("access-control-allow-origin"),
+    });
+  }
+  next();
+});
 
 // ============================================
 // HEALTH CHECK
