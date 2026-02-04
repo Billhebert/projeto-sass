@@ -70,20 +70,16 @@ export const useAuthStore = create((set) => ({
     set({ loading: true, error: null });
     try {
       const response = await api.post("/auth/register", data);
-      const { data: responseData, token, user } = response.data;
+      const { data: responseData, message } = response.data;
 
-      // Handle both response formats
-      const actualToken = token || responseData?.token;
-      const actualUser = user || responseData?.user;
-
-      if (!actualToken || !actualUser) {
-        throw new Error("Invalid response format: missing token or user");
-      }
-
-      localStorage.setItem("token", actualToken);
-      localStorage.setItem("user", JSON.stringify(actualUser));
-      set({ token: actualToken, user: actualUser, loading: false });
-      return true;
+      // Registration successful - user needs to verify email
+      // Store email for verification step
+      localStorage.setItem("pendingVerificationEmail", data.email);
+      set({ loading: false, error: null });
+      return {
+        success: true,
+        message: message || "Please check your email to verify your account",
+      };
     } catch (error) {
       let message = "Registration failed";
 
@@ -110,7 +106,103 @@ export const useAuthStore = create((set) => ({
       }
 
       set({ error: message, loading: false });
-      return false;
+      return { success: false, message };
+    }
+  },
+
+  verifyEmail: async (token) => {
+    set({ loading: true, error: null });
+    try {
+      const response = await api.post("/auth/verify-email", { token });
+      const { data, token: authToken, user } = response.data;
+
+      // Handle both response formats
+      const actualToken = authToken || data?.token;
+      const actualUser = user || data?.user;
+
+      if (!actualToken || !actualUser) {
+        throw new Error("Invalid response format: missing token or user");
+      }
+
+      // Clear pending verification email
+      localStorage.removeItem("pendingVerificationEmail");
+
+      localStorage.setItem("token", actualToken);
+      localStorage.setItem("user", JSON.stringify(actualUser));
+      set({ token: actualToken, user: actualUser, loading: false });
+      return { success: true, message: "Email verified successfully!" };
+    } catch (error) {
+      let message = "Email verification failed";
+
+      if (error.response) {
+        const status = error.response.status;
+        const data = error.response.data;
+
+        switch (status) {
+          case 400:
+            message = data.error || "Invalid or expired token";
+            break;
+          case 404:
+            message = data.error || "User not found";
+            break;
+          case 500:
+            message = "Server error - please try again later";
+            break;
+          default:
+            message =
+              data.error || error.message || "Email verification failed";
+        }
+      } else if (error.request) {
+        message = "Network error - please check your connection";
+      }
+
+      set({ error: message, loading: false });
+      return { success: false, message };
+    }
+  },
+
+  resendVerificationEmail: async (email) => {
+    set({ loading: true, error: null });
+    try {
+      const response = await api.post("/auth/resend-verification-email", {
+        email,
+      });
+      const { message } = response.data;
+
+      set({ loading: false, error: null });
+      return {
+        success: true,
+        message: message || "Verification email sent. Check your inbox.",
+      };
+    } catch (error) {
+      let message = "Failed to resend verification email";
+
+      if (error.response) {
+        const status = error.response.status;
+        const data = error.response.data;
+
+        switch (status) {
+          case 400:
+            message = data.error || "Invalid email address";
+            break;
+          case 404:
+            message = data.error || "User not found";
+            break;
+          case 500:
+            message = "Server error - please try again later";
+            break;
+          default:
+            message =
+              data.error ||
+              error.message ||
+              "Failed to resend verification email";
+        }
+      } else if (error.request) {
+        message = "Network error - please check your connection";
+      }
+
+      set({ error: message, loading: false });
+      return { success: false, message };
     }
   },
 

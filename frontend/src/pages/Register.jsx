@@ -1,87 +1,90 @@
-import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
-import { useAuthStore } from '../store/authStore'
-import { toast } from '../store/toastStore'
-import validators from '../utils/validation'
-import './Auth.css'
+import { useState } from "react";
+import { useNavigate, Link } from "react-router-dom";
+import { useAuthStore } from "../store/authStore";
+import { toast } from "../store/toastStore";
+import validators from "../utils/validation";
+import "./Auth.css";
 
 function Register() {
-  const navigate = useNavigate()
-  const { register, loading } = useAuthStore()
+  const navigate = useNavigate();
+  const { register, loading } = useAuthStore();
   const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
-    email: '',
-    password: '',
-    confirmPassword: '',
-  })
-  const [errors, setErrors] = useState({})
-  const [touched, setTouched] = useState({})
+    firstName: "",
+    lastName: "",
+    email: "",
+    password: "",
+    confirmPassword: "",
+  });
+  const [errors, setErrors] = useState({});
+  const [touched, setTouched] = useState({});
 
   const handleChange = (e) => {
-    const { name, value } = e.target
-    setFormData(prev => ({ ...prev, [name]: value }))
-    
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+
     // Clear error when user starts typing
     if (errors[name]) {
-      setErrors(prev => ({ ...prev, [name]: null }))
+      setErrors((prev) => ({ ...prev, [name]: null }));
     }
-  }
+  };
 
   const handleBlur = (e) => {
-    const { name, value } = e.target
-    setTouched(prev => ({ ...prev, [name]: true }))
-    
+    const { name, value } = e.target;
+    setTouched((prev) => ({ ...prev, [name]: true }));
+
     // Validate on blur
-    let error = null
+    let error = null;
     switch (name) {
-      case 'firstName':
-        error = validators.required(value, 'Nome')
-        break
-      case 'lastName':
-        error = validators.required(value, 'Sobrenome')
-        break
-      case 'email':
-        error = validators.email(value)
-        break
-      case 'password':
-        error = validators.password(value)
-        break
-      case 'confirmPassword':
-        error = validators.confirmPassword(value, formData.password)
-        break
+      case "firstName":
+        error = validators.required(value, "Nome");
+        break;
+      case "lastName":
+        error = validators.required(value, "Sobrenome");
+        break;
+      case "email":
+        error = validators.email(value);
+        break;
+      case "password":
+        error = validators.password(value);
+        break;
+      case "confirmPassword":
+        error = validators.confirmPassword(value, formData.password);
+        break;
     }
-    
+
     if (error) {
-      setErrors(prev => ({ ...prev, [name]: error }))
+      setErrors((prev) => ({ ...prev, [name]: error }));
     }
-  }
+  };
 
   const validateForm = () => {
-    const newErrors = {}
-    
-    const firstNameError = validators.required(formData.firstName, 'Nome')
-    if (firstNameError) newErrors.firstName = firstNameError
-    
-    const lastNameError = validators.required(formData.lastName, 'Sobrenome')
-    if (lastNameError) newErrors.lastName = lastNameError
-    
-    const emailError = validators.email(formData.email)
-    if (emailError) newErrors.email = emailError
-    
-    const passwordError = validators.password(formData.password)
-    if (passwordError) newErrors.password = passwordError
-    
-    const confirmError = validators.confirmPassword(formData.confirmPassword, formData.password)
-    if (confirmError) newErrors.confirmPassword = confirmError
-    
-    setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
-  }
+    const newErrors = {};
+
+    const firstNameError = validators.required(formData.firstName, "Nome");
+    if (firstNameError) newErrors.firstName = firstNameError;
+
+    const lastNameError = validators.required(formData.lastName, "Sobrenome");
+    if (lastNameError) newErrors.lastName = lastNameError;
+
+    const emailError = validators.email(formData.email);
+    if (emailError) newErrors.email = emailError;
+
+    const passwordError = validators.password(formData.password);
+    if (passwordError) newErrors.password = passwordError;
+
+    const confirmError = validators.confirmPassword(
+      formData.confirmPassword,
+      formData.password,
+    );
+    if (confirmError) newErrors.confirmPassword = confirmError;
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
   const handleSubmit = async (e) => {
-    e.preventDefault()
-    
+    e.preventDefault();
+
     // Mark all fields as touched
     setTouched({
       firstName: true,
@@ -89,37 +92,45 @@ function Register() {
       email: true,
       password: true,
       confirmPassword: true,
-    })
+    });
 
     if (!validateForm()) {
-      toast.error('Por favor, corrija os erros no formulário')
-      return
+      toast.error("Por favor, corrija os erros no formulário");
+      return;
     }
 
-    const success = await register({
+    const result = await register({
       firstName: formData.firstName,
       lastName: formData.lastName,
       email: formData.email,
       password: formData.password,
-    })
+    });
 
-    if (success) {
-      toast.success('Conta criada com sucesso!')
-      navigate('/')
+    if (result.success) {
+      toast.success("Conta criada! Verifique seu email para confirmar.");
+      // Redirect to email verification page
+      navigate(`/verify-email?email=${encodeURIComponent(formData.email)}`);
     } else {
-      toast.error('Erro ao criar conta. Verifique os dados e tente novamente.')
+      toast.error(
+        result.message ||
+          "Erro ao criar conta. Verifique os dados e tente novamente.",
+      );
     }
-  }
+  };
 
   const getInputClassName = (fieldName) => {
-    let className = 'form-input'
+    let className = "form-input";
     if (touched[fieldName] && errors[fieldName]) {
-      className += ' input-error'
-    } else if (touched[fieldName] && formData[fieldName] && !errors[fieldName]) {
-      className += ' input-success'
+      className += " input-error";
+    } else if (
+      touched[fieldName] &&
+      formData[fieldName] &&
+      !errors[fieldName]
+    ) {
+      className += " input-success";
     }
-    return className
-  }
+    return className;
+  };
 
   return (
     <div className="auth-container">
@@ -137,7 +148,7 @@ function Register() {
             <input
               type="text"
               name="firstName"
-              className={getInputClassName('firstName')}
+              className={getInputClassName("firstName")}
               value={formData.firstName}
               onChange={handleChange}
               onBlur={handleBlur}
@@ -153,7 +164,7 @@ function Register() {
             <input
               type="text"
               name="lastName"
-              className={getInputClassName('lastName')}
+              className={getInputClassName("lastName")}
               value={formData.lastName}
               onChange={handleChange}
               onBlur={handleBlur}
@@ -169,7 +180,7 @@ function Register() {
             <input
               type="email"
               name="email"
-              className={getInputClassName('email')}
+              className={getInputClassName("email")}
               value={formData.email}
               onChange={handleChange}
               onBlur={handleBlur}
@@ -185,7 +196,7 @@ function Register() {
             <input
               type="password"
               name="password"
-              className={getInputClassName('password')}
+              className={getInputClassName("password")}
               value={formData.password}
               onChange={handleChange}
               onBlur={handleBlur}
@@ -204,7 +215,7 @@ function Register() {
             <input
               type="password"
               name="confirmPassword"
-              className={getInputClassName('confirmPassword')}
+              className={getInputClassName("confirmPassword")}
               value={formData.confirmPassword}
               onChange={handleChange}
               onBlur={handleBlur}
@@ -220,7 +231,7 @@ function Register() {
             className="btn btn-primary w-full btn-lg"
             disabled={loading}
           >
-            {loading ? 'Criando Conta...' : 'Criar Conta'}
+            {loading ? "Criando Conta..." : "Criar Conta"}
           </button>
         </form>
 
@@ -229,7 +240,7 @@ function Register() {
         </p>
       </div>
     </div>
-  )
+  );
 }
 
-export default Register
+export default Register;
