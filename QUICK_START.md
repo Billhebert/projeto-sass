@@ -1,325 +1,550 @@
-# ⚡ Quick Start Guide - Projeto SASS
+# Quick Start Guide - Projeto SASS
 
-## 🚀 Iniciar em 5 Minutos
+Complete guide for running, testing, and deploying Projeto SASS.
 
-### 1. Clone e Configure
+---
+
+## Table of Contents
+
+1. [Local Development](#local-development)
+2. [Testing](#testing)
+3. [Production Deployment](#production-deployment)
+4. [Common Tasks](#common-tasks)
+5. [Troubleshooting](#troubleshooting)
+
+---
+
+## Local Development
+
+### Start Services
 
 ```bash
-git clone <seu-repositorio>
-cd projeto-sass
-# Arquivo .env já existe com configurações
+cd /root/projeto/projeto-sass
+docker compose up -d
 ```
 
-### 2. Inicie Docker
+### Check Services
 
 ```bash
-docker-compose up -d
+docker compose ps
 ```
 
-### 3. Aguarde 30 segundos
+### View Logs
 
 ```bash
-docker-compose ps  # Ver se todos containers estão rodando
+# API logs
+docker compose logs api -f
+
+# Frontend logs
+docker compose logs frontend -f
+
+# All services
+docker compose logs -f
 ```
 
-### 4. Acesse os Serviços
-
-| Serviço         | URL                   | Usuário              | Senha    |
-| --------------- | --------------------- | -------------------- | -------- |
-| Frontend        | http://localhost:5173 | -                    | -        |
-| API             | http://localhost:3011 | -                    | -        |
-| MongoDB Express | http://localhost:8081 | admin                | admin123 |
-| PgAdmin         | http://localhost:5050 | admin@vendata.com.br | admin123 |
-
-## 📧 Testar Email Verification
-
-### 1. Registrar Usuário
+### Stop Services
 
 ```bash
-curl -X POST http://localhost:3011/api/auth/register \
+docker compose down
+```
+
+---
+
+## Testing
+
+### Register a User
+
+```bash
+TIMESTAMP=$(date +%s)
+curl -X POST http://localhost:3011/api/user/register \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"email\": \"test${TIMESTAMP}@example.com\",
+    \"password\": \"TestPassword123!\",
+    \"firstName\": \"Test\",
+    \"lastName\": \"User\"
+  }"
+```
+
+### Test Email Verification Token
+
+```bash
+# Get token from database
+docker compose exec -T mongo mongosh --authenticationDatabase admin -u admin -p changeme --quiet <<'EOF'
+use("projeto-sass");
+db.users.findOne(
+  { emailVerified: false },
+  { emailVerificationToken: 1, email: 1 }
+);
+EOF
+```
+
+### Test API Health
+
+```bash
+curl -s http://localhost:3011/health | jq .
+```
+
+### Test Frontend
+
+```bash
+# Open browser
+http://localhost:5173
+```
+
+### Test Admin Panel (Local)
+
+```bash
+# Admin panel
+http://localhost/admin
+
+# Admin token (from .env)
+test-admin-token-secret-2026
+```
+
+---
+
+## Production Deployment
+
+### Preparation
+
+```bash
+# Review deployment guide
+cat DEPLOYMENT_RUNBOOK.md
+
+# Copy production environment file
+cp .env.production.example .env.production
+
+# Edit with your values
+nano .env.production
+```
+
+### Deploy
+
+```bash
+# Build images
+docker compose -f docker-compose.prod.yml build
+
+# Start services
+docker compose -f docker-compose.prod.yml up -d
+
+# Verify
+docker compose ps
+curl https://api.vendata.com.br/health
+```
+
+### Post-Deployment
+
+```bash
+# Test registration
+curl -X POST https://api.vendata.com.br/api/user/register \
   -H "Content-Type: application/json" \
   -d '{
-    "email": "teste@example.com",
-    "password": "Teste123!",
-    "firstName": "Teste",
-    "lastName": "Usuario"
+    "email": "test@example.com",
+    "password": "TestPassword123!",
+    "firstName": "Test",
+    "lastName": "User"
   }'
+
+# Check logs
+docker compose logs api | tail -50
 ```
 
-### 2. Ver Token no Log
+---
+
+## Common Tasks
+
+### Add Admin User
 
 ```bash
-docker-compose logs api | grep EMAIL_TEST_MODE
+# Via database
+docker compose exec -T mongo mongosh --authenticationDatabase admin -u admin -p changeme --quiet <<'EOF'
+use("projeto-sass");
+db.users.updateOne(
+  { email: "user@example.com" },
+  { $set: { role: "admin" } }
+);
+EOF
+
+# Verify
+docker compose exec -T mongo mongosh --authenticationDatabase admin -u admin -p changeme --quiet <<'EOF'
+use("projeto-sass");
+db.users.findOne({ email: "user@example.com" }, { email: 1, role: 1 });
+EOF
 ```
 
-Copie o `token` do log.
-
-### 3. Verificar Email
+### Change ADMIN_TOKEN
 
 ```bash
-curl -X POST http://localhost:3011/api/auth/verify-email \
-  -H "Content-Type: application/json" \
-  -d '{"token": "COLE_O_TOKEN_AQUI"}'
+# Generate new token
+openssl rand -base64 32
+
+# Update .env
+nano .env
+
+# Add/update ADMIN_TOKEN=<new-token>
+
+# Restart API
+docker compose restart api
 ```
 
-### 4. Ver no MongoDB Express
-
-1. Abra http://localhost:8081
-2. Login: admin/admin123
-3. Clique em: projeto-sass → users
-4. Veja o usuário com `emailVerified: true`
-
-## 🔧 Comandos Úteis
+### Reset Database
 
 ```bash
-# Ver logs
-docker-compose logs -f api          # Backend
-docker-compose logs -f mongo-express # MongoDB Express
+# WARNING: This deletes all data
+docker compose exec -T mongo mongosh --authenticationDatabase admin -u admin -p changeme --quiet <<'EOF'
+use("projeto-sass");
+db.users.deleteMany({});
+db.accounts.deleteMany({});
+EOF
 
-# Parar tudo
-docker-compose down
-
-# Limpar dados (⚠️ deleta banco!)
-docker-compose down -v
-
-# Reiniciar um serviço
-docker-compose restart api
-
-# Ver status
-docker-compose ps
+# Verify
+docker compose exec -T mongo mongosh --authenticationDatabase admin -u admin -p changeme --quiet <<'EOF'
+use("projeto-sass");
+db.users.countDocuments({});
+EOF
 ```
 
-## 📁 Estrutura Principal
-
-```
-projeto-sass/
-├── backend/              # API Node.js/Express
-├── frontend/             # React/Vite
-├── docker-compose.yml    # Orquestração dos containers
-├── .env                  # Variáveis de ambiente
-├── EMAIL_VERIFICATION.md # Docs email verification
-├── DATABASE_VIEWERS.md   # Docs MongoDB Express
-├── IMPLEMENTATION_SUMMARY.md # Resumo completo
-└── QUICK_START.md        # Este arquivo
-```
-
-## 📚 Documentação Completa
-
-- **Email Verification:** Veja `EMAIL_VERIFICATION.md`
-- **Visualizadores BD:** Veja `DATABASE_VIEWERS.md`
-- **Resumo Completo:** Veja `IMPLEMENTATION_SUMMARY.md`
-
-## ⚙️ Configurar Email Real (Opcional)
-
-### Gmail
-
-```bash
-# Editar .env
-EMAIL_PROVIDER=gmail
-GMAIL_ADDRESS=seu-email@gmail.com
-GMAIL_APP_PASSWORD=sua-app-password
-```
-
-### SMTP Customizado
-
-```bash
-# Editar .env
-EMAIL_PROVIDER=smtp
-SMTP_HOST=smtp.seuserver.com
-SMTP_PORT=587
-SMTP_USER=usuario
-SMTP_PASSWORD=senha
-```
-
-### SendGrid
-
-```bash
-# Editar .env
-EMAIL_PROVIDER=sendgrid
-SENDGRID_API_KEY=sua-api-key
-```
-
-## 🧪 Testar Backend Direto
-
-```bash
-cd backend
-npm install
-npm run dev
-# Inicia em http://localhost:3011
-```
-
-## 🎨 Testar Frontend Direto
+### Rebuild Frontend
 
 ```bash
 cd frontend
-npm install
-npm run dev
-# Inicia em http://localhost:5173
+npm run build
+docker compose restart frontend
 ```
 
-## 🔗 Endpoints Principais
-
-### Auth
-
-- `POST /api/auth/register` - Registrar usuário
-- `POST /api/auth/verify-email` - Verificar email
-- `POST /api/auth/resend-verification-email` - Reenviar email
-- `POST /api/auth/login` - Fazer login
-- `GET /api/auth/email-status/:email` - Ver status de verificação
-
-### Health Check
-
-- `GET /api/health` - Status da API
-
-## 📊 Ver Dados no MongoDB
-
-1. Abrir http://localhost:8081
-2. Navegar por: projeto-sass → [coleção desejada]
-3. Ver documentos em tempo real
-4. Editar/Deletar conforme necessário
-
-## ⚠️ Troubleshooting
-
-### "Connection refused"
+### View Database
 
 ```bash
-# Espere 30 segundos e tente novamente
-sleep 30
-curl http://localhost:3011/api/health
+# Access MongoDB directly
+docker compose exec mongo mongosh --authenticationDatabase admin -u admin -p changeme
+
+# Or via UI (Mongo Express)
+# http://localhost:8081
 ```
 
-### "MongoDB connection failed"
+### Check Performance
 
 ```bash
-# Reinicie MongoDB
-docker-compose restart mongo
-```
+# Docker stats
+docker stats
 
-### "Port already in use"
+# API metrics
+curl -s http://localhost:3011/health | jq .memory
 
-```bash
-# Alterar porta no docker-compose.yml ou:
-# Matar processo na porta
-sudo lsof -ti:3011 | xargs kill -9
-```
-
-### MongoDB Express não conecta
-
-```bash
-docker-compose restart mongo-express
-docker-compose logs mongo-express
-```
-
-## 🎯 Próximos Passos
-
-1. ✅ Implementar UI de registro no frontend
-2. ✅ Implementar UI de verificação de email
-3. ✅ Conectar com Mercado Livre
-4. ✅ Deploy em produção
-
-## 📞 Ajuda
-
-1. Verifique os logs: `docker-compose logs -f`
-2. Consulte a documentação nos arquivos .md
-3. Teste endpoints com curl ou Postman
-4. Use MongoDB Express para debugar dados
-
----
-
-**Dúvidas?** Consulte `EMAIL_VERIFICATION.md` ou `DATABASE_VIEWERS.md`
-
-**Status:** ✅ Pronto para Produção
-
-### Contas Mercado Livre
-
-```bash
-# Listar contas (requer token)
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-  http://localhost:3000/api/ml-accounts
-
-# Adicionar conta
-curl -X POST http://localhost:3000/api/ml-accounts \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"accessToken": "..."}' \
+# Database size
+docker compose exec -T mongo mongosh --authenticationDatabase admin -u admin -p changeme --quiet <<'EOF'
+use("projeto-sass");
+db.stats();
+EOF
 ```
 
 ---
 
-## 🧪 Testes
+## Troubleshooting
+
+### API Won't Start
 
 ```bash
-# Rodar testes (validação completa)
-npm test
+# Check logs
+docker compose logs api | tail -50
 
-# Resultado: 10/10 tests passing em ~5 segundos
+# Check if port is in use
+lsof -i :3011
+
+# Restart
+docker compose restart api
+```
+
+### Frontend Not Loading
+
+```bash
+# Check logs
+docker compose logs frontend
+
+# Rebuild
+docker compose up -d --build frontend
+
+# Clear browser cache (Ctrl+Shift+Delete)
+```
+
+### Database Connection Issues
+
+```bash
+# Test connection
+docker compose exec mongo mongosh --eval "db.adminCommand('ping')"
+
+# Check logs
+docker compose logs mongo | tail -20
+
+# Restart
+docker compose restart mongo
+```
+
+### Port Already in Use
+
+```bash
+# Find process using port
+lsof -i :3011
+lsof -i :5173
+
+# Kill process
+kill -9 <PID>
+
+# Or change docker compose ports
+nano docker-compose.yml
+```
+
+### High Memory Usage
+
+```bash
+# Check which service
+docker stats
+
+# Reduce resource limits in docker-compose.yml
+# Restart
+docker compose restart api
+```
+
+### Email Not Sending
+
+```bash
+# Check current mode
+grep EMAIL_MODE .env
+
+# Check logs
+docker compose logs api | grep -i email
+
+# If using provider:
+# 1. Verify credentials in .env
+# 2. Check provider dashboard
+# 3. Review EMAIL_PROVIDER_SETUP.md
 ```
 
 ---
 
-## 🌐 Acessar Dashboard
+## File Reference
 
-Após iniciar servidor:
+### Critical Files
 
-1. Abra http://localhost:3000
-2. Registre um usuário
-3. Faça login
-4. Dashboard deve carregar
+- `.env` - Local development environment
+- `.env.production` - Production environment
+- `docker-compose.yml` - Local development setup
+- `docker-compose.prod.yml` - Production setup
+- `nginx.prod.conf` - Production Nginx config
+
+### Configuration Files
+
+- `backend/config/rbac.js` - Role definitions
+- `backend/middleware/rbac.js` - Auth middleware
+- `frontend/src/components/ProtectedRoute.jsx` - Frontend auth
+
+### Database
+
+- `backend/db/models/User.js` - User schema
+- Collections auto-created on first run
+
+### Documentation
+
+- `DEPLOYMENT_RUNBOOK.md` - How to deploy
+- `EMAIL_PROVIDER_SETUP.md` - Email setup
+- `ROLES_PERMISSIONS_API.md` - Roles reference
+- `SCALABILITY_KUBERNETES.md` - Kubernetes setup
 
 ---
 
-## 📚 Documentação Completa
+## Useful Shortcuts
 
-- **DEPLOYMENT.md** - Guia de deploy (Docker, Local, Servidor)
-- **README.md** - Visão geral do projeto
-- **Backend Code** - `backend/` contém toda implementação
-
----
-
-## 🐛 Troubleshooting
-
-### Erro: Port 3000 já em uso
+### Connect to Services
 
 ```bash
-# Mudar porta
-PORT=3001 NODE_ENV=test node backend/server.js
+# MongoDB shell
+docker compose exec mongo mongosh --authenticationDatabase admin -u admin -p changeme
+
+# Redis CLI
+docker compose exec redis redis-cli
+
+# Backend container
+docker compose exec api bash
 ```
 
-### Erro: npm install falha
+### Database Operations
 
 ```bash
-# Limpar cache e reinstalar
-npm cache clean --force
-rm -rf node_modules
-npm install
+# Count users
+docker compose exec -T mongo mongosh --authenticationDatabase admin -u admin -p changeme --quiet <<'EOF'
+use("projeto-sass");
+db.users.countDocuments({});
+EOF
+
+# Find user by email
+docker compose exec -T mongo mongosh --authenticationDatabase admin -u admin -p changeme --quiet <<'EOF'
+use("projeto-sass");
+db.users.findOne({ email: "test@example.com" });
+EOF
+
+# Update user role
+docker compose exec -T mongo mongosh --authenticationDatabase admin -u admin -p changeme --quiet <<'EOF'
+use("projeto-sass");
+db.users.updateOne(
+  { email: "test@example.com" },
+  { $set: { role: "admin" } }
+);
+EOF
 ```
 
-### Servidor não inicia
+### View Logs
 
 ```bash
-# Verificar logs
-NODE_ENV=test node backend/server.js 2>&1 | tail -20
+# Last 50 lines
+docker compose logs api | tail -50
 
-# Se vir "mongoose" errors, é normal em primeira execução
-# Servidor cria collections automaticamente
+# Follow live logs
+docker compose logs api -f
+
+# Filter logs
+docker compose logs api | grep ERROR
+
+# All services
+docker compose logs | tail -100
 ```
 
 ---
 
-## 💡 Dicas
+## Environment Variables Quick Reference
 
-- Testes usam MongoDB em memória (não precisa instalar MongoDB)
-- Em produção, use variáveis de ambiente em `.env`
-- Tokens JWT expiram em 24h por padrão
-- Para Docker, execute: `docker compose up -d`
+### Local Development (.env)
+
+```
+NODE_ENV=production
+MONGODB_URI=mongodb://admin:changeme@mongo:27017/projeto-sass?authSource=admin
+JWT_SECRET=T2pD8F3O4Gc07hlniseEqeEczhjlAl9zyitfruCngeo=
+EMAIL_MODE=test
+ADMIN_TOKEN=test-admin-token-secret-2026
+```
+
+### Production (.env.production)
+
+```
+NODE_ENV=production
+DOMAIN=vendata.com.br
+MONGODB_URI=mongodb://username:password@mongo:27017/projeto-sass?authSource=admin
+JWT_SECRET=<64-char-random-string>
+EMAIL_MODE=test  # Change to gmail/sendgrid/ses when ready
+ADMIN_TOKEN=<random-token>
+```
 
 ---
 
-## ✅ Status
+## Performance Tips
 
-- ✓ Backend implementado e testado
-- ✓ 10/10 testes passando
-- ✓ Zero warnings/errors
-- ✓ Pronto para produção
+### Database
 
-**Você está pronto para começar!** 🎉
+- Use indexed fields in queries
+- Monitor collection sizes with `db.stats()`
+- Backup daily to separate storage
+
+### Frontend
+
+- Clear browser cache if changes don't appear
+- Use production build for testing
+- Monitor bundle size with `npm run build`
+
+### API
+
+- Monitor logs for errors
+- Check response times
+- Use health endpoint to monitor
+- Adjust rate limiting if needed
+
+### Docker
+
+- Use `docker system prune` to free space
+- Monitor memory with `docker stats`
+- Restart services if memory leaks detected
+
+---
+
+## Next Steps
+
+### First Time Setup
+
+1. Run `docker compose up -d`
+2. Test registration at http://localhost:5173
+3. Check admin panel at http://localhost/admin
+4. Read DEPLOYMENT_RUNBOOK.md for production
+
+### Before Production
+
+1. Change all default passwords
+2. Generate secure JWT_SECRET
+3. Setup email provider
+4. Configure SSL certificate
+5. Review security checklist in runbook
+
+### Going Live
+
+1. Follow DEPLOYMENT_RUNBOOK.md
+2. Test all endpoints
+3. Setup monitoring and backups
+4. Configure alert thresholds
+5. Train support team
+
+---
+
+## Getting Help
+
+### Common Issues
+
+- See Troubleshooting section above
+- Check Docker logs: `docker compose logs`
+- Review error messages in browser console
+
+### Documentation
+
+- DEPLOYMENT_RUNBOOK.md - Deployment help
+- EMAIL_PROVIDER_SETUP.md - Email configuration
+- ROLES_PERMISSIONS_API.md - API reference
+- SCALABILITY_KUBERNETES.md - Scaling help
+
+### Local Testing
+
+- Postman collection (create in future)
+- API health: GET /health
+- Admin panel: POST /api/admin/stats with x-admin-token
+
+---
+
+## Quick Commands
+
+```bash
+# Start everything
+docker compose up -d
+
+# Stop everything
+docker compose down
+
+# View all logs
+docker compose logs -f
+
+# Rebuild images
+docker compose build
+
+# Reset database
+docker compose exec -T mongo mongosh --authenticationDatabase admin -u admin -p changeme --quiet < /dev/null
+
+# Clean up
+docker system prune -a
+
+# Production start
+docker compose -f docker-compose.prod.yml up -d
+
+# Production stop
+docker compose -f docker-compose.prod.yml down
+```
+
+---
+
+**Last Updated**: February 4, 2026
+**Version**: 1.0
+**Status**: ✓ Production Ready
