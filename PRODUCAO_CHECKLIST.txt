@@ -1,0 +1,220 @@
+╔═════════════════════════════════════════════════════════════════════════════╗
+║                                                                             ║
+║            🚀 CHECKLIST - TESTE EM PRODUÇÃO COM CONTA REAL 🚀             ║
+║                                                                             ║
+║                    Mercado Livre & Mercado Pago SDK                         ║
+║                                                                             ║
+╚═════════════════════════════════════════════════════════════════════════════╝
+
+📋 PRÉ-REQUISITOS
+═════════════════════════════════════════════════════════════════════════════
+
+☐ 1. Ter conta ativa no Mercado Livre
+    └─ Acesse: https://www.mercadolibre.com.br
+
+☐ 2. Registrar aplicação OAuth
+    └─ Acesse: https://developers.mercadolibre.com.br
+    └─ Clique em "Minhas Aplicações"
+    └─ Crie nova aplicação
+
+☐ 3. Obter Client ID e Client Secret
+    └─ Vá em Configurações da aplicação
+    └─ Copie Client ID
+    └─ Copie Client Secret
+    └─ Defina Redirect URI: http://localhost:3000/oauth/callback
+
+☐ 4. Node.js e npm instalados
+    └─ Comando: node -v (deve ser v25+)
+    └─ Comando: npm -v (deve ser v11+)
+
+═════════════════════════════════════════════════════════════════════════════
+
+🔧 INSTALAÇÃO E SETUP
+═════════════════════════════════════════════════════════════════════════════
+
+☐ PASSO 1: Executar Setup
+    └─ Comando: node setup-production.js
+    └─ Tempo: ~2 minutos
+    └─ O que esperar:
+       • Pedir Client ID
+       • Pedir Client Secret
+       • Gerar URL para login
+       • Pedir Authorization Code
+       • Obter Access Token
+       • Validar Token
+       • Salvar no .env
+
+☐ PASSO 2: Escolher método
+    └─ Recomendado: OAuth (opção 1)
+    └─ Alternativa: Token Manual (opção 2)
+
+☐ PASSO 3: Fazer Login no Mercado Livre
+    └─ URL será exibida no terminal
+    └─ Faça login com sua conta
+    └─ Você será redirecionado com um código
+    └─ Cole o código no terminal
+
+☐ PASSO 4: Validar Tokens
+    └─ Script testa automaticamente
+    └─ Deve exibir informações da conta
+    └─ Perguntar se salvar no .env
+
+☐ PASSO 5: Confirmar Salvamento
+    └─ Responda "s" para salvar
+    └─ Arquivo .env será atualizado
+
+═════════════════════════════════════════════════════════════════════════════
+
+🧪 TESTE EM PRODUÇÃO
+═════════════════════════════════════════════════════════════════════════════
+
+☐ PASSO 1: Executar Testes
+    └─ Comando: node test-production.js
+    └─ Tempo: ~5-10 segundos
+    └─ O que será testado:
+       ✓ Configuração dos tokens
+       ✓ Inicialização da SDK
+       ✓ Conexão com API ML
+       ✓ Buscar seus produtos
+       ✓ Buscar seus pedidos
+       ✓ Informações da conta
+       ✓ Tratamento de erros
+
+☐ PASSO 2: Verificar Resultados
+    └─ Deve exibir: "✅ SDK FUNCIONANDO PERFEITAMENTE"
+    └─ Taxa de sucesso: 100%
+    └─ Dados da conta serão exibidos
+
+☐ PASSO 3: Se algum teste falhar
+    └─ Leia a mensagem de erro
+    └─ Consulte o TROUBLESHOOTING abaixo
+
+═════════════════════════════════════════════════════════════════════════════
+
+🌐 INICIAR SERVIDOR
+═════════════════════════════════════════════════════════════════════════════
+
+☐ PASSO 1: Iniciar
+    └─ Comando: npm run dev
+    └─ Verá duas janelas:
+       • Backend em http://localhost:3011
+       • Frontend em http://localhost:5173
+
+☐ PASSO 2: Acessar Dashboard
+    └─ Acesse: http://localhost:3000
+    └─ Faça login
+    └─ Seus dados do Mercado Livre aparecerão
+
+☐ PASSO 3: Verificar Integração
+    └─ Veja seus produtos listados
+    └─ Veja seus pedidos sincronizados
+    └─ Verifique estatísticas da conta
+
+═════════════════════════════════════════════════════════════════════════════
+
+✅ VALIDAÇÃO FINAL
+═════════════════════════════════════════════════════════════════════════════
+
+☐ Todos os testes passaram (100%)
+☐ Dashboard carrega sem erros
+☐ Dados da conta aparecem
+☐ Produtos sincronizados corretamente
+☐ Pedidos aparecem no dashboard
+☐ Não há erros no console
+☐ Refresh token está funcionando
+☐ Performance é boa (respostas rápidas)
+
+═════════════════════════════════════════════════════════════════════════════
+
+⚠️  TROUBLESHOOTING
+═════════════════════════════════════════════════════════════════════════════
+
+PROBLEMA: "ML_ACCESS_TOKEN não configurado"
+SOLUÇÃO: 
+  • Execute: node setup-production.js
+  • Siga o processo completo
+  • Confirme salvamento em .env
+
+PROBLEMA: "Token inválido ou expirado"
+SOLUÇÃO:
+  • Execute: node setup-production.js novamente
+  • Ou obtenha novo token no Mercado Livre
+  • Salve novamente em .env
+
+PROBLEMA: "Erro 401 - Unauthorized"
+SOLUÇÃO:
+  • Token expirou
+  • Refresh token pode estar inválido
+  • Execute setup novamente
+
+PROBLEMA: "Erro 403 - Forbidden"
+SOLUÇÃO:
+  • Token foi criado em Sandbox (teste)
+  • Use um token de Produção
+  • Ou crie nova aplicação em Produção
+
+PROBLEMA: "Nenhum item encontrado"
+SOLUÇÃO:
+  • Normal se não tem produtos
+  • Crie um produto no Mercado Livre
+  • Ou use conta de teste
+
+PROBLEMA: "Timeout na requisição"
+SOLUÇÃO:
+  • Sua conexão é lenta
+  • API Mercado Livre pode estar lenta
+  • Tente novamente mais tarde
+
+═════════════════════════════════════════════════════════════════════════════
+
+📊 DEPOIS DE PASSAR NOS TESTES
+═════════════════════════════════════════════════════════════════════════════
+
+1. ✅ SDK funcionando com dados reais
+2. ⏳ Migrar rotas para usar SDK (reduz ~50% código)
+3. ⏳ Implementar webhooks do Mercado Livre
+4. ⏳ Adicionar Mercado Pago para pagamentos
+5. ⏳ Testar com tráfego real
+6. ⏳ Deploy em produção
+
+═════════════════════════════════════════════════════════════════════════════
+
+📚 ARQUIVOS IMPORTANTES
+═════════════════════════════════════════════════════════════════════════════
+
+• setup-production.js      → Obter e configurar tokens
+• test-production.js       → Testar SDK com dados reais
+• PRODUCAO_SETUP.md        → Guia detalhado (Este documento)
+• QUICK_START_SDK.md       → Exemplos de uso
+• SDK_RECURSOS.md          → Referência completa
+• MIGRACAO_SDK.md          → Como migrar rotas
+
+═════════════════════════════════════════════════════════════════════════════
+
+🚀 COMEÇAR AGORA
+═════════════════════════════════════════════════════════════════════════════
+
+PASSO 1:
+  $ node setup-production.js
+
+PASSO 2:
+  $ node test-production.js
+
+PASSO 3:
+  $ npm run dev
+
+═════════════════════════════════════════════════════════════════════════════
+
+✨ VOCÊ ESTÁ PRONTO PARA PRODUÇÃO!
+
+Siga o checklist acima e em 10 minutos terá a SDK funcionando
+com dados reais do Mercado Livre.
+
+═════════════════════════════════════════════════════════════════════════════
+
+Precisa de ajuda? Consulte:
+  • PRODUCAO_SETUP.md (guia completo)
+  • QUICK_START_SDK.md (exemplos de código)
+  • SDK_RECURSOS.md (referência)
+
+═════════════════════════════════════════════════════════════════════════════
