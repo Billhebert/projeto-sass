@@ -22,6 +22,182 @@ const Product = require("../db/models/Product");
 
 const router = express.Router();
 
+// ============================================================================
+// CORE HELPERS - Used across all endpoints
+// ============================================================================
+
+/**
+ * Handle and log errors with consistent response format
+ * @param {Object} res - Express response object
+ * @param {number} statusCode - HTTP status code (default: 500)
+ * @param {string} message - Error message to send to client
+ * @param {Error} error - Original error object
+ * @param {Object} context - Additional logging context
+ */
+const handleError = (res, statusCode = 500, message, error = null, context = {}) => {
+  logger.error({
+    action: context.action || 'UNKNOWN_ERROR',
+    error: error?.message || message,
+    statusCode,
+    ...context,
+  });
+
+  const response = { success: false, message };
+  if (error?.message) response.error = error.message;
+  if (context.details) response.details = context.details;
+  res.status(statusCode).json(response);
+};
+
+/**
+ * Send success response with consistent format
+ * @param {Object} res - Express response object
+ * @param {*} data - Response data
+ * @param {string} message - Optional success message
+ * @param {number} statusCode - HTTP status code (default: 200)
+ */
+const sendSuccess = (res, data, message = null, statusCode = 200) => {
+  const response = { success: true, data };
+  if (message) response.message = message;
+  res.status(statusCode).json(response);
+};
+
+/**
+ * Validate item status against allowed values
+ * @param {string} status - Status to validate
+ * @returns {boolean} True if valid
+ */
+const isValidItemStatus = (status) => {
+  return ['active', 'paused', 'closed'].includes(status);
+};
+
+// ============================================================================
+// ROUTE-SPECIFIC HELPERS
+// ============================================================================
+
+/**
+ * Fetch items with details using batch fetching
+ * @param {string} accountId - Account ID
+ * @param {string[]} itemIds - Array of item IDs
+ * @param {number} limit - Limit of items to fetch (default: 20)
+ * @returns {Promise<Object[]>} Items with details
+ */
+const fetchItemsWithDetails = async (accountId, itemIds, limit = 20) => {
+  const itemsPromises = itemIds
+    .slice(0, limit)
+    .map((itemId) =>
+      sdkManager.getItem(accountId, itemId).catch(() => null),
+    );
+
+  const items = await Promise.all(itemsPromises);
+  return items
+    .filter((item) => item !== null)
+    .map((item) => item.data);
+};
+
+/**
+ * Fetch all items with auto-pagination
+ * @param {string} accountId - Account ID
+ * @param {string} mlUserId - ML user ID
+ * @param {Object} filters - Query filters (status, etc)
+ * @returns {Promise<Object[]>} All items with details
+ */
+const fetchAllItemsWithPagination = async (accountId, mlUserId, filters = {}) => {
+  let allItems = [];
+  let currentOffset = 0;
+  const batchSize = 50;
+
+  while (true) {
+    const params = {
+      limit: batchSize,
+      offset: currentOffset,
+      ...filters,
+    };
+
+    const result = await sdkManager.getItemsByUser(
+      accountId,
+      mlUserId,
+      params,
+    );
+
+    const itemIds = result.data.results || [];
+    if (itemIds.length === 0) break;
+
+    // Fetch details in batches of 20
+    for (let i = 0; i < itemIds.length; i += 20) {
+      const batch = itemIds.slice(i, i + 20);
+      const itemsData = await Promise.allSettled(
+        batch.map((itemId) => sdkManager.getItem(accountId, itemId)),
+      );
+
+      const successfulItems = itemsData
+        .filter((result) => result.status === "fulfilled")
+        .map((result) => result.value.data);
+
+      allItems.push(...successfulItems);
+    }
+
+    currentOffset += batchSize;
+
+    // Stop if we fetched everything
+    const total = result.data.paging?.total || 0;
+    if (currentOffset >= total) break;
+  }
+
+  return allItems;
+};
+
+/**
+ * Save product to database (with error handling)
+ * @param {Object} productData - Product data to save
+ * @returns {Promise<void>}
+ */
+const saveProductToDatabase = async (productData) => {
+  try {
+    await Product.create(productData);
+  } catch (dbError) {
+    logger.warn({
+      action: "SAVE_PRODUCT_TO_DB_ERROR",
+      error: dbError.message,
+    });
+    // Don't throw - DB errors shouldn't fail the API request
+  }
+};
+
+/**
+ * Update product in database (with error handling)
+ * @param {string} itemId - Item ID
+ * @param {string} accountId - Account ID
+ * @param {Object} updates - Updates to apply
+ * @returns {Promise<void>}
+ */
+const updateProductInDatabase = async (itemId, accountId, updates) => {
+  try {
+    await Product.findOneAndUpdate(
+      { id: itemId, accountId },
+      { $set: { ...updates, updatedAt: new Date() } },
+    );
+  } catch (dbError) {
+    logger.warn({
+      action: "UPDATE_PRODUCT_DB_ERROR",
+      error: dbError.message,
+    });
+    // Don't throw - DB errors shouldn't fail the API request
+  }
+};
+
+/**
+ * Build list items response
+ * @param {Object[]} items - Items array
+ * @param {Object} paging - Paging info
+ * @param {string} sellerId - Seller ID
+ * @returns {Object} Formatted response data
+ */
+const buildListItemsResponse = (items, paging, sellerId) => ({
+  items,
+  paging: paging || { total: 0 },
+  seller_id: sellerId,
+});
+
 /**
  * GET /api/items/:accountId
  * List items from ML API
@@ -50,49 +226,10 @@ router.get(
         status,
       });
 
-      // MODO ILIMITADO: Buscar TODOS os itens com paginação automática
+      // UNLIMITED MODE: Fetch ALL items with auto-pagination
       if (all === "true") {
-        let allItems = [];
-        let currentOffset = 0;
-        const batchSize = 50;
-
-        // Buscar todos os IDs dos itens
-        while (true) {
-          const params = {
-            limit: batchSize,
-            offset: currentOffset,
-          };
-          if (status) params.status = status;
-
-          const result = await sdkManager.getItemsByUser(
-            accountId,
-            account.mlUserId,
-            params,
-          );
-
-          const itemIds = result.data.results || [];
-          if (itemIds.length === 0) break;
-
-          // Buscar detalhes em lotes de 20
-          for (let i = 0; i < itemIds.length; i += 20) {
-            const batch = itemIds.slice(i, i + 20);
-            const itemsData = await Promise.allSettled(
-              batch.map((itemId) => sdkManager.getItem(accountId, itemId)),
-            );
-
-            const successfulItems = itemsData
-              .filter((result) => result.status === "fulfilled")
-              .map((result) => result.value.data);
-
-            allItems.push(...successfulItems);
-          }
-
-          currentOffset += batchSize;
-
-          // Parar se buscamos tudo
-          const total = result.data.paging?.total || 0;
-          if (currentOffset >= total) break;
-        }
+        const filters = status ? { status } : {};
+        const allItems = await fetchAllItemsWithPagination(accountId, account.mlUserId, filters);
 
         logger.info({
           action: "LIST_ALL_ITEMS_SUCCESS",
@@ -100,21 +237,18 @@ router.get(
           totalItems: allItems.length,
         });
 
-        return res.json({
-          success: true,
-          data: {
-            items: allItems,
-            paging: {
-              total: allItems.length,
-              limit: allItems.length,
-              offset: 0,
-            },
-            seller_id: account.mlUserId,
+        return sendSuccess(res, {
+          items: allItems,
+          paging: {
+            total: allItems.length,
+            limit: allItems.length,
+            offset: 0,
           },
+          seller_id: account.mlUserId,
         });
       }
 
-      // MODO PAGINAÇÃO NORMAL
+      // NORMAL PAGINATION MODE
       const params = {
         limit: parseInt(limit),
         offset: parseInt(offset),
@@ -133,22 +267,11 @@ router.get(
         resultStatus: result.status,
         resultDataKeys: Object.keys(result.data || {}),
         resultsLength: (result.data?.results || []).length,
-        rawResults: result.data?.results?.slice(0, 3), // First 3 IDs
+        rawResults: result.data?.results?.slice(0, 3),
       });
 
       const itemIds = result.data.results || [];
-
-      // Buscar detalhes para cada item (limitar a 20 para performance)
-      const itemsPromises = itemIds
-        .slice(0, 20)
-        .map((itemId) =>
-          sdkManager.getItem(accountId, itemId).catch(() => null),
-        );
-
-      const items = await Promise.all(itemsPromises);
-      const validItems = items
-        .filter((item) => item !== null)
-        .map((item) => item.data);
+      const validItems = await fetchItemsWithDetails(accountId, itemIds, 20);
 
       logger.info({
         action: "LIST_ITEMS_SUCCESS",
@@ -156,25 +279,11 @@ router.get(
         count: validItems.length,
       });
 
-      res.json({
-        success: true,
-        data: {
-          items: validItems,
-          paging: result.data.paging || { total: 0 },
-          seller_id: result.data.seller_id,
-        },
-      });
+      sendSuccess(res, buildListItemsResponse(validItems, result.data.paging, result.data.seller_id));
     } catch (error) {
-      logger.error({
+      handleError(res, error.statusCode || 500, "Failed to list items", error, {
         action: "LIST_ITEMS_ERROR",
         accountId: req.params.accountId,
-        error: error.message,
-      });
-
-      res.status(error.statusCode || 500).json({
-        success: false,
-        message: "Failed to list items",
-        error: error.message,
       });
     }
   },
@@ -203,14 +312,9 @@ router.get(
       let itemData, descriptionData;
 
       if (includeDescription === "true") {
-        // Buscar item com descrição
-        const result = await sdkManager.getItemWithDescription(
-          accountId,
-          itemId,
-        );
+        const result = await sdkManager.getItemWithDescription(accountId, itemId);
         [itemData, descriptionData] = result;
       } else {
-        // Buscar apenas item
         itemData = await sdkManager.getItem(accountId, itemId);
       }
 
@@ -220,25 +324,15 @@ router.get(
         itemId,
       });
 
-      res.json({
-        success: true,
-        data: {
-          item: itemData.data,
-          description: descriptionData?.data || null,
-        },
+      sendSuccess(res, {
+        item: itemData.data,
+        description: descriptionData?.data || null,
       });
     } catch (error) {
-      logger.error({
+      handleError(res, error.statusCode || 500, "Failed to get item", error, {
         action: "GET_ITEM_ERROR",
         accountId: req.params.accountId,
         itemId: req.params.itemId,
-        error: error.message,
-      });
-
-      res.status(error.statusCode || 500).json({
-        success: false,
-        message: "Failed to get item",
-        error: error.message,
       });
     }
   },
@@ -263,7 +357,6 @@ router.post(
         title: itemData.title,
       });
 
-      // Criar item usando SDK
       const result = await sdkManager.createItem(accountId, itemData);
 
       logger.info({
@@ -272,40 +365,23 @@ router.post(
         itemId: result.data.id,
       });
 
-      // Salvar no banco local
-      try {
-        await Product.create({
-          id: result.data.id,
-          accountId,
-          userId: req.user.userId,
-          title: result.data.title,
-          price: result.data.price,
-          status: result.data.status,
-          categoryId: result.data.category_id,
-          mlData: result.data,
-        });
-      } catch (dbError) {
-        logger.warn({
-          action: "SAVE_PRODUCT_TO_DB_ERROR",
-          error: dbError.message,
-        });
-      }
-
-      res.status(201).json({
-        success: true,
-        data: result.data,
+      // Save to local database
+      await saveProductToDatabase({
+        id: result.data.id,
+        accountId,
+        userId: req.user.userId,
+        title: result.data.title,
+        price: result.data.price,
+        status: result.data.status,
+        categoryId: result.data.category_id,
+        mlData: result.data,
       });
+
+      sendSuccess(res, result.data, undefined, 201);
     } catch (error) {
-      logger.error({
+      handleError(res, error.statusCode || 500, "Failed to create item", error, {
         action: "CREATE_ITEM_ERROR",
         accountId: req.params.accountId,
-        error: error.message,
-      });
-
-      res.status(error.statusCode || 500).json({
-        success: false,
-        message: "Failed to create item",
-        error: error.message,
         details: error.apiError || null,
       });
     }
@@ -332,7 +408,6 @@ router.put(
         updates: Object.keys(updates),
       });
 
-      // Atualizar item usando SDK
       const result = await sdkManager.updateItem(accountId, itemId, updates);
 
       logger.info({
@@ -341,40 +416,14 @@ router.put(
         itemId,
       });
 
-      // Atualizar no banco local
-      try {
-        await Product.findOneAndUpdate(
-          { id: itemId, accountId },
-          {
-            $set: {
-              ...updates,
-              updatedAt: new Date(),
-            },
-          },
-        );
-      } catch (dbError) {
-        logger.warn({
-          action: "UPDATE_PRODUCT_DB_ERROR",
-          error: dbError.message,
-        });
-      }
+      await updateProductInDatabase(itemId, accountId, updates);
 
-      res.json({
-        success: true,
-        data: result.data,
-      });
+      sendSuccess(res, result.data);
     } catch (error) {
-      logger.error({
+      handleError(res, error.statusCode || 500, "Failed to update item", error, {
         action: "UPDATE_ITEM_ERROR",
         accountId: req.params.accountId,
         itemId: req.params.itemId,
-        error: error.message,
-      });
-
-      res.status(error.statusCode || 500).json({
-        success: false,
-        message: "Failed to update item",
-        error: error.message,
       });
     }
   },
@@ -399,7 +448,6 @@ router.put(
         itemId,
       });
 
-      // Usar SDK para atualizar descrição
       const sdk = await sdkManager.getSDK(accountId);
       const result = await sdk.items.updateDescription(itemId, { plain_text });
 
@@ -409,22 +457,12 @@ router.put(
         itemId,
       });
 
-      res.json({
-        success: true,
-        data: result.data,
-      });
+      sendSuccess(res, result.data);
     } catch (error) {
-      logger.error({
+      handleError(res, error.statusCode || 500, "Failed to update description", error, {
         action: "UPDATE_DESCRIPTION_ERROR",
         accountId: req.params.accountId,
         itemId: req.params.itemId,
-        error: error.message,
-      });
-
-      res.status(error.statusCode || 500).json({
-        success: false,
-        message: "Failed to update description",
-        error: error.message,
       });
     }
   },
@@ -443,7 +481,7 @@ router.put(
       const { accountId, itemId } = req.params;
       const { status } = req.body;
 
-      if (!["active", "paused", "closed"].includes(status)) {
+      if (!isValidItemStatus(status)) {
         return res.status(400).json({
           success: false,
           message: "Invalid status. Must be: active, paused, or closed",
@@ -466,22 +504,12 @@ router.put(
         newStatus: status,
       });
 
-      res.json({
-        success: true,
-        data: result.data,
-      });
+      sendSuccess(res, result.data);
     } catch (error) {
-      logger.error({
+      handleError(res, error.statusCode || 500, "Failed to change item status", error, {
         action: "CHANGE_ITEM_STATUS_ERROR",
         accountId: req.params.accountId,
         itemId: req.params.itemId,
-        error: error.message,
-      });
-
-      res.status(error.statusCode || 500).json({
-        success: false,
-        message: "Failed to change item status",
-        error: error.message,
       });
     }
   },
@@ -513,35 +541,14 @@ router.delete(
         itemId,
       });
 
-      // Atualizar status no banco local
-      try {
-        await Product.findOneAndUpdate(
-          { id: itemId, accountId },
-          { $set: { status: "closed", updatedAt: new Date() } },
-        );
-      } catch (dbError) {
-        logger.warn({
-          action: "UPDATE_PRODUCT_DB_ERROR",
-          error: dbError.message,
-        });
-      }
+      await updateProductInDatabase(itemId, accountId, { status: "closed" });
 
-      res.json({
-        success: true,
-        data: result.data,
-      });
+      sendSuccess(res, result.data);
     } catch (error) {
-      logger.error({
+      handleError(res, error.statusCode || 500, "Failed to delete item", error, {
         action: "DELETE_ITEM_ERROR",
         accountId: req.params.accountId,
         itemId: req.params.itemId,
-        error: error.message,
-      });
-
-      res.status(error.statusCode || 500).json({
-        success: false,
-        message: "Failed to delete item",
-        error: error.message,
       });
     }
   },
@@ -576,22 +583,12 @@ router.post(
         newItemId: result.data.id,
       });
 
-      res.json({
-        success: true,
-        data: result.data,
-      });
+      sendSuccess(res, result.data);
     } catch (error) {
-      logger.error({
+      handleError(res, error.statusCode || 500, "Failed to relist item", error, {
         action: "RELIST_ITEM_ERROR",
         accountId: req.params.accountId,
         itemId: req.params.itemId,
-        error: error.message,
-      });
-
-      res.status(error.statusCode || 500).json({
-        success: false,
-        message: "Failed to relist item",
-        error: error.message,
       });
     }
   },
@@ -624,22 +621,12 @@ router.get(
         itemId,
       });
 
-      res.json({
-        success: true,
-        data: result.data,
-      });
+      sendSuccess(res, result.data);
     } catch (error) {
-      logger.error({
+      handleError(res, error.statusCode || 500, "Failed to get item visits", error, {
         action: "GET_ITEM_VISITS_ERROR",
         accountId: req.params.accountId,
         itemId: req.params.itemId,
-        error: error.message,
-      });
-
-      res.status(error.statusCode || 500).json({
-        success: false,
-        message: "Failed to get item visits",
-        error: error.message,
       });
     }
   },
