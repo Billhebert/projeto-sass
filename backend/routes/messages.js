@@ -24,21 +24,78 @@ const MLAccount = require("../db/models/MLAccount");
 
 const router = express.Router();
 
+// ============================================================================
+// CORE HELPERS
+// ============================================================================
+
+/**
+ * Handle and log errors with consistent response format
+ * @param {Object} res - Express response object
+ * @param {number} statusCode - HTTP status code (default: 500)
+ * @param {string} message - Error message to send to client
+ * @param {Error} error - Original error object
+ * @param {Object} context - Additional logging context
+ */
+const handleError = (res, statusCode = 500, message, error = null, context = {}) => {
+  logger.error({
+    action: context.action || "UNKNOWN_ERROR",
+    error: error?.message || message,
+    statusCode,
+    ...context,
+  });
+
+  const response = { success: false, message };
+  if (error?.message) response.error = error.message;
+  res.status(statusCode).json(response);
+};
+
+/**
+ * Send success response with consistent format
+ * @param {Object} res - Express response object
+ * @param {*} data - Response data
+ * @param {string} message - Optional success message
+ * @param {number} statusCode - HTTP status code (default: 200)
+ */
+const sendSuccess = (res, data, message = null, statusCode = 200) => {
+  const response = { success: true, data };
+  if (message) response.message = message;
+  res.status(statusCode).json(response);
+};
+
+/**
+ * Validate and return ML account
+ * @param {string} accountId - Account ID
+ * @param {string} userId - User ID
+ * @returns {Promise<Object>} Account object
+ */
+const getAndValidateAccount = async (accountId, userId) => {
+  const account = await MLAccount.findOne({ id: accountId, userId });
+  if (!account) throw new Error("Account not found");
+  return account;
+};
+
+/**
+ * Find message by ID or ML message ID
+ * @param {string} messageId - Message ID
+ * @param {string} accountId - Account ID
+ * @param {string} userId - User ID
+ * @returns {Promise<Object>} Message object
+ */
+const findMessage = async (messageId, accountId, userId) => {
+  return Message.findOne({
+    $or: [{ id: messageId }, { mlMessageId: messageId }],
+    accountId,
+    userId,
+  });
+};
+
 /**
  * GET /api/messages
  * List all messages for the authenticated user
  */
 router.get("/", authenticateToken, async (req, res) => {
   try {
-    const {
-      all,
-      limit: queryLimit,
-      offset = 0,
-      isRead,
-      sort = "-dateCreated",
-    } = req.query;
-
-    // If all=true, fetch everything. Otherwise use limit (default 100)
+    const { all, limit: queryLimit, offset = 0, isRead, sort = "-dateCreated" } = req.query;
     const limit = all === "true" ? 999999 : queryLimit || 100;
 
     const query = { userId: req.user.userId };
@@ -51,26 +108,16 @@ router.get("/", authenticateToken, async (req, res) => {
 
     const total = await Message.countDocuments(query);
 
-    res.json({
-      success: true,
-      data: {
-        messages: messages.map((m) => m.getSummary()),
-        total,
-        limit: parseInt(limit),
-        offset: parseInt(offset),
-      },
+    sendSuccess(res, {
+      messages: messages.map((m) => m.getSummary()),
+      total,
+      limit: parseInt(limit),
+      offset: parseInt(offset),
     });
   } catch (error) {
-    logger.error({
+    handleError(res, 500, "Failed to fetch messages", error, {
       action: "GET_MESSAGES_ERROR",
       userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch messages",
-      error: error.message,
     });
   }
 });
@@ -83,22 +130,10 @@ router.get("/:accountId/stats", authenticateToken, async (req, res) => {
   try {
     const { accountId } = req.params;
 
-    // Verify account exists
-    const account = await MLAccount.findOne({
-      id: accountId,
-      userId: req.user.userId,
-    });
-
-    if (!account) {
-      return res.status(404).json({
-        success: false,
-        message: "Account not found",
-      });
-    }
+    await getAndValidateAccount(accountId, req.user.userId);
 
     const stats = await Message.getStats(accountId);
 
-    // Get today's messages
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -107,26 +142,23 @@ router.get("/:accountId/stats", authenticateToken, async (req, res) => {
       dateCreated: { $gte: today },
     });
 
-    res.json({
-      success: true,
-      data: {
-        accountId,
-        ...stats,
-        todayMessages,
-      },
+    sendSuccess(res, {
+      accountId,
+      ...stats,
+      todayMessages,
     });
   } catch (error) {
-    logger.error({
+    if (error.message === "Account not found") {
+      return handleError(res, 404, "Account not found", error, {
+        action: "GET_MESSAGE_STATS_ERROR",
+        accountId: req.params.accountId,
+        userId: req.user.userId,
+      });
+    }
+    handleError(res, 500, "Failed to get message statistics", error, {
       action: "GET_MESSAGE_STATS_ERROR",
       accountId: req.params.accountId,
       userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: "Failed to get message statistics",
-      error: error.message,
     });
   }
 });
@@ -140,46 +172,32 @@ router.get("/:accountId/unread", authenticateToken, async (req, res) => {
     const { accountId } = req.params;
     const { limit = 50 } = req.query;
 
-    // Verify account belongs to user
-    const account = await MLAccount.findOne({
-      id: accountId,
-      userId: req.user.userId,
-    });
-
-    if (!account) {
-      return res.status(404).json({
-        success: false,
-        message: "Account not found",
-      });
-    }
+    const account = await getAndValidateAccount(accountId, req.user.userId);
 
     const messages = await Message.findUnread(accountId, {
       limit: parseInt(limit),
     });
 
-    res.json({
-      success: true,
-      data: {
-        account: {
-          id: account.id,
-          nickname: account.nickname,
-        },
-        messages: messages.map((m) => m.getSummary()),
-        total: messages.length,
+    sendSuccess(res, {
+      account: {
+        id: account.id,
+        nickname: account.nickname,
       },
+      messages: messages.map((m) => m.getSummary()),
+      total: messages.length,
     });
   } catch (error) {
-    logger.error({
+    if (error.message === "Account not found") {
+      return handleError(res, 404, "Account not found", error, {
+        action: "GET_UNREAD_MESSAGES_ERROR",
+        accountId: req.params.accountId,
+        userId: req.user.userId,
+      });
+    }
+    handleError(res, 500, "Failed to fetch unread messages", error, {
       action: "GET_UNREAD_MESSAGES_ERROR",
       accountId: req.params.accountId,
       userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch unread messages",
-      error: error.message,
     });
   }
 });
@@ -191,30 +209,10 @@ router.get("/:accountId/unread", authenticateToken, async (req, res) => {
 router.get("/:accountId", authenticateToken, async (req, res) => {
   try {
     const { accountId } = req.params;
-    const {
-      all,
-      limit: queryLimit,
-      offset = 0,
-      packId,
-      isRead,
-      sort = "-dateCreated",
-    } = req.query;
-
-    // If all=true, fetch everything. Otherwise use limit (default 100)
+    const { all, limit: queryLimit, offset = 0, packId, isRead, sort = "-dateCreated" } = req.query;
     const limit = all === "true" ? 999999 : queryLimit || 100;
 
-    // Verify account belongs to user
-    const account = await MLAccount.findOne({
-      id: accountId,
-      userId: req.user.userId,
-    });
-
-    if (!account) {
-      return res.status(404).json({
-        success: false,
-        message: "Account not found",
-      });
-    }
+    const account = await getAndValidateAccount(accountId, req.user.userId);
 
     const query = { accountId, userId: req.user.userId };
     if (packId) query.packId = packId;
@@ -227,31 +225,28 @@ router.get("/:accountId", authenticateToken, async (req, res) => {
 
     const total = await Message.countDocuments(query);
 
-    res.json({
-      success: true,
-      data: {
-        account: {
-          id: account.id,
-          nickname: account.nickname,
-        },
-        messages: messages.map((m) => m.getSummary()),
-        total,
-        limit: parseInt(limit),
-        offset: parseInt(offset),
+    sendSuccess(res, {
+      account: {
+        id: account.id,
+        nickname: account.nickname,
       },
+      messages: messages.map((m) => m.getSummary()),
+      total,
+      limit: parseInt(limit),
+      offset: parseInt(offset),
     });
   } catch (error) {
-    logger.error({
+    if (error.message === "Account not found") {
+      return handleError(res, 404, "Account not found", error, {
+        action: "GET_ACCOUNT_MESSAGES_ERROR",
+        accountId: req.params.accountId,
+        userId: req.user.userId,
+      });
+    }
+    handleError(res, 500, "Failed to fetch messages", error, {
       action: "GET_ACCOUNT_MESSAGES_ERROR",
       accountId: req.params.accountId,
       userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch messages",
-      error: error.message,
     });
   }
 });
@@ -269,7 +264,6 @@ router.get(
       const { accountId, packId } = req.params;
       const account = req.mlAccount;
 
-      // Fetch conversation using SDK Manager
       const response = await sdkManager
         .execute(accountId, async (sdk) => {
           return await sdk.messages.getPackMessages(packId, account.mlUserId);
@@ -283,30 +277,18 @@ router.get(
           return null;
         });
 
-      // Also get from local DB
       const localMessages = await Message.getConversation(accountId, packId);
 
-      res.json({
-        success: true,
-        data: {
-          packId,
-          messages:
-            response?.messages || localMessages.map((m) => m.getDetails()),
-          paging: response?.paging || { total: localMessages.length },
-        },
+      sendSuccess(res, {
+        packId,
+        messages: response?.messages || localMessages.map((m) => m.getDetails()),
+        paging: response?.paging || { total: localMessages.length },
       });
     } catch (error) {
-      logger.error({
+      handleError(res, 500, "Failed to fetch conversation", error, {
         action: "GET_CONVERSATION_ERROR",
         packId: req.params.packId,
         userId: req.user.userId,
-        error: error.message,
-      });
-
-      res.status(500).json({
-        success: false,
-        message: "Failed to fetch conversation",
-        error: error.message,
       });
     }
   },
@@ -320,35 +302,22 @@ router.get("/:accountId/:messageId", authenticateToken, async (req, res) => {
   try {
     const { accountId, messageId } = req.params;
 
-    const message = await Message.findOne({
-      $or: [{ id: messageId }, { mlMessageId: messageId }],
-      accountId,
-      userId: req.user.userId,
-    });
+    const message = await findMessage(messageId, accountId, req.user.userId);
+    if (!message) throw new Error("Message not found");
 
-    if (!message) {
-      return res.status(404).json({
-        success: false,
-        message: "Message not found",
+    sendSuccess(res, message.getDetails());
+  } catch (error) {
+    if (error.message === "Message not found") {
+      return handleError(res, 404, "Message not found", error, {
+        action: "GET_MESSAGE_ERROR",
+        messageId: req.params.messageId,
+        userId: req.user.userId,
       });
     }
-
-    res.json({
-      success: true,
-      data: message.getDetails(),
-    });
-  } catch (error) {
-    logger.error({
+    handleError(res, 500, "Failed to fetch message", error, {
       action: "GET_MESSAGE_ERROR",
       messageId: req.params.messageId,
       userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch message",
-      error: error.message,
     });
   }
 });
@@ -374,14 +343,9 @@ router.post(
         });
       }
 
-      // Send message using SDK Manager
       const messageData = {
-        from: {
-          user_id: account.mlUserId,
-        },
-        to: {
-          // Buyer ID should be determined from the pack
-        },
+        from: { user_id: account.mlUserId },
+        to: {},
         text: text.trim(),
       };
 
@@ -390,14 +354,9 @@ router.post(
       }
 
       const response = await sdkManager.execute(accountId, async (sdk) => {
-        return await sdk.messages.sendMessage(
-          packId,
-          account.mlUserId,
-          messageData,
-        );
+        return await sdk.messages.sendMessage(packId, account.mlUserId, messageData);
       });
 
-      // Save message to local DB
       const message = new Message({
         accountId,
         userId: req.user.userId,
@@ -422,23 +381,12 @@ router.post(
         userId: req.user.userId,
       });
 
-      res.json({
-        success: true,
-        message: "Message sent successfully",
-        data: message.getDetails(),
-      });
+      sendSuccess(res, message.getDetails(), "Message sent successfully", 201);
     } catch (error) {
-      logger.error({
+      handleError(res, 500, "Failed to send message", error, {
         action: "SEND_MESSAGE_ERROR",
         packId: req.params.packId,
         userId: req.user.userId,
-        error: error.message,
-      });
-
-      res.status(500).json({
-        success: false,
-        message: "Failed to send message",
-        error: error.message,
       });
     }
   },
@@ -448,50 +396,33 @@ router.post(
  * PUT /api/messages/:accountId/:messageId/read
  * Mark message as read
  */
-router.put(
-  "/:accountId/:messageId/read",
-  authenticateToken,
-  async (req, res) => {
-    try {
-      const { accountId, messageId } = req.params;
+router.put("/:accountId/:messageId/read", authenticateToken, async (req, res) => {
+  try {
+    const { accountId, messageId } = req.params;
 
-      const message = await Message.findOne({
-        $or: [{ id: messageId }, { mlMessageId: messageId }],
-        accountId,
-        userId: req.user.userId,
-      });
+    const message = await findMessage(messageId, accountId, req.user.userId);
+    if (!message) throw new Error("Message not found");
 
-      if (!message) {
-        return res.status(404).json({
-          success: false,
-          message: "Message not found",
-        });
-      }
+    message.isRead = true;
+    message.dateRead = new Date();
+    await message.save();
 
-      message.isRead = true;
-      message.dateRead = new Date();
-      await message.save();
-
-      res.json({
-        success: true,
-        message: "Message marked as read",
-      });
-    } catch (error) {
-      logger.error({
+    sendSuccess(res, null, "Message marked as read");
+  } catch (error) {
+    if (error.message === "Message not found") {
+      return handleError(res, 404, "Message not found", error, {
         action: "MARK_MESSAGE_READ_ERROR",
         messageId: req.params.messageId,
         userId: req.user.userId,
-        error: error.message,
-      });
-
-      res.status(500).json({
-        success: false,
-        message: "Failed to mark message as read",
-        error: error.message,
       });
     }
-  },
-);
+    handleError(res, 500, "Failed to mark message as read", error, {
+      action: "MARK_MESSAGE_READ_ERROR",
+      messageId: req.params.messageId,
+      userId: req.user.userId,
+    });
+  }
+});
 
 /**
  * POST /api/messages/:accountId/sync
@@ -515,7 +446,6 @@ router.post(
         timestamp: new Date().toISOString(),
       });
 
-      // Get orders with pack IDs - all or limited to 20
       const query = Order.find({
         accountId,
         userId: req.user.userId,
@@ -524,11 +454,8 @@ router.post(
 
       const orders = all ? await query : await query.limit(20);
 
-      const packIds = [
-        ...new Set(orders.map((o) => o.packId).filter((id) => id)),
-      ];
+      const packIds = [...new Set(orders.map((o) => o.packId).filter((id) => id))];
 
-      // Fetch messages for each pack using SDK Manager
       let allMessages = [];
       for (const packId of packIds) {
         try {
@@ -550,7 +477,6 @@ router.post(
         }
       }
 
-      // Save messages
       const savedMessages = await saveMessages(
         accountId,
         req.user.userId,
@@ -566,36 +492,29 @@ router.post(
         timestamp: new Date().toISOString(),
       });
 
-      res.json({
-        success: true,
-        message: `Synchronized ${savedMessages.length} messages`,
-        data: {
+      sendSuccess(
+        res,
+        {
           accountId,
           messagesCount: savedMessages.length,
           messages: savedMessages.slice(0, 20).map((m) => m.getSummary()),
           syncedAt: new Date().toISOString(),
         },
-      });
+        `Synchronized ${savedMessages.length} messages`,
+      );
     } catch (error) {
-      logger.error({
+      handleError(res, 500, "Failed to sync messages", error, {
         action: "MESSAGES_SYNC_ERROR",
         accountId: req.params.accountId,
         userId: req.user.userId,
-        error: error.message,
         timestamp: new Date().toISOString(),
-      });
-
-      res.status(500).json({
-        success: false,
-        message: "Failed to sync messages",
-        error: error.message,
       });
     }
   },
 );
 
 // ============================================
-// HELPER FUNCTIONS
+// HELPER FUNCTIONS (Non-refactored - Existing)
 // ============================================
 
 /**
@@ -648,7 +567,6 @@ async function saveMessages(accountId, userId, sellerId, mlMessages) {
         lastSyncedAt: new Date(),
       };
 
-      // Find or create message
       let message = await Message.findOne({
         accountId,
         mlMessageId: messageData.mlMessageId,
