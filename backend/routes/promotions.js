@@ -17,6 +17,7 @@
 const express = require('express');
 const axios = require('axios');
 const logger = require('../logger');
+const sdkManager = require("../services/sdk-manager");
 const { authenticateToken } = require('../middleware/auth');
 const { validateMLToken } = require('../middleware/ml-token-validation');
 const Promotion = require('../db/models/Promotion');
@@ -32,7 +33,7 @@ const ML_API_BASE = 'https://api.mercadolibre.com';
  */
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    const { limit = 20, offset = 0, status, type, sort = '-startDate' } = req.query;
+    const { limit = 100, offset = 0, status, type, sort = '-startDate' } = req.query;
 
     const query = { userId: req.user.userId };
     if (status) query.status = status;
@@ -311,7 +312,7 @@ router.get('/:accountId/campaigns', authenticateToken, validateMLToken('accountI
 router.get('/:accountId', authenticateToken, async (req, res) => {
   try {
     const { accountId } = req.params;
-    const { limit = 20, offset = 0, status, type, sort = '-startDate' } = req.query;
+    const { limit = 100, offset = 0, status, type, sort = '-startDate' } = req.query;
 
     // Verify account belongs to user
     const account = await MLAccount.findOne({

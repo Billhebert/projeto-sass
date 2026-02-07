@@ -1,6 +1,7 @@
 const express = require('express');
 const axios = require('axios');
 const logger = require('../logger');
+const sdkManager = require("../services/sdk-manager");
 
 const router = express.Router();
 const API_BASE_URL = process.env.ML_API_URL || 'https://api.mercadolibre.com';

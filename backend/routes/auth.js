@@ -23,6 +23,10 @@ const router = express.Router();
 // Models
 const User = require("../db/models/User");
 const logger = require("../logger");
+const sdkManager = require("../services/sdk-manager");
+
+// Middleware
+const { authenticateToken } = require("../middleware/auth");
 
 // Stricter rate limiter specifically for login endpoint
 // Prevents brute force attacks - 5 failed attempts per 15 minutes
@@ -44,7 +48,9 @@ const {
   saveAccount,
   getAccount,
   updateAccount,
+  createAccount,
   getAccountByUserId,
+  getAccountsByUserId,
 } = require("../db/accounts");
 
 /**
@@ -131,8 +137,19 @@ router.post("/login", loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    // DEBUG: Log request details
+    console.log(
+      "LOGIN DEBUG - IP:",
+      req.ip,
+      "Email received:",
+      email,
+      "Password length:",
+      password ? password.length : 0,
+    );
+
     // Validation
     if (!email || !password) {
+      console.log("LOGIN DEBUG - Missing email or password");
       return res.status(400).json({
         success: false,
         error: "Email and password are required",
@@ -143,6 +160,8 @@ router.post("/login", loginLimiter, async (req, res) => {
     const user = await User.findOne({ email: email.toLowerCase() }).select(
       "+password",
     );
+
+    console.log("LOGIN DEBUG - User found:", user ? user.email : "NOT FOUND");
 
     if (!user) {
       return res.status(401).json({
@@ -190,11 +209,20 @@ router.post("/login", loginLimiter, async (req, res) => {
     const userResponse = user.toObject();
     delete userResponse.password;
 
+    // Fetch ML accounts for this user
+    let mlAccounts = [];
+    try {
+      mlAccounts = await getAccountsByUserId(user.id);
+    } catch (e) {
+      console.error("Error fetching ML accounts:", e.message);
+    }
+
     return res.status(200).json({
       success: true,
       data: {
         user: userResponse,
         token,
+        mlAccounts: mlAccounts || [],
       },
     });
   } catch (error) {
@@ -339,6 +367,9 @@ router.get("/ml-auth/url", (req, res) => {
       data: {
         authUrl,
         state,
+        clientId: CLIENT_ID,
+        clientSecret: CLIENT_SECRET,
+        redirectUri: REDIRECT_URI,
       },
     });
   } catch (error) {
@@ -526,37 +557,56 @@ router.get("/ml-app-token", async (req, res) => {
 });
 
 /**
+ * GET /api/auth/ml-auth/status
+ *
+ * Get ML OAuth status and connected accounts.
+ * Used by the MLAuth component to check if user has connected accounts.
+ */
+router.get("/ml-auth/status", async (req, res) => {
+  try {
+    // Get user ID from JWT token
+    const authHeader = req.headers["authorization"];
+    const token = authHeader && authHeader.split(" ")[1];
+
+    let userId = null;
+    if (token) {
+      try {
+        const decoded = require("jsonwebtoken").verify(
+          token,
+          process.env.JWT_SECRET || "your-secret-key",
+        );
+        userId = decoded.userId;
+      } catch (e) {
+        // Invalid token
+      }
+    }
+
+    if (!userId) {
+      return res.json({
+        success: true,
+        accounts: [],
+      });
+    }
+
+    const accounts = await getAccountsByUserId(userId);
+    return res.json({
+      success: true,
+      accounts: accounts || [],
+    });
+  } catch (error) {
+    console.error("Error getting ML auth status:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Failed to get ML accounts status",
+    });
+  }
+});
+
+/**
  * POST /api/auth/ml-callback
  *
- * Trade the authorization code for access and refresh tokens.
- * This is called after user authorizes the app on Mercado Livre.
- *
- * Can be used in two ways:
- * 1. With environment variables (default app credentials)
- * 2. With user-provided credentials (App ID, Secret, Redirect URI)
- *
- * Request body:
- * {
- *   code: string,            // Authorization code from ML
- *   state: string,           // State parameter to verify integrity
- *   clientId?: string,       // Optional: User's App ID
- *   clientSecret?: string,   // Optional: User's App Secret
- *   redirectUri?: string     // Optional: User's Redirect URI
- * }
- *
- * Response:
- * {
- *   success: boolean,
- *   account: {
- *     id: string,
- *     userId: number,
- *     nickname: string,
- *     email: string,
- *     accessToken: string,
- *     refreshToken: string,
- *     tokenExpiry: number
- *   }
- * }
+ * Handle OAuth callback from Mercado Livre.
+ * This is called when ML redirects back to the app after user authorization.
  */
 router.post("/ml-callback", async (req, res, next) => {
   try {
@@ -566,6 +616,39 @@ router.post("/ml-callback", async (req, res, next) => {
       return res.status(400).json({
         error: "Missing authorization code",
         details: 'The "code" parameter is required',
+      });
+    }
+
+    // Get user ID from JWT token
+    const authHeader = req.headers["authorization"];
+    const token = authHeader && authHeader.split(" ")[1];
+
+    let jwtUserId = null;
+    if (token) {
+      try {
+        const decoded = jwt.verify(
+          token,
+          process.env.JWT_SECRET || "your-secret-key",
+        );
+        jwtUserId = decoded.userId;
+      } catch (e) {
+        // Invalid token
+      }
+    }
+
+    if (!jwtUserId) {
+      return res.status(401).json({
+        error: "User not authenticated",
+        details: "JWT token is required to link ML account to user",
+      });
+    }
+
+    // Verify user exists
+    const user = await User.findById(jwtUserId);
+    if (!user) {
+      return res.status(404).json({
+        error: "User not found",
+        details: "The authenticated user does not exist",
       });
     }
 
@@ -641,6 +724,25 @@ router.post("/ml-callback", async (req, res, next) => {
     } else {
       await saveAccount(account);
       console.log(`Created new account: ${accountId}`);
+    }
+
+    // Step 4.5: Update user's mlAccounts array
+    const mlAccountInfo = {
+      accountId: accountId,
+      mlUserId: userInfo.id,
+      nickname: userInfo.nickname,
+      connectedAt: new Date().toISOString(),
+    };
+
+    // Check if account is already in user's mlAccounts
+    const accountAlreadyLinked = user.mlAccounts.some(
+      (acc) => acc.accountId === accountId,
+    );
+
+    if (!accountAlreadyLinked) {
+      user.mlAccounts.push(mlAccountInfo);
+      await user.save();
+      console.log(`Linked ML account ${accountId} to user ${jwtUserId}`);
     }
 
     // Step 5: Return success response
@@ -752,6 +854,140 @@ router.post("/ml-refresh", async (req, res, next) => {
   } catch (error) {
     console.error("Token refresh error:", error.message);
     next(error);
+  }
+});
+
+/**
+ * POST /api/auth/ml-add-token
+ *
+ * Manually add a Mercado Libre account using access token and refresh token.
+ * No OAuth flow required - direct token input.
+ *
+ * Request body:
+ * {
+ *   accessToken: string (required),
+ *   refreshToken: string (optional),
+ *   userId: string (optional),
+ *   nickname: string (optional)
+ * }
+ */
+router.post("/ml-add-token", authenticateToken, async (req, res, next) => {
+  try {
+    const { accessToken, refreshToken, userId, nickname } = req.body;
+    const jwtUserId = req.user.userId;
+
+    if (!accessToken) {
+      return res.status(400).json({
+        success: false,
+        message: "Access token é obrigatório",
+      });
+    }
+
+    console.log(`Adding ML account via direct token for user: ${jwtUserId}`);
+
+    // Step 1: Validate token by fetching user info from ML
+    let mlUserData;
+    try {
+      const mlResponse = await axios.get(
+        "https://api.mercadolibre.com/users/me",
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        },
+      );
+      mlUserData = mlResponse.data;
+    } catch (error) {
+      console.error("Failed to validate access token:", error.message);
+      return res.status(400).json({
+        success: false,
+        message: "Token inválido ou expirado",
+        error: error.response?.data || error.message,
+      });
+    }
+
+    // Step 2: Create account object
+    const accountId = mlUserData.id.toString();
+    const accountData = {
+      id: accountId,
+      userId: userId || mlUserData.id,
+      nickname: nickname || mlUserData.nickname,
+      email: mlUserData.email || null,
+      firstName: mlUserData.first_name || null,
+      lastName: mlUserData.last_name || null,
+      thumbnail: mlUserData.thumbnail?.http || mlUserData.logo || null,
+      permalink: mlUserData.permalink || null,
+      siteId: mlUserData.site_id || "MLB",
+      accessToken: accessToken,
+      refreshToken: refreshToken || null,
+      tokenExpiry: refreshToken ? Date.now() + 21600000 : null, // 6 hours if refresh token provided
+      status: "active",
+      authType: "manual_token",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    // Step 3: Check if account already exists
+    const existingAccount = await getAccount(accountId);
+    if (existingAccount) {
+      // Update existing account
+      await updateAccount(accountId, accountData);
+      console.log(`Updated existing ML account: ${accountId}`);
+    } else {
+      // Create new account
+      await createAccount(accountData);
+      console.log(`Created new ML account via token: ${accountId}`);
+    }
+
+    // Step 4: Link to user document
+    const user = await User.findById(jwtUserId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "Usuário não encontrado",
+      });
+    }
+
+    const mlAccountInfo = {
+      accountId: accountId,
+      nickname: accountData.nickname,
+      email: accountData.email,
+      addedAt: new Date().toISOString(),
+    };
+
+    const accountAlreadyLinked = user.mlAccounts.some(
+      (acc) => acc.accountId === accountId,
+    );
+
+    if (!accountAlreadyLinked) {
+      user.mlAccounts.push(mlAccountInfo);
+      await user.save();
+      console.log(`Linked ML account ${accountId} to user ${jwtUserId}`);
+    } else {
+      console.log(
+        `ML account ${accountId} already linked to user ${jwtUserId}`,
+      );
+    }
+
+    return res.json({
+      success: true,
+      message: "Account added successfully via tokens",
+      account: {
+        id: accountData.id,
+        nickname: accountData.nickname,
+        siteId: accountData.siteId,
+        email: accountData.email,
+        status: accountData.status,
+        authType: accountData.authType,
+      },
+    });
+  } catch (error) {
+    console.error("Add ML token error:", error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to add ML account",
+      error: error.message,
+    });
   }
 });
 

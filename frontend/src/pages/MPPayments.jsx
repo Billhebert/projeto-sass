@@ -1,90 +1,97 @@
-import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import {
   mpPaymentsAPI,
   formatMPCurrency,
   getMPStatusColor,
   getMPStatusLabel,
   getMPPaymentTypeLabel,
-} from '../services/mercadopago'
-import { useToastStore } from '../store/toastStore'
-import './MPPayments.css'
+} from "../services/mercadopago";
+import { useToastStore } from "../store/toastStore";
+import "./MPPayments.css";
 
 function MPPayments() {
-  const [loading, setLoading] = useState(true)
-  const [payments, setPayments] = useState([])
-  const [paging, setPaging] = useState({ total: 0, limit: 30, offset: 0 })
+  const [loading, setLoading] = useState(true);
+  const [payments, setPayments] = useState([]);
+  const [paging, setPaging] = useState({ total: 0, limit: 100, offset: 0 });
   const [filters, setFilters] = useState({
-    status: '',
-    begin_date: '',
-    end_date: '',
-  })
-  const [selectedPayment, setSelectedPayment] = useState(null)
-  const [showRefundModal, setShowRefundModal] = useState(false)
-  const [refundAmount, setRefundAmount] = useState('')
-  const { showToast } = useToastStore()
+    status: "",
+    begin_date: "",
+    end_date: "",
+  });
+  const [selectedPayment, setSelectedPayment] = useState(null);
+  const [showRefundModal, setShowRefundModal] = useState(false);
+  const [refundAmount, setRefundAmount] = useState("");
+  const { showToast } = useToastStore();
 
   useEffect(() => {
-    loadPayments()
-  }, [filters, paging.offset])
+    loadPayments();
+  }, [filters, paging.offset]);
 
   const loadPayments = async () => {
-    setLoading(true)
+    setLoading(true);
     try {
       const params = {
         limit: paging.limit,
         offset: paging.offset,
-        sort: 'date_created',
-        criteria: 'desc',
-      }
+        sort: "date_created",
+        criteria: "desc",
+      };
 
-      if (filters.status) params.status = filters.status
-      if (filters.begin_date) params.begin_date = filters.begin_date
-      if (filters.end_date) params.end_date = filters.end_date
+      if (filters.status) params.status = filters.status;
+      if (filters.begin_date) params.begin_date = filters.begin_date;
+      if (filters.end_date) params.end_date = filters.end_date;
 
-      const response = await mpPaymentsAPI.search(params)
-      setPayments(response.data?.results || [])
+      const response = await mpPaymentsAPI.search(params);
+      setPayments(response.data?.results || []);
       setPaging((prev) => ({
         ...prev,
         total: response.data?.paging?.total || 0,
-      }))
+      }));
     } catch (error) {
-      console.error('Error loading payments:', error)
-      showToast('Erro ao carregar pagamentos', 'error')
+      console.error("Error loading payments:", error);
+      if (error.response?.status === 501) {
+        showToast(
+          "Integração Mercado Pago não disponível. Use Mercado Livre.",
+          "info",
+        );
+      } else {
+        showToast("Erro ao carregar pagamentos", "error");
+      }
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const handleRefund = async () => {
-    if (!selectedPayment) return
+    if (!selectedPayment) return;
 
     try {
-      const amount = refundAmount ? parseFloat(refundAmount) : null
-      await mpPaymentsAPI.refund(selectedPayment.id, amount)
-      showToast('Reembolso processado com sucesso', 'success')
-      setShowRefundModal(false)
-      setSelectedPayment(null)
-      setRefundAmount('')
-      loadPayments()
+      const amount = refundAmount ? parseFloat(refundAmount) : null;
+      await mpPaymentsAPI.refund(selectedPayment.id, amount);
+      showToast("Reembolso processado com sucesso", "success");
+      setShowRefundModal(false);
+      setSelectedPayment(null);
+      setRefundAmount("");
+      loadPayments();
     } catch (error) {
-      console.error('Error refunding payment:', error)
-      showToast('Erro ao processar reembolso', 'error')
+      console.error("Error refunding payment:", error);
+      showToast("Erro ao processar reembolso", "error");
     }
-  }
+  };
 
   const handleFilterChange = (e) => {
-    const { name, value } = e.target
-    setFilters((prev) => ({ ...prev, [name]: value }))
-    setPaging((prev) => ({ ...prev, offset: 0 }))
-  }
+    const { name, value } = e.target;
+    setFilters((prev) => ({ ...prev, [name]: value }));
+    setPaging((prev) => ({ ...prev, offset: 0 }));
+  };
 
   const handlePageChange = (newOffset) => {
-    setPaging((prev) => ({ ...prev, offset: newOffset }))
-  }
+    setPaging((prev) => ({ ...prev, offset: newOffset }));
+  };
 
-  const totalPages = Math.ceil(paging.total / paging.limit)
-  const currentPage = Math.floor(paging.offset / paging.limit) + 1
+  const totalPages = Math.ceil(paging.total / paging.limit);
+  const currentPage = Math.floor(paging.offset / paging.limit) + 1;
 
   return (
     <div className="mp-payments">
@@ -108,7 +115,11 @@ function MPPayments() {
       <div className="filters-section">
         <div className="filter-group">
           <label>Status</label>
-          <select name="status" value={filters.status} onChange={handleFilterChange}>
+          <select
+            name="status"
+            value={filters.status}
+            onChange={handleFilterChange}
+          >
             <option value="">Todos</option>
             <option value="pending">Pendente</option>
             <option value="approved">Aprovado</option>
@@ -179,20 +190,31 @@ function MPPayments() {
                 {payments.map((payment) => (
                   <tr key={payment.id}>
                     <td className="payment-id">#{payment.id}</td>
-                    <td>{new Date(payment.date_created).toLocaleDateString('pt-BR')}</td>
+                    <td>
+                      {new Date(payment.date_created).toLocaleDateString(
+                        "pt-BR",
+                      )}
+                    </td>
                     <td>
                       <div className="payer-info">
-                        <span className="payer-email">{payment.payer?.email || '-'}</span>
+                        <span className="payer-email">
+                          {payment.payer?.email || "-"}
+                        </span>
                       </div>
                     </td>
                     <td>
                       <span className="payment-method">
                         {getMPPaymentTypeLabel(payment.payment_type_id)}
                       </span>
-                      <span className="payment-method-id">{payment.payment_method_id}</span>
+                      <span className="payment-method-id">
+                        {payment.payment_method_id}
+                      </span>
                     </td>
                     <td className="payment-amount">
-                      {formatMPCurrency(payment.transaction_amount, payment.currency_id)}
+                      {formatMPCurrency(
+                        payment.transaction_amount,
+                        payment.currency_id,
+                      )}
                       {payment.installments > 1 && (
                         <span className="installments">
                           {payment.installments}x
@@ -202,7 +224,9 @@ function MPPayments() {
                     <td>
                       <span
                         className="status-badge"
-                        style={{ backgroundColor: getMPStatusColor(payment.status) }}
+                        style={{
+                          backgroundColor: getMPStatusColor(payment.status),
+                        }}
                       >
                         {getMPStatusLabel(payment.status)}
                       </span>
@@ -216,13 +240,13 @@ function MPPayments() {
                         >
                           <span className="material-icons">visibility</span>
                         </button>
-                        {payment.status === 'approved' && (
+                        {payment.status === "approved" && (
                           <button
                             className="btn-action refund"
                             title="Reembolsar"
                             onClick={() => {
-                              setSelectedPayment(payment)
-                              setShowRefundModal(true)
+                              setSelectedPayment(payment);
+                              setShowRefundModal(true);
                             }}
                           >
                             <span className="material-icons">undo</span>
@@ -274,7 +298,10 @@ function MPPayments() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Detalhes do Pagamento</h2>
-              <button className="close-btn" onClick={() => setSelectedPayment(null)}>
+              <button
+                className="close-btn"
+                onClick={() => setSelectedPayment(null)}
+              >
                 <span className="material-icons">close</span>
               </button>
             </div>
@@ -288,34 +315,49 @@ function MPPayments() {
                   <label>Status</label>
                   <span
                     className="status-badge"
-                    style={{ backgroundColor: getMPStatusColor(selectedPayment.status) }}
+                    style={{
+                      backgroundColor: getMPStatusColor(selectedPayment.status),
+                    }}
                   >
                     {getMPStatusLabel(selectedPayment.status)}
                   </span>
                 </div>
                 <div className="detail-item">
                   <label>Data Criacao</label>
-                  <span>{new Date(selectedPayment.date_created).toLocaleString('pt-BR')}</span>
+                  <span>
+                    {new Date(selectedPayment.date_created).toLocaleString(
+                      "pt-BR",
+                    )}
+                  </span>
                 </div>
                 {selectedPayment.date_approved && (
                   <div className="detail-item">
                     <label>Data Aprovacao</label>
-                    <span>{new Date(selectedPayment.date_approved).toLocaleString('pt-BR')}</span>
+                    <span>
+                      {new Date(selectedPayment.date_approved).toLocaleString(
+                        "pt-BR",
+                      )}
+                    </span>
                   </div>
                 )}
                 <div className="detail-item">
                   <label>Valor</label>
                   <span className="amount">
-                    {formatMPCurrency(selectedPayment.transaction_amount, selectedPayment.currency_id)}
+                    {formatMPCurrency(
+                      selectedPayment.transaction_amount,
+                      selectedPayment.currency_id,
+                    )}
                   </span>
                 </div>
                 <div className="detail-item">
                   <label>Metodo</label>
-                  <span>{getMPPaymentTypeLabel(selectedPayment.payment_type_id)}</span>
+                  <span>
+                    {getMPPaymentTypeLabel(selectedPayment.payment_type_id)}
+                  </span>
                 </div>
                 <div className="detail-item">
                   <label>Pagador</label>
-                  <span>{selectedPayment.payer?.email || '-'}</span>
+                  <span>{selectedPayment.payer?.email || "-"}</span>
                 </div>
                 {selectedPayment.installments > 1 && (
                   <div className="detail-item">
@@ -338,7 +380,7 @@ function MPPayments() {
               </div>
             </div>
             <div className="modal-footer">
-              {selectedPayment.status === 'approved' && (
+              {selectedPayment.status === "approved" && (
                 <button
                   className="btn btn-warning"
                   onClick={() => setShowRefundModal(true)}
@@ -347,7 +389,10 @@ function MPPayments() {
                   Reembolsar
                 </button>
               )}
-              <button className="btn btn-secondary" onClick={() => setSelectedPayment(null)}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setSelectedPayment(null)}
+              >
                 Fechar
               </button>
             </div>
@@ -357,11 +402,20 @@ function MPPayments() {
 
       {/* Refund Modal */}
       {showRefundModal && selectedPayment && (
-        <div className="modal-overlay" onClick={() => setShowRefundModal(false)}>
-          <div className="modal refund-modal" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="modal-overlay"
+          onClick={() => setShowRefundModal(false)}
+        >
+          <div
+            className="modal refund-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="modal-header">
               <h2>Reembolsar Pagamento</h2>
-              <button className="close-btn" onClick={() => setShowRefundModal(false)}>
+              <button
+                className="close-btn"
+                onClick={() => setShowRefundModal(false)}
+              >
                 <span className="material-icons">close</span>
               </button>
             </div>
@@ -370,14 +424,19 @@ function MPPayments() {
                 Pagamento: <strong>#{selectedPayment.id}</strong>
               </p>
               <p>
-                Valor Total:{' '}
+                Valor Total:{" "}
                 <strong>
-                  {formatMPCurrency(selectedPayment.transaction_amount, selectedPayment.currency_id)}
+                  {formatMPCurrency(
+                    selectedPayment.transaction_amount,
+                    selectedPayment.currency_id,
+                  )}
                 </strong>
               </p>
 
               <div className="form-group">
-                <label>Valor do Reembolso (deixe vazio para reembolso total)</label>
+                <label>
+                  Valor do Reembolso (deixe vazio para reembolso total)
+                </label>
                 <input
                   type="number"
                   step="0.01"
@@ -390,7 +449,10 @@ function MPPayments() {
               </div>
             </div>
             <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setShowRefundModal(false)}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setShowRefundModal(false)}
+              >
                 Cancelar
               </button>
               <button className="btn btn-danger" onClick={handleRefund}>
@@ -402,7 +464,7 @@ function MPPayments() {
         </div>
       )}
     </div>
-  )
+  );
 }
 
-export default MPPayments
+export default MPPayments;

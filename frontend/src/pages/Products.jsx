@@ -1,9 +1,13 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import api from '../services/api';
-import { toast } from '../store/toastStore';
-import { exportToCSV, exportToPDF, prepareProductsForExport } from '../utils/export';
-import './Products.css';
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import api from "../services/api";
+import { toast } from "../store/toastStore";
+import {
+  exportToCSV,
+  exportToPDF,
+  prepareProductsForExport,
+} from "../utils/export";
+import "./Products.css";
 
 export default function Products() {
   const navigate = useNavigate();
@@ -15,12 +19,10 @@ export default function Products() {
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [account, setAccount] = useState(null);
-  const [filterStatus, setFilterStatus] = useState('active');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [sortBy, setSortBy] = useState('-createdAt');
-  const [limit] = useState(20);
-  const [offset, setOffset] = useState(0);
-  
+  const [filterStatus, setFilterStatus] = useState("active");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [sortBy, setSortBy] = useState("-createdAt");
+
   // Ref to track if initial fetch was done
   const initialFetchDone = useRef(false);
 
@@ -32,17 +34,16 @@ export default function Products() {
 
     try {
       const query = new URLSearchParams({
-        limit: limit.toString(),
-        offset: offset.toString(),
+        all: "true", // Fetch ALL products without limit
         sort: sortBy,
       });
 
       if (filterStatus) {
-        query.append('status', filterStatus);
+        query.append("status", filterStatus);
       }
 
       const response = await api.get(
-        `/products/${accountId}?${query.toString()}`
+        `/products/${accountId}?${query.toString()}`,
       );
 
       if (response.data.success) {
@@ -51,12 +52,12 @@ export default function Products() {
         setTotal(response.data.data.total || 0);
       }
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to fetch products');
-      console.error('Error fetching products:', err);
+      toast.error(err.response?.data?.message || "Failed to fetch products");
+      console.error("Error fetching products:", err);
     } finally {
       setLoading(false);
     }
-  }, [accountId, filterStatus, sortBy, limit, offset]);
+  }, [accountId, filterStatus, sortBy]);
 
   // Fetch stats separately
   const fetchStats = useCallback(async () => {
@@ -69,7 +70,7 @@ export default function Products() {
         setStats(response.data.data);
       }
     } catch (err) {
-      console.error('Error fetching stats:', err);
+      console.error("Error fetching stats:", err);
     }
   }, [accountId]);
 
@@ -83,13 +84,10 @@ export default function Products() {
     fetchStats();
   }, [accountId]);
 
-  // Reset offset when filter or sort changes
+  // Effect for fetching products when dependencies change
   useEffect(() => {
-    if (initialFetchDone.current) {
-      setOffset(0);
-    }
-    initialFetchDone.current = true;
-  }, [filterStatus, sortBy]);
+    fetchProducts();
+  }, [fetchProducts]);
 
   const handleSyncProducts = async () => {
     if (!accountId) return;
@@ -97,17 +95,26 @@ export default function Products() {
     setSyncing(true);
 
     try {
-      const response = await api.post(`/products/${accountId}/sync`);
+      const response = await api.post(`/products/${accountId}/sync`, {
+        all: true, // Fetch ALL products without limit
+      });
 
       if (response.data.success) {
         setProducts(response.data.data.products);
-        setTotal(response.data.data.productsCount || response.data.data.products.length);
+        setTotal(
+          response.data.data.productsCount ||
+            response.data.data.products.length,
+        );
         fetchStats();
-        toast.success(`${response.data.data.productsCount || response.data.data.products.length} produtos sincronizados com sucesso!`);
+        toast.success(
+          `${response.data.data.productsCount || response.data.data.products.length} produtos sincronizados com sucesso!`,
+        );
       }
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Falha ao sincronizar produtos');
-      console.error('Error syncing products:', err);
+      toast.error(
+        err.response?.data?.message || "Falha ao sincronizar produtos",
+      );
+      console.error("Error syncing products:", err);
     } finally {
       setSyncing(false);
     }
@@ -116,67 +123,58 @@ export default function Products() {
   const handleRemoveProduct = async (productId) => {
     if (!accountId) return;
 
-    if (!window.confirm('Are you sure you want to remove this product?')) {
+    if (!window.confirm("Are you sure you want to remove this product?")) {
       return;
     }
 
     try {
       await api.delete(`/products/${accountId}/${productId}`);
-      setProducts(products.filter(p => p.id !== productId));
-      toast.success('Product removed successfully');
+      setProducts(products.filter((p) => p.id !== productId));
+      toast.success("Product removed successfully");
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to remove product');
+      toast.error(err.response?.data?.message || "Failed to remove product");
     }
   };
 
-  const filteredProducts = products.filter(product =>
-    product.title?.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredProducts = products.filter((product) =>
+    product.title?.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   const hasProducts = filteredProducts.length > 0;
-  const totalPages = Math.ceil(total / limit);
-  const currentPage = Math.floor(offset / limit) + 1;
-
-  // Pagination handlers
-  const goToPrevPage = () => {
-    setOffset(Math.max(0, offset - limit));
-  };
-
-  const goToNextPage = () => {
-    if (currentPage < totalPages) {
-      setOffset(offset + limit);
-    }
-  };
+  // Pagination removed - now fetching all products
 
   // Export handlers
   const handleExportCSV = () => {
     if (products.length === 0) {
-      toast.warning('No products to export');
+      toast.warning("No products to export");
       return;
     }
     const data = prepareProductsForExport(products);
-    const accountName = account?.nickname || 'account';
-    exportToCSV(data, `products_${accountName}_${new Date().toISOString().split('T')[0]}`);
-    toast.success('CSV file exported successfully!');
+    const accountName = account?.nickname || "account";
+    exportToCSV(
+      data,
+      `products_${accountName}_${new Date().toISOString().split("T")[0]}`,
+    );
+    toast.success("CSV file exported successfully!");
   };
 
   const handleExportPDF = () => {
     if (products.length === 0) {
-      toast.warning('No products to export');
+      toast.warning("No products to export");
       return;
     }
 
     const columns = [
-      { key: 'title', label: 'Product' },
-      { key: 'price', label: 'Price', format: 'currency' },
-      { key: 'quantity', label: 'Stock', format: 'number' },
-      { key: 'salesCount', label: 'Sales', format: 'number' },
-      { key: 'status', label: 'Status' },
+      { key: "title", label: "Product" },
+      { key: "price", label: "Price", format: "currency" },
+      { key: "quantity", label: "Stock", format: "number" },
+      { key: "salesCount", label: "Sales", format: "number" },
+      { key: "status", label: "Status" },
     ];
 
-    const accountName = account?.nickname || 'Account';
+    const accountName = account?.nickname || "Account";
     exportToPDF(`Products Report - ${accountName}`, products, columns);
-    toast.info('PDF opened in new tab. Use Ctrl+P to save.');
+    toast.info("PDF opened in new tab. Use Ctrl+P to save.");
   };
 
   return (
@@ -186,7 +184,10 @@ export default function Products() {
           <h1>Produtos</h1>
           {account && <p className="account-name">{account.nickname}</p>}
         </div>
-        <div className="header-actions" style={{ display: 'flex', gap: '0.5rem' }}>
+        <div
+          className="header-actions"
+          style={{ display: "flex", gap: "0.5rem" }}
+        >
           {products.length > 0 && (
             <>
               <button
@@ -206,11 +207,11 @@ export default function Products() {
             </>
           )}
           <button
-            className={`btn btn-primary ${syncing ? 'loading' : ''}`}
+            className={`btn btn-primary ${syncing ? "loading" : ""}`}
             onClick={handleSyncProducts}
             disabled={syncing}
           >
-            {syncing ? 'Sincronizando...' : 'Sincronizar Produtos'}
+            {syncing ? "Sincronizando..." : "Sincronizar Produtos"}
           </button>
         </div>
       </div>
@@ -263,7 +264,7 @@ export default function Products() {
             <div className="stat-content">
               <div className="stat-label">Valor Estimado</div>
               <div className="stat-value">
-                R$ {(stats.estimatedValue || 0).toLocaleString('pt-BR')}
+                R$ {(stats.estimatedValue || 0).toLocaleString("pt-BR")}
               </div>
             </div>
           </div>
@@ -347,20 +348,22 @@ export default function Products() {
                         >
                           {product.title}
                         </a>
-                        <span className="product-id">#{product.mlProductId}</span>
+                        <span className="product-id">
+                          #{product.mlProductId}
+                        </span>
                       </div>
                     </td>
                     <td className="product-price">
-                      R$ {(product.price || 0).toLocaleString('pt-BR')}
+                      R$ {(product.price || 0).toLocaleString("pt-BR")}
                     </td>
                     <td className="product-stock">
                       <span
                         className={`stock-badge ${
                           product.quantity > 10
-                            ? 'high'
+                            ? "high"
                             : product.quantity > 0
-                            ? 'medium'
-                            : 'low'
+                              ? "medium"
+                              : "low"
                         }`}
                       >
                         {product.quantity} unidades
@@ -371,10 +374,13 @@ export default function Products() {
                     </td>
                     <td className="product-status">
                       <span className={`status-badge ${product.status}`}>
-                        {product.status === 'active' ? 'Ativo' : 
-                         product.status === 'paused' ? 'Pausado' : 
-                         product.status === 'closed' ? 'Encerrado' : 
-                         product.status}
+                        {product.status === "active"
+                          ? "Ativo"
+                          : product.status === "paused"
+                            ? "Pausado"
+                            : product.status === "closed"
+                              ? "Encerrado"
+                              : product.status}
                       </span>
                     </td>
                     <td className="product-actions">
@@ -382,7 +388,7 @@ export default function Products() {
                         className="btn btn-small btn-secondary"
                         onClick={() =>
                           navigate(
-                            `/accounts/${accountId}/products/${product.id}`
+                            `/accounts/${accountId}/products/${product.id}`,
                           )
                         }
                         title="Ver detalhes"
@@ -403,30 +409,7 @@ export default function Products() {
             </table>
           </div>
 
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="pagination">
-              <button
-                onClick={goToPrevPage}
-                disabled={currentPage === 1}
-                className="btn btn-small"
-              >
-                ← Anterior
-              </button>
-
-              <div className="pagination-info">
-                Página {currentPage} de {totalPages}
-              </div>
-
-              <button
-                onClick={goToNextPage}
-                disabled={currentPage === totalPages}
-                className="btn btn-small"
-              >
-                Próximo →
-              </button>
-            </div>
-          )}
+          {/* Pagination removed - showing all products */}
         </>
       ) : (
         <div className="empty-state">
@@ -434,8 +417,8 @@ export default function Products() {
           <h2>Nenhum Produto Encontrado</h2>
           <p>
             {searchTerm
-              ? 'Nenhum produto corresponde a sua busca'
-              : 'Sincronize sua conta do Mercado Livre para ver os produtos aqui'}
+              ? "Nenhum produto corresponde a sua busca"
+              : "Sincronize sua conta do Mercado Livre para ver os produtos aqui"}
           </p>
           {!searchTerm && (
             <button
@@ -443,7 +426,7 @@ export default function Products() {
               onClick={handleSyncProducts}
               disabled={syncing}
             >
-              {syncing ? 'Sincronizando...' : 'Sincronizar Produtos Agora'}
+              {syncing ? "Sincronizando..." : "Sincronizar Produtos Agora"}
             </button>
           )}
         </div>

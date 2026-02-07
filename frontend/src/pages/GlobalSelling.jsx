@@ -1,205 +1,281 @@
-import { useState, useEffect } from 'react'
-import api from '../services/api'
-import './GlobalSelling.css'
+import { useState, useEffect } from "react";
+import api from "../services/api";
+import "./GlobalSelling.css";
 
 function GlobalSelling() {
-  const [selectedAccount, setSelectedAccount] = useState('')
-  const [accounts, setAccounts] = useState([])
-  const [activeTab, setActiveTab] = useState('overview')
-  const [loading, setLoading] = useState(true)
-  const [globalItems, setGlobalItems] = useState([])
-  const [countries, setCountries] = useState([])
-  const [selectedItems, setSelectedItems] = useState([])
-  const [showPublishModal, setShowPublishModal] = useState(false)
-  const [localItems, setLocalItems] = useState([])
-  const [searchTerm, setSearchTerm] = useState('')
+  const [selectedAccount, setSelectedAccount] = useState("");
+  const [accounts, setAccounts] = useState([]);
+  const [activeTab, setActiveTab] = useState("overview");
+  const [loading, setLoading] = useState(true);
+  const [globalItems, setGlobalItems] = useState([]);
+  const [countries, setCountries] = useState([]);
+  const [selectedItems, setSelectedItems] = useState([]);
+  const [showPublishModal, setShowPublishModal] = useState(false);
+  const [localItems, setLocalItems] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
   const [stats, setStats] = useState({
     totalGlobalItems: 0,
     activeCountries: 0,
     pendingShipments: 0,
-    totalRevenue: 0
-  })
+    totalRevenue: 0,
+  });
 
   const [publishForm, setPublishForm] = useState({
     items: [],
     targetCountries: [],
-    pricingStrategy: 'net_proceeds',
-    markup: 0
-  })
+    pricingStrategy: "net_proceeds",
+    markup: 0,
+  });
 
   const availableCountries = [
-    { code: 'MLA', name: 'Argentina', currency: 'ARS', flag: '🇦🇷' },
-    { code: 'MLM', name: 'Mexico', currency: 'MXN', flag: '🇲🇽' },
-    { code: 'MLC', name: 'Chile', currency: 'CLP', flag: '🇨🇱' },
-    { code: 'MCO', name: 'Colombia', currency: 'COP', flag: '🇨🇴' },
-    { code: 'MLU', name: 'Uruguai', currency: 'UYU', flag: '🇺🇾' },
-    { code: 'MPE', name: 'Peru', currency: 'PEN', flag: '🇵🇪' },
-    { code: 'MEC', name: 'Equador', currency: 'USD', flag: '🇪🇨' }
-  ]
+    { code: "MLA", name: "Argentina", currency: "ARS", flag: "🇦🇷" },
+    { code: "MLM", name: "Mexico", currency: "MXN", flag: "🇲🇽" },
+    { code: "MLC", name: "Chile", currency: "CLP", flag: "🇨🇱" },
+    { code: "MCO", name: "Colombia", currency: "COP", flag: "🇨🇴" },
+    { code: "MLU", name: "Uruguai", currency: "UYU", flag: "🇺🇾" },
+    { code: "MPE", name: "Peru", currency: "PEN", flag: "🇵🇪" },
+    { code: "MEC", name: "Equador", currency: "USD", flag: "🇪🇨" },
+  ];
 
   useEffect(() => {
-    fetchAccounts()
-  }, [])
+    fetchAccounts();
+  }, []);
 
   useEffect(() => {
     if (selectedAccount) {
-      fetchGlobalData()
-      fetchLocalItems()
+      fetchGlobalData();
+      fetchLocalItems();
     }
-  }, [selectedAccount])
+  }, [selectedAccount]);
 
   const fetchAccounts = async () => {
     try {
-      const response = await api.get('/ml-accounts')
+      const response = await api.get("/ml-accounts");
       if (response.data.success) {
-        const accountsList = response.data.data?.accounts || []
-        setAccounts(accountsList)
+        const accountsList = response.data.data?.accounts || [];
+        setAccounts(accountsList);
         if (accountsList.length > 0) {
-          setSelectedAccount(accountsList[0].id || accountsList[0].accountId)
+          setSelectedAccount(accountsList[0].id || accountsList[0].accountId);
         }
       }
     } catch (error) {
-      console.error('Error fetching accounts:', error)
+      console.error("Error fetching accounts:", error);
     }
-  }
+  };
 
   const fetchGlobalData = async () => {
     try {
-      setLoading(true)
-      // Simulated data - replace with actual API call
-      const mockGlobalItems = [
-        {
-          id: 'MLB123456789',
-          title: 'Smartphone Samsung Galaxy S21 128GB',
-          thumbnail: 'https://http2.mlstatic.com/D_NQ_NP_2X_600000-MLB123456789-012024-F.webp',
-          status: 'active',
-          localPrice: 2499.00,
-          publishedCountries: [
-            { code: 'MLA', price: 450000, status: 'active', sales: 12 },
-            { code: 'MLM', price: 12500, status: 'active', sales: 8 },
-            { code: 'MLC', price: 850000, status: 'paused', sales: 3 }
-          ]
-        },
-        {
-          id: 'MLB987654321',
-          title: 'Fone de Ouvido Bluetooth JBL Tune 510BT',
-          thumbnail: 'https://http2.mlstatic.com/D_NQ_NP_2X_600000-MLB987654321-012024-F.webp',
-          status: 'active',
-          localPrice: 249.00,
-          publishedCountries: [
-            { code: 'MLA', price: 35000, status: 'active', sales: 45 },
-            { code: 'MCO', price: 180000, status: 'active', sales: 22 }
-          ]
-        }
-      ]
+      setLoading(true);
 
-      setGlobalItems(mockGlobalItems)
+      // Fetch ALL orders with auto-pagination (no limits!)
+      let allOrders = [];
+      let offset = 0;
+      const limit = 200;
+      let hasMore = true;
+
+      while (hasMore) {
+        const response = await api.get(
+          `/orders/${selectedAccount}?limit=${limit}&offset=${offset}`,
+        );
+
+        if (!response.data.success) {
+          throw new Error("Failed to fetch orders");
+        }
+
+        const orders = response.data.data?.orders || [];
+        allOrders = allOrders.concat(orders);
+
+        if (orders.length < limit) {
+          hasMore = false;
+        } else {
+          offset += limit;
+        }
+      }
+
+      const paidOrders = allOrders.filter(
+        (o) => o.status === "paid" || o.status === "confirmed",
+      );
+
+      // Calculate statistics from real orders
+      const totalRevenue = paidOrders.reduce(
+        (sum, o) => sum + (o.totalAmount || 0),
+        0,
+      );
+      const pendingOrders = allOrders.filter(
+        (o) => o.status === "pending" || o.status === "payment_in_process",
+      );
+
+      // Count unique destination states/countries from shipping info
+      const shippingDestinations = new Set();
+      paidOrders.forEach((order) => {
+        if (order.shipping?.receiverAddress?.state?.name) {
+          shippingDestinations.add(order.shipping.receiverAddress.state.name);
+        }
+      });
+
       setStats({
-        totalGlobalItems: mockGlobalItems.length,
-        activeCountries: 4,
-        pendingShipments: 7,
-        totalRevenue: 45890.50
-      })
+        totalGlobalItems: 0, // Not available from orders
+        activeCountries: shippingDestinations.size,
+        pendingShipments: pendingOrders.length,
+        totalRevenue: totalRevenue,
+      });
+
+      // No global items yet - this would require items API with cross-border flag
+      setGlobalItems([]);
     } catch (error) {
-      console.error('Error fetching global data:', error)
+      console.error("Error fetching global data:", error);
+      setStats({
+        totalGlobalItems: 0,
+        activeCountries: 0,
+        pendingShipments: 0,
+        totalRevenue: 0,
+      });
+      setGlobalItems([]);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const fetchLocalItems = async () => {
     try {
-      const response = await api.get(`/items/${selectedAccount}/list?limit=50`)
-      if (response.data.success) {
-        setLocalItems(response.data.data || [])
+      // Fetch ALL items with auto-pagination (no limits!)
+      let allItems = [];
+      let offset = 0;
+      const limit = 100;
+      let hasMore = true;
+
+      while (hasMore) {
+        const response = await api.get(
+          `/items/${selectedAccount}/list?limit=${limit}&offset=${offset}`,
+        );
+
+        if (!response.data.success) {
+          break;
+        }
+
+        const items = response.data.data || [];
+        allItems = allItems.concat(items);
+
+        if (items.length < limit) {
+          hasMore = false;
+        } else {
+          offset += limit;
+        }
       }
+
+      setLocalItems(allItems);
     } catch (error) {
-      console.error('Error fetching local items:', error)
-      // Use empty array on error
-      setLocalItems([])
+      console.error("Error fetching local items:", error);
+      setLocalItems([]);
     }
-  }
+  };
 
   const handlePublishGlobal = async () => {
     try {
       // Simulated API call
-      console.log('Publishing items globally:', publishForm)
-      alert('Produtos publicados com sucesso nos paises selecionados!')
-      setShowPublishModal(false)
-      fetchGlobalData()
+      console.log("Publishing items globally:", publishForm);
+      alert("Produtos publicados com sucesso nos paises selecionados!");
+      setShowPublishModal(false);
+      fetchGlobalData();
     } catch (error) {
-      console.error('Error publishing globally:', error)
+      console.error("Error publishing globally:", error);
     }
-  }
+  };
 
   const handlePauseCountry = (itemId, countryCode) => {
-    setGlobalItems(prev => prev.map(item => {
-      if (item.id === itemId) {
-        return {
-          ...item,
-          publishedCountries: item.publishedCountries.map(c => {
-            if (c.code === countryCode) {
-              return { ...c, status: c.status === 'active' ? 'paused' : 'active' }
-            }
-            return c
-          })
-        }
-      }
-      return item
-    }))
-  }
-
-  const handleRemoveCountry = (itemId, countryCode) => {
-    if (window.confirm(`Remover publicacao em ${countryCode}?`)) {
-      setGlobalItems(prev => prev.map(item => {
+    setGlobalItems((prev) =>
+      prev.map((item) => {
         if (item.id === itemId) {
           return {
             ...item,
-            publishedCountries: item.publishedCountries.filter(c => c.code !== countryCode)
-          }
+            publishedCountries: item.publishedCountries.map((c) => {
+              if (c.code === countryCode) {
+                return {
+                  ...c,
+                  status: c.status === "active" ? "paused" : "active",
+                };
+              }
+              return c;
+            }),
+          };
         }
-        return item
-      }))
-    }
-  }
+        return item;
+      }),
+    );
+  };
 
-  const formatCurrency = (value, currency = 'BRL') => {
-    return new Intl.NumberFormat('pt-BR', { 
-      style: 'currency', 
-      currency: currency 
-    }).format(value)
-  }
+  const handleRemoveCountry = (itemId, countryCode) => {
+    if (window.confirm(`Remover publicacao em ${countryCode}?`)) {
+      setGlobalItems((prev) =>
+        prev.map((item) => {
+          if (item.id === itemId) {
+            return {
+              ...item,
+              publishedCountries: item.publishedCountries.filter(
+                (c) => c.code !== countryCode,
+              ),
+            };
+          }
+          return item;
+        }),
+      );
+    }
+  };
+
+  const formatCurrency = (value, currency = "BRL") => {
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: currency,
+    }).format(value);
+  };
 
   const getCountryInfo = (code) => {
-    return availableCountries.find(c => c.code === code) || { name: code, flag: '', currency: 'USD' }
-  }
+    return (
+      availableCountries.find((c) => c.code === code) || {
+        name: code,
+        flag: "",
+        currency: "USD",
+      }
+    );
+  };
 
-  const filteredLocalItems = localItems.filter(item =>
-    item.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.id?.includes(searchTerm)
-  )
+  const filteredLocalItems = localItems.filter(
+    (item) =>
+      item.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.id?.includes(searchTerm),
+  );
 
   return (
     <div className="global-selling-page">
       <div className="page-header">
         <div className="header-content">
           <h1>Global Selling</h1>
-          <p>Venda seus produtos em outros paises da America Latina com Cross-Border Trade</p>
+          <p>
+            Venda seus produtos em outros paises da America Latina com
+            Cross-Border Trade
+          </p>
         </div>
         <div className="header-actions">
-          <select 
+          <select
             className="account-select"
             value={selectedAccount}
             onChange={(e) => setSelectedAccount(e.target.value)}
           >
             <option value="">Selecione uma conta</option>
-            {accounts.map(account => (
-              <option key={account.id || account.accountId} value={account.id || account.accountId}>
+            {accounts.map((account) => (
+              <option
+                key={account.id || account.accountId}
+                value={account.id || account.accountId}
+              >
                 {account.nickname || account.id || account.accountId}
               </option>
             ))}
           </select>
-          <button className="btn btn-primary" onClick={() => setShowPublishModal(true)} disabled={!selectedAccount}>
+          <button
+            className="btn btn-primary"
+            onClick={() => setShowPublishModal(true)}
+            disabled={!selectedAccount}
+          >
             <span className="material-icons">add</span>
             Publicar Globalmente
           </button>
@@ -210,274 +286,340 @@ function GlobalSelling() {
         <div className="empty-state">
           <span className="material-icons">public</span>
           <h3>Selecione uma conta</h3>
-          <p>Selecione uma conta do Mercado Livre para gerenciar vendas internacionais</p>
+          <p>
+            Selecione uma conta do Mercado Livre para gerenciar vendas
+            internacionais
+          </p>
         </div>
       ) : (
         <>
           {/* Stats */}
           <div className="stats-grid">
-        <div className="stat-card">
-          <div className="stat-icon blue">
-            <span className="material-icons">inventory_2</span>
-          </div>
-          <div className="stat-info">
-            <span className="stat-value">{stats.totalGlobalItems}</span>
-            <span className="stat-label">Produtos Globais</span>
-          </div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon green">
-            <span className="material-icons">flag</span>
-          </div>
-          <div className="stat-info">
-            <span className="stat-value">{stats.activeCountries}</span>
-            <span className="stat-label">Paises Ativos</span>
-          </div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon orange">
-            <span className="material-icons">local_shipping</span>
-          </div>
-          <div className="stat-info">
-            <span className="stat-value">{stats.pendingShipments}</span>
-            <span className="stat-label">Envios Pendentes</span>
-          </div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon purple">
-            <span className="material-icons">payments</span>
-          </div>
-          <div className="stat-info">
-            <span className="stat-value">{formatCurrency(stats.totalRevenue)}</span>
-            <span className="stat-label">Receita Global</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="tabs">
-        <button 
-          className={`tab ${activeTab === 'overview' ? 'active' : ''}`}
-          onClick={() => setActiveTab('overview')}
-        >
-          <span className="material-icons">grid_view</span>
-          Visao Geral
-        </button>
-        <button 
-          className={`tab ${activeTab === 'items' ? 'active' : ''}`}
-          onClick={() => setActiveTab('items')}
-        >
-          <span className="material-icons">inventory_2</span>
-          Produtos
-        </button>
-        <button 
-          className={`tab ${activeTab === 'shipments' ? 'active' : ''}`}
-          onClick={() => setActiveTab('shipments')}
-        >
-          <span className="material-icons">local_shipping</span>
-          Envios
-        </button>
-        <button 
-          className={`tab ${activeTab === 'countries' ? 'active' : ''}`}
-          onClick={() => setActiveTab('countries')}
-        >
-          <span className="material-icons">public</span>
-          Paises
-        </button>
-      </div>
-
-      {/* Content */}
-      {loading ? (
-        <div className="loading-state">
-          <div className="spinner"></div>
-          <p>Carregando dados globais...</p>
-        </div>
-      ) : (
-        <>
-          {activeTab === 'overview' && (
-            <div className="section">
-              <div className="section-header">
-                <h2>Produtos Publicados Globalmente</h2>
+            <div className="stat-card">
+              <div className="stat-icon blue">
+                <span className="material-icons">inventory_2</span>
               </div>
+              <div className="stat-info">
+                <span className="stat-value">{stats.totalGlobalItems}</span>
+                <span className="stat-label">Produtos Globais</span>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon green">
+                <span className="material-icons">flag</span>
+              </div>
+              <div className="stat-info">
+                <span className="stat-value">{stats.activeCountries}</span>
+                <span className="stat-label">Paises Ativos</span>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon orange">
+                <span className="material-icons">local_shipping</span>
+              </div>
+              <div className="stat-info">
+                <span className="stat-value">{stats.pendingShipments}</span>
+                <span className="stat-label">Envios Pendentes</span>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon purple">
+                <span className="material-icons">payments</span>
+              </div>
+              <div className="stat-info">
+                <span className="stat-value">
+                  {formatCurrency(stats.totalRevenue)}
+                </span>
+                <span className="stat-label">Receita Global</span>
+              </div>
+            </div>
+          </div>
 
-              {globalItems.length === 0 ? (
-                <div className="empty-state">
-                  <span className="material-icons">public</span>
-                  <h3>Nenhum produto global</h3>
-                  <p>Comece a vender internacionalmente publicando seus produtos em outros paises</p>
-                  <button className="btn btn-primary" onClick={() => setShowPublishModal(true)}>
-                    Publicar Primeiro Produto
-                  </button>
-                </div>
-              ) : (
-                <div className="global-items-list">
-                  {globalItems.map(item => (
-                    <div key={item.id} className="global-item-card">
-                      <div className="item-main">
-                        <img 
-                          src={item.thumbnail || '/placeholder.png'} 
-                          alt={item.title} 
-                          className="item-image"
-                        />
-                        <div className="item-info">
-                          <h3>{item.title}</h3>
-                          <p className="item-id">{item.id}</p>
-                          <p className="item-local-price">
-                            Preco local: {formatCurrency(item.localPrice)}
-                          </p>
-                        </div>
-                      </div>
+          {/* Tabs */}
+          <div className="tabs">
+            <button
+              className={`tab ${activeTab === "overview" ? "active" : ""}`}
+              onClick={() => setActiveTab("overview")}
+            >
+              <span className="material-icons">grid_view</span>
+              Visao Geral
+            </button>
+            <button
+              className={`tab ${activeTab === "items" ? "active" : ""}`}
+              onClick={() => setActiveTab("items")}
+            >
+              <span className="material-icons">inventory_2</span>
+              Produtos
+            </button>
+            <button
+              className={`tab ${activeTab === "shipments" ? "active" : ""}`}
+              onClick={() => setActiveTab("shipments")}
+            >
+              <span className="material-icons">local_shipping</span>
+              Envios
+            </button>
+            <button
+              className={`tab ${activeTab === "countries" ? "active" : ""}`}
+              onClick={() => setActiveTab("countries")}
+            >
+              <span className="material-icons">public</span>
+              Paises
+            </button>
+          </div>
 
-                      <div className="countries-published">
-                        <h4>Paises Publicados</h4>
-                        <div className="countries-grid">
-                          {item.publishedCountries.map(country => {
-                            const countryInfo = getCountryInfo(country.code)
-                            return (
-                              <div key={country.code} className={`country-card ${country.status}`}>
-                                <div className="country-header">
-                                  <span className="country-flag">{countryInfo.flag}</span>
-                                  <span className="country-name">{countryInfo.name}</span>
-                                  <span className={`status-dot ${country.status}`}></span>
-                                </div>
-                                <div className="country-details">
-                                  <div className="detail">
-                                    <span className="label">Preco</span>
-                                    <span className="value">
-                                      {formatCurrency(country.price, countryInfo.currency)}
-                                    </span>
-                                  </div>
-                                  <div className="detail">
-                                    <span className="label">Vendas</span>
-                                    <span className="value">{country.sales}</span>
-                                  </div>
-                                </div>
-                                <div className="country-actions">
-                                  <button 
-                                    className="btn btn-sm"
-                                    onClick={() => handlePauseCountry(item.id, country.code)}
-                                  >
-                                    {country.status === 'active' ? 'Pausar' : 'Ativar'}
-                                  </button>
-                                  <button 
-                                    className="btn btn-sm danger"
-                                    onClick={() => handleRemoveCountry(item.id, country.code)}
-                                  >
-                                    Remover
-                                  </button>
-                                </div>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      </div>
+          {/* Content */}
+          {loading ? (
+            <div className="loading-state">
+              <div className="spinner"></div>
+              <p>Carregando dados globais...</p>
+            </div>
+          ) : (
+            <>
+              {activeTab === "overview" && (
+                <div className="section">
+                  <div className="section-header">
+                    <h2>Produtos Publicados Globalmente</h2>
+                  </div>
+
+                  {globalItems.length === 0 ? (
+                    <div className="empty-state">
+                      <span className="material-icons">public</span>
+                      <h3>Nenhum produto global</h3>
+                      <p>
+                        Comece a vender internacionalmente publicando seus
+                        produtos em outros paises
+                      </p>
+                      <button
+                        className="btn btn-primary"
+                        onClick={() => setShowPublishModal(true)}
+                      >
+                        Publicar Primeiro Produto
+                      </button>
                     </div>
-                  ))}
+                  ) : (
+                    <div className="global-items-list">
+                      {globalItems.map((item) => (
+                        <div key={item.id} className="global-item-card">
+                          <div className="item-main">
+                            <img
+                              src={item.thumbnail || "/placeholder.png"}
+                              alt={item.title}
+                              className="item-image"
+                            />
+                            <div className="item-info">
+                              <h3>{item.title}</h3>
+                              <p className="item-id">{item.id}</p>
+                              <p className="item-local-price">
+                                Preco local: {formatCurrency(item.localPrice)}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="countries-published">
+                            <h4>Paises Publicados</h4>
+                            <div className="countries-grid">
+                              {item.publishedCountries.map((country) => {
+                                const countryInfo = getCountryInfo(
+                                  country.code,
+                                );
+                                return (
+                                  <div
+                                    key={country.code}
+                                    className={`country-card ${country.status}`}
+                                  >
+                                    <div className="country-header">
+                                      <span className="country-flag">
+                                        {countryInfo.flag}
+                                      </span>
+                                      <span className="country-name">
+                                        {countryInfo.name}
+                                      </span>
+                                      <span
+                                        className={`status-dot ${country.status}`}
+                                      ></span>
+                                    </div>
+                                    <div className="country-details">
+                                      <div className="detail">
+                                        <span className="label">Preco</span>
+                                        <span className="value">
+                                          {formatCurrency(
+                                            country.price,
+                                            countryInfo.currency,
+                                          )}
+                                        </span>
+                                      </div>
+                                      <div className="detail">
+                                        <span className="label">Vendas</span>
+                                        <span className="value">
+                                          {country.sales}
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <div className="country-actions">
+                                      <button
+                                        className="btn btn-sm"
+                                        onClick={() =>
+                                          handlePauseCountry(
+                                            item.id,
+                                            country.code,
+                                          )
+                                        }
+                                      >
+                                        {country.status === "active"
+                                          ? "Pausar"
+                                          : "Ativar"}
+                                      </button>
+                                      <button
+                                        className="btn btn-sm danger"
+                                        onClick={() =>
+                                          handleRemoveCountry(
+                                            item.id,
+                                            country.code,
+                                          )
+                                        }
+                                      >
+                                        Remover
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
-          )}
 
-          {activeTab === 'countries' && (
-            <div className="section">
-              <div className="section-header">
-                <h2>Paises Disponiveis</h2>
-              </div>
+              {activeTab === "countries" && (
+                <div className="section">
+                  <div className="section-header">
+                    <h2>Paises Disponiveis</h2>
+                  </div>
 
-              <div className="countries-available">
-                {availableCountries.map(country => (
-                  <div key={country.code} className="available-country-card">
-                    <div className="country-info">
-                      <span className="country-flag large">{country.flag}</span>
-                      <div>
-                        <h3>{country.name}</h3>
-                        <p>Mercado Livre {country.code}</p>
+                  <div className="countries-available">
+                    {availableCountries.map((country) => (
+                      <div
+                        key={country.code}
+                        className="available-country-card"
+                      >
+                        <div className="country-info">
+                          <span className="country-flag large">
+                            {country.flag}
+                          </span>
+                          <div>
+                            <h3>{country.name}</h3>
+                            <p>Mercado Livre {country.code}</p>
+                          </div>
+                        </div>
+                        <div className="country-stats">
+                          <div className="stat">
+                            <span className="label">Moeda</span>
+                            <span className="value">{country.currency}</span>
+                          </div>
+                          <div className="stat">
+                            <span className="label">Produtos</span>
+                            <span className="value">
+                              {globalItems.reduce(
+                                (acc, item) =>
+                                  acc +
+                                  (item.publishedCountries.some(
+                                    (c) => c.code === country.code,
+                                  )
+                                    ? 1
+                                    : 0),
+                                0,
+                              )}
+                            </span>
+                          </div>
+                        </div>
+                        <button className="btn btn-secondary">
+                          <span className="material-icons">visibility</span>
+                          Ver Detalhes
+                        </button>
                       </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {activeTab === "shipments" && (
+                <div className="section">
+                  <div className="section-header">
+                    <h2>Envios Internacionais</h2>
+                  </div>
+
+                  <div className="info-banner">
+                    <span className="material-icons">info</span>
+                    <div>
+                      <strong>Net Proceeds Obrigatorio</strong>
+                      <p>
+                        A partir de 26/01/2026, todos os envios CBT devem usar
+                        precificacao Net Proceeds para garantir transparencia
+                        nos custos.
+                      </p>
                     </div>
-                    <div className="country-stats">
-                      <div className="stat">
-                        <span className="label">Moeda</span>
-                        <span className="value">{country.currency}</span>
-                      </div>
-                      <div className="stat">
-                        <span className="label">Produtos</span>
-                        <span className="value">
-                          {globalItems.reduce((acc, item) => 
-                            acc + (item.publishedCountries.some(c => c.code === country.code) ? 1 : 0), 0
-                          )}
+                  </div>
+
+                  <div className="shipments-list">
+                    <div className="shipment-card">
+                      <div className="shipment-header">
+                        <span className="shipment-id">#CBT-2024-001234</span>
+                        <span className="status-badge pending">
+                          Aguardando Envio
                         </span>
                       </div>
+                      <div className="shipment-details">
+                        <div className="detail">
+                          <span className="material-icons">flag</span>
+                          <span>Argentina (MLA)</span>
+                        </div>
+                        <div className="detail">
+                          <span className="material-icons">inventory_2</span>
+                          <span>2 produtos</span>
+                        </div>
+                        <div className="detail">
+                          <span className="material-icons">schedule</span>
+                          <span>Prazo: 15/01/2024</span>
+                        </div>
+                      </div>
+                      <div className="shipment-actions">
+                        <button className="btn btn-primary">
+                          <span className="material-icons">print</span>
+                          Imprimir Etiqueta
+                        </button>
+                        <button className="btn btn-secondary">
+                          <span className="material-icons">track_changes</span>
+                          Rastrear
+                        </button>
+                      </div>
                     </div>
-                    <button className="btn btn-secondary">
-                      <span className="material-icons">visibility</span>
-                      Ver Detalhes
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'shipments' && (
-            <div className="section">
-              <div className="section-header">
-                <h2>Envios Internacionais</h2>
-              </div>
-
-              <div className="info-banner">
-                <span className="material-icons">info</span>
-                <div>
-                  <strong>Net Proceeds Obrigatorio</strong>
-                  <p>A partir de 26/01/2026, todos os envios CBT devem usar precificacao Net Proceeds para garantir transparencia nos custos.</p>
-                </div>
-              </div>
-
-              <div className="shipments-list">
-                <div className="shipment-card">
-                  <div className="shipment-header">
-                    <span className="shipment-id">#CBT-2024-001234</span>
-                    <span className="status-badge pending">Aguardando Envio</span>
-                  </div>
-                  <div className="shipment-details">
-                    <div className="detail">
-                      <span className="material-icons">flag</span>
-                      <span>Argentina (MLA)</span>
-                    </div>
-                    <div className="detail">
-                      <span className="material-icons">inventory_2</span>
-                      <span>2 produtos</span>
-                    </div>
-                    <div className="detail">
-                      <span className="material-icons">schedule</span>
-                      <span>Prazo: 15/01/2024</span>
-                    </div>
-                  </div>
-                  <div className="shipment-actions">
-                    <button className="btn btn-primary">
-                      <span className="material-icons">print</span>
-                      Imprimir Etiqueta
-                    </button>
-                    <button className="btn btn-secondary">
-                      <span className="material-icons">track_changes</span>
-                      Rastrear
-                    </button>
                   </div>
                 </div>
-              </div>
-            </div>
+              )}
+            </>
           )}
-        </>
-      )}
         </>
       )}
 
       {/* Publish Modal */}
       {showPublishModal && (
-        <div className="modal-overlay" onClick={() => setShowPublishModal(false)}>
-          <div className="modal-content large" onClick={e => e.stopPropagation()}>
+        <div
+          className="modal-overlay"
+          onClick={() => setShowPublishModal(false)}
+        >
+          <div
+            className="modal-content large"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="modal-header">
               <h2>Publicar Globalmente</h2>
-              <button className="btn btn-icon" onClick={() => setShowPublishModal(false)}>
+              <button
+                className="btn btn-icon"
+                onClick={() => setShowPublishModal(false)}
+              >
                 <span className="material-icons">close</span>
               </button>
             </div>
@@ -490,62 +632,82 @@ function GlobalSelling() {
                     type="text"
                     placeholder="Buscar produtos..."
                     value={searchTerm}
-                    onChange={e => setSearchTerm(e.target.value)}
+                    onChange={(e) => setSearchTerm(e.target.value)}
                   />
                 </div>
                 <div className="items-selection">
-                  {filteredLocalItems.slice(0, 10).map(item => (
+                  {filteredLocalItems.slice(0, 10).map((item) => (
                     <div key={item.id} className="item-checkbox">
                       <input
                         type="checkbox"
                         id={`publish-${item.id}`}
                         checked={publishForm.items.includes(item.id)}
-                        onChange={e => {
+                        onChange={(e) => {
                           if (e.target.checked) {
-                            setPublishForm(prev => ({ ...prev, items: [...prev.items, item.id] }))
-                          } else {
-                            setPublishForm(prev => ({
+                            setPublishForm((prev) => ({
                               ...prev,
-                              items: prev.items.filter(i => i !== item.id)
-                            }))
+                              items: [...prev.items, item.id],
+                            }));
+                          } else {
+                            setPublishForm((prev) => ({
+                              ...prev,
+                              items: prev.items.filter((i) => i !== item.id),
+                            }));
                           }
                         }}
                       />
                       <label htmlFor={`publish-${item.id}`}>
                         {item.thumbnail && (
-                          <img src={item.thumbnail} alt="" className="item-thumb" />
+                          <img
+                            src={item.thumbnail}
+                            alt=""
+                            className="item-thumb"
+                          />
                         )}
                         <div className="item-details">
-                          <span className="item-title">{item.title?.substring(0, 50)}...</span>
-                          <span className="item-price">{formatCurrency(item.price)}</span>
+                          <span className="item-title">
+                            {item.title?.substring(0, 50)}...
+                          </span>
+                          <span className="item-price">
+                            {formatCurrency(item.price)}
+                          </span>
                         </div>
                       </label>
                     </div>
                   ))}
                 </div>
-                <p className="selected-count">{publishForm.items.length} produtos selecionados</p>
+                <p className="selected-count">
+                  {publishForm.items.length} produtos selecionados
+                </p>
               </div>
 
               <div className="form-section">
                 <h3>Paises de Destino</h3>
                 <div className="countries-selection">
-                  {availableCountries.map(country => (
+                  {availableCountries.map((country) => (
                     <div key={country.code} className="country-checkbox">
                       <input
                         type="checkbox"
                         id={`country-${country.code}`}
-                        checked={publishForm.targetCountries.includes(country.code)}
-                        onChange={e => {
+                        checked={publishForm.targetCountries.includes(
+                          country.code,
+                        )}
+                        onChange={(e) => {
                           if (e.target.checked) {
-                            setPublishForm(prev => ({
+                            setPublishForm((prev) => ({
                               ...prev,
-                              targetCountries: [...prev.targetCountries, country.code]
-                            }))
+                              targetCountries: [
+                                ...prev.targetCountries,
+                                country.code,
+                              ],
+                            }));
                           } else {
-                            setPublishForm(prev => ({
+                            setPublishForm((prev) => ({
                               ...prev,
-                              targetCountries: prev.targetCountries.filter(c => c !== country.code)
-                            }))
+                              targetCountries: prev.targetCountries.filter(
+                                (c) => c !== country.code,
+                              ),
+                            }));
                           }
                         }}
                       />
@@ -568,12 +730,20 @@ function GlobalSelling() {
                       id="net_proceeds"
                       name="pricing"
                       value="net_proceeds"
-                      checked={publishForm.pricingStrategy === 'net_proceeds'}
-                      onChange={e => setPublishForm(prev => ({ ...prev, pricingStrategy: e.target.value }))}
+                      checked={publishForm.pricingStrategy === "net_proceeds"}
+                      onChange={(e) =>
+                        setPublishForm((prev) => ({
+                          ...prev,
+                          pricingStrategy: e.target.value,
+                        }))
+                      }
                     />
                     <label htmlFor="net_proceeds">
                       <strong>Net Proceeds (Recomendado)</strong>
-                      <p>Voce define quanto quer receber e o ML calcula o preco final automaticamente</p>
+                      <p>
+                        Voce define quanto quer receber e o ML calcula o preco
+                        final automaticamente
+                      </p>
                     </label>
                   </div>
                   <div className="pricing-option">
@@ -582,8 +752,13 @@ function GlobalSelling() {
                       id="fixed_markup"
                       name="pricing"
                       value="fixed_markup"
-                      checked={publishForm.pricingStrategy === 'fixed_markup'}
-                      onChange={e => setPublishForm(prev => ({ ...prev, pricingStrategy: e.target.value }))}
+                      checked={publishForm.pricingStrategy === "fixed_markup"}
+                      onChange={(e) =>
+                        setPublishForm((prev) => ({
+                          ...prev,
+                          pricingStrategy: e.target.value,
+                        }))
+                      }
                     />
                     <label htmlFor="fixed_markup">
                       <strong>Markup Fixo</strong>
@@ -592,13 +767,18 @@ function GlobalSelling() {
                   </div>
                 </div>
 
-                {publishForm.pricingStrategy === 'fixed_markup' && (
+                {publishForm.pricingStrategy === "fixed_markup" && (
                   <div className="form-group">
                     <label>Percentual de Markup (%)</label>
                     <input
                       type="number"
                       value={publishForm.markup}
-                      onChange={e => setPublishForm(prev => ({ ...prev, markup: e.target.value }))}
+                      onChange={(e) =>
+                        setPublishForm((prev) => ({
+                          ...prev,
+                          markup: e.target.value,
+                        }))
+                      }
                       placeholder="20"
                     />
                   </div>
@@ -607,13 +787,19 @@ function GlobalSelling() {
             </div>
 
             <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setShowPublishModal(false)}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setShowPublishModal(false)}
+              >
                 Cancelar
               </button>
-              <button 
-                className="btn btn-primary" 
+              <button
+                className="btn btn-primary"
                 onClick={handlePublishGlobal}
-                disabled={publishForm.items.length === 0 || publishForm.targetCountries.length === 0}
+                disabled={
+                  publishForm.items.length === 0 ||
+                  publishForm.targetCountries.length === 0
+                }
               >
                 <span className="material-icons">public</span>
                 Publicar em {publishForm.targetCountries.length} Pais(es)
@@ -623,7 +809,7 @@ function GlobalSelling() {
         </div>
       )}
     </div>
-  )
+  );
 }
 
-export default GlobalSelling
+export default GlobalSelling;

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import api from "../services/api";
+import { useAuthStore } from "../store/authStore";
 import { toast } from "../store/toastStore";
 import "./MLAuth.css";
 
@@ -8,27 +9,35 @@ function MLAuth() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("oauth");
   const [accounts, setAccounts] = useState([]);
+  const [activeTab, setActiveTab] = useState("oauth");
+  const { user, mlAccounts, loadToken } = useAuthStore();
 
   const code = searchParams.get("code");
   const state = searchParams.get("state");
   const error = searchParams.get("error");
 
   useEffect(() => {
+    loadToken();
+  }, [loadToken]);
+
+  useEffect(() => {
     const init = async () => {
       if (code && state) {
         await handleCallback(code, state);
+      } else if (mlAccounts && mlAccounts.length > 0) {
+        setAccounts(mlAccounts);
+        setLoading(false);
       } else {
         await fetchAccounts();
       }
     };
     init();
-  }, [code, state, error]);
+  }, [code, state, error, mlAccounts]);
 
   const fetchAccounts = async () => {
     try {
-      const response = await api.get("/ml-auth/status");
+      const response = await api.get("/auth/ml-auth/status");
       setAccounts(response.data.accounts || []);
     } catch (err) {
       console.error("Error:", err);
@@ -40,7 +49,7 @@ function MLAuth() {
   const handleCallback = async (code, state) => {
     try {
       toast.info("Conectando...");
-      const response = await api.post("/ml-auth/complete", { code, state });
+      const response = await api.post("/auth/ml-callback", { code, state });
       if (response.data.success) {
         toast.success("Conta conectada!");
       }
@@ -53,11 +62,36 @@ function MLAuth() {
   const handleOAuthAutomatico = async () => {
     try {
       toast.info("Redirecionando...");
-      const response = await api.get("/ml-auth/url");
+      const response = await api.get("/auth/ml-auth/url");
+      console.log("ML Auth URL response:", response.data);
+
       if (response.data.success) {
-        window.location.href = response.data.data.authorizationUrl;
+        const config = {
+          clientId: response.data.data.clientId || "1706187223829083",
+          clientSecret: response.data.data.clientSecret || "",
+          redirectUri:
+            response.data.data.redirectUri ||
+            "https://vendata.com.br/auth/callback",
+        };
+        console.log("Saving to sessionStorage:", config);
+        sessionStorage.setItem("ml_oauth_config", JSON.stringify(config));
+
+        const saved = sessionStorage.getItem("ml_oauth_config");
+        console.log("Verification - Saved value:", saved);
+
+        if (saved) {
+          console.log("Redirecting to:", response.data.data.authUrl);
+          window.location.href = response.data.data.authUrl;
+        } else {
+          console.error("Failed to save sessionStorage!");
+          toast.error("Erro ao salvar configurações");
+        }
+      } else {
+        console.error("Failed to get auth URL:", response.data.error);
+        toast.error(response.data.error || "Erro ao conectar");
       }
     } catch (err) {
+      console.error("Error getting ML auth URL:", err);
       toast.error("Erro ao conectar");
     }
   };
@@ -136,34 +170,43 @@ function MLAuth() {
               className={`ml-tab ${activeTab === "oauth" ? "active" : ""}`}
               onClick={() => setActiveTab("oauth")}
             >
-              OAuth Automático
+              Conexão Automática
             </button>
             <button
-              className={`ml-tab ${activeTab === "token" ? "active" : ""}`}
-              onClick={() => setActiveTab("token")}
+              className={`ml-tab ${activeTab === "credentials" ? "active" : ""}`}
+              onClick={() => setActiveTab("credentials")}
             >
-              Token Manual
+              Credenciais Manual
             </button>
             <button
-              className={`ml-tab ${activeTab === "credenciais" ? "active" : ""}`}
-              onClick={() => setActiveTab("credenciais")}
+              className={`ml-tab ${activeTab === "tokens" ? "active" : ""}`}
+              onClick={() => setActiveTab("tokens")}
             >
-              Credenciais
+              Tokens Diretos
             </button>
           </div>
 
-          <div className="ml-tab-content">
-            {activeTab === "oauth" && (
-              <TabOAuthAutomatico onSuccess={fetchAccounts} />
-            )}
-            {activeTab === "token" && (
-              <TabTokenManual onSuccess={fetchAccounts} />
-            )}
-            {activeTab === "credenciais" && (
-              <TabCredenciais onSuccess={fetchAccounts} />
-            )}
-          </div>
+          {activeTab === "oauth" ? (
+            <div className="ml-tab-content">
+              <TabOAuthAutomatico onSuccess={() => fetchAccounts()} />
+            </div>
+          ) : activeTab === "credentials" ? (
+            <div className="ml-tab-content">
+              <TabCredentials onSuccess={() => fetchAccounts()} />
+            </div>
+          ) : (
+            <div className="ml-tab-content">
+              <TabTokens onSuccess={() => fetchAccounts()} />
+            </div>
+          )}
         </div>
+
+        {error && (
+          <div className="ml-error">
+            <span className="ml-error__icon">⚠</span>
+            <p>Erro na autorização: {error}</p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -176,11 +219,36 @@ function TabOAuthAutomatico({ onSuccess }) {
     setLoading(true);
     try {
       toast.info("Redirecionando...");
-      const response = await api.get("/ml-auth/url");
+      const response = await api.get("/auth/ml-auth/url");
+      console.log("ML Auth URL response:", response.data);
+
       if (response.data.success) {
-        window.location.href = response.data.data.authorizationUrl;
+        const config = {
+          clientId: response.data.data.clientId || "1706187223829083",
+          clientSecret: response.data.data.clientSecret || "",
+          redirectUri:
+            response.data.data.redirectUri ||
+            "https://vendata.com.br/auth/callback",
+        };
+        console.log("Saving to sessionStorage:", config);
+        sessionStorage.setItem("ml_oauth_config", JSON.stringify(config));
+
+        const saved = sessionStorage.getItem("ml_oauth_config");
+        console.log("Verification - Saved value:", saved);
+
+        if (saved) {
+          console.log("Redirecting to:", response.data.data.authUrl);
+          window.location.href = response.data.data.authUrl;
+        } else {
+          console.error("Failed to save sessionStorage!");
+          toast.error("Erro ao salvar configurações");
+        }
+      } else {
+        console.error("Failed to get auth URL:", response.data.error);
+        toast.error(response.data.error || "Erro ao conectar");
       }
     } catch (err) {
+      console.error("Error getting ML auth URL:", err);
       toast.error("Erro ao conectar");
     } finally {
       setLoading(false);
@@ -209,93 +277,21 @@ function TabOAuthAutomatico({ onSuccess }) {
   );
 }
 
-function TabTokenManual({ onSuccess }) {
-  const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({
-    accessToken: "",
-    refreshToken: "",
-    expiresIn: "21600",
-  });
-
-  const handle = async (e) => {
-    e.preventDefault();
-    if (!form.accessToken) return toast.error("Access Token é obrigatório");
-
-    setLoading(true);
-    try {
-      toast.info("Conectando...");
-      const response = await api.post("/ml-accounts", {
-        accessToken: form.accessToken,
-        refreshToken: form.refreshToken || undefined,
-        expiresIn: parseInt(form.expiresIn),
-        manualToken: true,
-      });
-      if (response.data.success) {
-        toast.success("Conta conectada!");
-        onSuccess();
-        setForm({ accessToken: "", refreshToken: "", expiresIn: "21600" });
-      }
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Erro ao conectar");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="ml-tab-pane">
-      <h3>Token Manual</h3>
-      <p className="ml-desc">Cole seu access_token do Mercado Livre.</p>
-      <form onSubmit={handle}>
-        <div className="ml-form-group">
-          <label>Access Token *</label>
-          <input
-            type="text"
-            value={form.accessToken}
-            onChange={(e) => setForm({ ...form, accessToken: e.target.value })}
-            placeholder="APP_USR-..."
-            required
-          />
-        </div>
-        <div className="ml-form-group">
-          <label>Refresh Token (opcional)</label>
-          <input
-            type="text"
-            value={form.refreshToken}
-            onChange={(e) => setForm({ ...form, refreshToken: e.target.value })}
-            placeholder="TG-..."
-          />
-        </div>
-        <div className="ml-form-group">
-          <label>Expira em (segundos)</label>
-          <input
-            type="number"
-            value={form.expiresIn}
-            onChange={(e) => setForm({ ...form, expiresIn: e.target.value })}
-            placeholder="21600"
-          />
-        </div>
-        <button
-          type="submit"
-          className="btn btn--primary btn--full"
-          disabled={loading || !form.accessToken}
-        >
-          {loading ? "Conectando..." : "Conectar"}
-        </button>
-      </form>
-    </div>
-  );
-}
-
-function TabCredenciais({ onSuccess }) {
-  const [loading, setLoading] = useState(false);
+function TabCredentials({ onSuccess }) {
   const [form, setForm] = useState({
     clientId: "",
     clientSecret: "",
     redirectUri: "",
+    refreshToken: "",
   });
+  const [loading, setLoading] = useState(false);
 
-  const handle = async (e) => {
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.clientId || !form.clientSecret)
       return toast.error("Client ID e Secret são obrigatórios");
@@ -303,13 +299,14 @@ function TabCredenciais({ onSuccess }) {
     setLoading(true);
     try {
       toast.info("Redirecionando...");
-      const response = await api.post("/ml-auth/url-custom", {
+      const response = await api.post("/auth/ml-oauth-url", {
         clientId: form.clientId,
         clientSecret: form.clientSecret,
         redirectUri: form.redirectUri || undefined,
       });
       if (response.data.success) {
-        window.location.href = response.data.data.authorizationUrl;
+        sessionStorage.setItem("ml_oauth_config", JSON.stringify(form));
+        window.location.href = response.data.data.authUrl;
       }
     } catch (err) {
       toast.error(err.response?.data?.message || "Erro ao conectar");
@@ -322,13 +319,14 @@ function TabCredenciais({ onSuccess }) {
     <div className="ml-tab-pane">
       <h3>Credenciais OAuth</h3>
       <p className="ml-desc">Use suas próprias credenciais de desenvolvedor.</p>
-      <form onSubmit={handle}>
+      <form onSubmit={handleSubmit}>
         <div className="ml-form-group">
           <label>Client ID *</label>
           <input
             type="text"
             value={form.clientId}
-            onChange={(e) => setForm({ ...form, clientId: e.target.value })}
+            onChange={handleChange}
+            name="clientId"
             placeholder="1234567890123456"
             required
           />
@@ -338,26 +336,143 @@ function TabCredenciais({ onSuccess }) {
           <input
             type="password"
             value={form.clientSecret}
-            onChange={(e) => setForm({ ...form, clientSecret: e.target.value })}
-            placeholder="xxxxxxxxxxxxxxxxxxxx"
+            onChange={handleChange}
+            name="clientSecret"
+            placeholder="••••••••••••••••"
             required
           />
         </div>
         <div className="ml-form-group">
-          <label>Redirect URI (opcional)</label>
+          <label>Redirect URI</label>
           <input
-            type="url"
+            type="text"
             value={form.redirectUri}
-            onChange={(e) => setForm({ ...form, redirectUri: e.target.value })}
-            placeholder="https://seusite.com/callback"
+            onChange={handleChange}
+            name="redirectUri"
+            placeholder="https://seudominio.com/auth/callback"
           />
         </div>
         <button
           type="submit"
-          className="btn btn--primary btn--full"
-          disabled={loading || !form.clientId || !form.clientSecret}
+          className="btn btn--authorize btn--full"
+          disabled={loading}
         >
-          {loading ? "Configurando..." : "Autorizar"}
+          {loading ? "Redirecionando..." : "Autorizar com Mercado Livre"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function TabTokens({ onSuccess }) {
+  const [form, setForm] = useState({
+    accessToken: "",
+    refreshToken: "",
+    userId: "",
+    nickname: "",
+  });
+  const [loading, setLoading] = useState(false);
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.accessToken) {
+      return toast.error("Access Token é obrigatório");
+    }
+
+    setLoading(true);
+    try {
+      toast.info("Salvando tokens...");
+      const response = await api.post("/auth/ml-add-token", {
+        accessToken: form.accessToken,
+        refreshToken: form.refreshToken || undefined,
+        userId: form.userId || undefined,
+        nickname: form.nickname || undefined,
+      });
+
+      if (response.data.success) {
+        toast.success("Tokens salvos com sucesso!");
+        setForm({
+          accessToken: "",
+          refreshToken: "",
+          userId: "",
+          nickname: "",
+        });
+        if (onSuccess) onSuccess();
+      }
+    } catch (err) {
+      console.error("Error saving tokens:", err);
+      toast.error(err.response?.data?.message || "Erro ao salvar tokens");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="ml-tab-pane">
+      <h3>Autenticação com Tokens</h3>
+      <p className="ml-desc">
+        Cole diretamente seus tokens do Mercado Livre. Útil se você já possui
+        tokens válidos.
+      </p>
+      <form onSubmit={handleSubmit}>
+        <div className="ml-form-group">
+          <label>Access Token *</label>
+          <input
+            type="text"
+            value={form.accessToken}
+            onChange={handleChange}
+            name="accessToken"
+            placeholder="APP_USR-1234567890123456-..."
+            required
+          />
+          <small>Token de acesso obtido do Mercado Livre</small>
+        </div>
+        <div className="ml-form-group">
+          <label>Refresh Token (Opcional)</label>
+          <input
+            type="text"
+            value={form.refreshToken}
+            onChange={handleChange}
+            name="refreshToken"
+            placeholder="TG-1234567890123456-..."
+          />
+          <small>
+            Token de renovação (recomendado para renovação automática)
+          </small>
+        </div>
+        <div className="ml-form-group">
+          <label>User ID (Opcional)</label>
+          <input
+            type="text"
+            value={form.userId}
+            onChange={handleChange}
+            name="userId"
+            placeholder="123456789"
+          />
+          <small>ID do usuário no Mercado Livre</small>
+        </div>
+        <div className="ml-form-group">
+          <label>Nickname (Opcional)</label>
+          <input
+            type="text"
+            value={form.nickname}
+            onChange={handleChange}
+            name="nickname"
+            placeholder="MINHALOJA123"
+          />
+          <small>Nome de usuário/loja no Mercado Livre</small>
+        </div>
+        <button
+          type="submit"
+          className="btn btn--authorize btn--full"
+          disabled={loading}
+        >
+          {loading ? "Salvando..." : "Adicionar Conta"}
         </button>
       </form>
     </div>

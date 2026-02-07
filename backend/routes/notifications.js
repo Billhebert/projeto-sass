@@ -25,7 +25,7 @@ const router = express.Router();
  */
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    const { limit = 20, offset = 0, topic, status, isRead, sort = '-dateReceived' } = req.query;
+    const { limit = 100, offset = 0, topic, status, isRead, sort = '-dateReceived' } = req.query;
 
     const query = { userId: req.user.userId };
     if (topic) query.topic = topic;
@@ -195,7 +195,7 @@ router.get('/:accountId/unread', authenticateToken, async (req, res) => {
 router.get('/:accountId', authenticateToken, async (req, res) => {
   try {
     const { accountId } = req.params;
-    const { limit = 20, offset = 0, topic, status, isRead, sort = '-dateReceived' } = req.query;
+    const { limit = 100, offset = 0, topic, status, isRead, sort = '-dateReceived' } = req.query;
 
     // Verify account belongs to user
     const account = await MLAccount.findOne({

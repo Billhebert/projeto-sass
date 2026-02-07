@@ -48,17 +48,7 @@ function Sidebar() {
     };
   }, [isMobileOpen]);
 
-  const isActive = (path) => location.pathname === path;
-  const isInSection = (paths) =>
-    paths.some((p) => location.pathname.startsWith(p));
-
-  const toggleSection = useCallback((section) => {
-    setExpandedSections((prev) => ({
-      ...prev,
-      [section]: prev[section] === false ? true : false,
-    }));
-  }, []);
-
+  // Menu sections definition - MUST be declared before filteredSections
   const menuSections = [
     {
       title: "Principal",
@@ -137,6 +127,11 @@ function Sidebar() {
           icon: "account_balance",
         },
         { path: "/conciliation", label: "Conciliacao", icon: "compare_arrows" },
+        {
+          path: "/product-costs",
+          label: "Custos (COGS)",
+          icon: "attach_money",
+        },
         { path: "/metrics", label: "Metricas", icon: "analytics" },
         { path: "/reputation", label: "Reputacao", icon: "verified" },
         { path: "/quality", label: "Qualidade", icon: "grade" },
@@ -184,6 +179,28 @@ function Sidebar() {
       ],
     },
   ];
+
+  // Filter menu items based on user role
+  const filteredSections = menuSections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => {
+        if (!item.roles) return true;
+        return item.roles.includes(user?.role);
+      }),
+    }))
+    .filter((section) => section.items.length > 0);
+
+  const isActive = (path) => location.pathname === path;
+  const isInSection = (paths) =>
+    paths.some((p) => location.pathname.startsWith(p));
+
+  const toggleSection = useCallback((section) => {
+    setExpandedSections((prev) => ({
+      ...prev,
+      [section]: prev[section] === false ? true : false,
+    }));
+  }, []);
 
   const handleLogout = () => {
     logout();
@@ -252,8 +269,8 @@ function Sidebar() {
           </span>
         </button>
         <Link to="/" className="mobile-logo">
-          <span className="logo-icon">ML</span>
-          <span className="logo-text">SASS</span>
+          <span className="logo-icon">V</span>
+          <span className="logo-text">VENDATA</span>
         </Link>
         <div className="mobile-header-actions">
           <Link to="/notifications" className="mobile-action-btn">
@@ -272,8 +289,8 @@ function Sidebar() {
         {/* Sidebar Header */}
         <div className="sidebar-header">
           <Link to="/" className="sidebar-logo">
-            <span className="logo-icon">ML</span>
-            <span className="logo-text">SASS</span>
+            <span className="logo-icon">V</span>
+            <span className="logo-text">VENDATA</span>
           </Link>
           {!isMobile && (
             <button
@@ -289,7 +306,7 @@ function Sidebar() {
         </div>
 
         {/* Navigation */}
-        <nav className="sidebar-nav">{menuSections.map(renderSection)}</nav>
+        <nav className="sidebar-nav">{filteredSections.map(renderSection)}</nav>
 
         {/* User Footer */}
         <div className="sidebar-footer">

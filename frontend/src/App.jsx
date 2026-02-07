@@ -52,6 +52,7 @@ import FinancialReports from "./pages/FinancialReports";
 import Conciliation from "./pages/Conciliation";
 import Analytics from "./pages/Analytics";
 import MLAuth from "./pages/MLAuth";
+import ProductCosts from "./pages/ProductCosts";
 
 // Mercado Pago pages
 import MPDashboard from "./pages/MPDashboard";
@@ -150,6 +151,7 @@ function App() {
             <Route path="/global-selling" element={<GlobalSelling />} />
             <Route path="/financial-reports" element={<FinancialReports />} />
             <Route path="/conciliation" element={<Conciliation />} />
+            <Route path="/product-costs" element={<ProductCosts />} />
 
             {/* Financial */}
             <Route path="/billing" element={<Billing />} />

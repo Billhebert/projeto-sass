@@ -16,9 +16,13 @@ services:
       REDIS_URL: redis://:changeme@redis:6379
       JWT_SECRET: ${JWT_SECRET:-T2pD8F3O4Gc07hlniseEqeEczhjlAl9zyitfruCngeo=}
       API_HOST: 0.0.0.0
-      FRONTEND_URL: http://localhost:5173
+      FRONTEND_URL: https://vendata.com.br
       DEBUG: false
       LOG_LEVEL: info
+      ML_CLIENT_ID: 1706187223829083
+      ML_CLIENT_SECRET: vjEgzPD85Ehwe6aefX3TGij4xGdRV0jG
+      ML_REDIRECT_URI: https://vendata.com.br/auth/callback
+      ADMIN_TOKEN: 0f934bb5410a922cab7d411654a5b6aaf16e65a0a5cc12813c8c214876fcea02
     depends_on:
       mongo:
         condition: service_healthy

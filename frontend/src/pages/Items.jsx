@@ -1,152 +1,158 @@
-import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
-import { useAuthStore } from '../store/authStore'
-import api from '../services/api'
-import './Items.css'
+import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
+import { useAuthStore } from "../store/authStore";
+import api from "../services/api";
+import "./Items.css";
 
 function Items() {
-  const { token } = useAuthStore()
-  const [accounts, setAccounts] = useState([])
-  const [selectedAccount, setSelectedAccount] = useState('')
-  const [items, setItems] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
+  const { token } = useAuthStore();
+  const [accounts, setAccounts] = useState([]);
+  const [selectedAccount, setSelectedAccount] = useState("");
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [filters, setFilters] = useState({
-    status: '',
-    search: ''
-  })
+    status: "",
+    search: "",
+  });
   const [pagination, setPagination] = useState({
     offset: 0,
-    limit: 20,
-    total: 0
-  })
+    limit: 1000, // Increased limit to fetch more items
+    total: 0,
+  });
 
   useEffect(() => {
-    loadAccounts()
-  }, [])
+    loadAccounts();
+  }, []);
 
   useEffect(() => {
     if (selectedAccount) {
-      loadItems()
+      loadItems();
     }
-  }, [selectedAccount, filters, pagination.offset])
+  }, [selectedAccount, filters, pagination.offset]);
 
   const loadAccounts = async () => {
     try {
-      const response = await api.get('/ml-accounts')
-      console.log('ML Accounts API response:', response.data)
-      
+      const response = await api.get("/ml-accounts");
+      console.log("ML Accounts API response:", response.data);
+
       // Handle different API response formats (same as Dashboard)
-      let accountsList = []
+      let accountsList = [];
       if (Array.isArray(response.data)) {
-        accountsList = response.data
+        accountsList = response.data;
       } else if (Array.isArray(response.data?.data?.accounts)) {
-        accountsList = response.data.data.accounts
+        accountsList = response.data.data.accounts;
       } else if (Array.isArray(response.data?.accounts)) {
-        accountsList = response.data.accounts
+        accountsList = response.data.accounts;
       } else if (Array.isArray(response.data?.data)) {
-        accountsList = response.data.data
+        accountsList = response.data.data;
       }
-      
-      console.log('Parsed accounts list:', accountsList)
-      setAccounts(accountsList)
-      
+
+      console.log("Parsed accounts list:", accountsList);
+      setAccounts(accountsList);
+
       if (accountsList.length > 0) {
-        const firstAccountId = accountsList[0]._id || accountsList[0].id
-        console.log('Auto-selecting first account:', firstAccountId)
-        setSelectedAccount(firstAccountId)
+        const firstAccountId = accountsList[0]._id || accountsList[0].id;
+        console.log("Auto-selecting first account:", firstAccountId);
+        setSelectedAccount(firstAccountId);
       }
     } catch (err) {
-      console.error('Error loading accounts:', err)
-      setError('Erro ao carregar contas')
+      console.error("Error loading accounts:", err);
+      setError("Erro ao carregar contas");
     }
-  }
+  };
 
   const loadItems = async () => {
-    setLoading(true)
-    setError(null)
+    setLoading(true);
+    setError(null);
     try {
-      const params = new URLSearchParams()
-      params.append('offset', pagination.offset)
-      params.append('limit', pagination.limit)
-      if (filters.status) params.append('status', filters.status)
-      if (filters.search) params.append('search', filters.search)
+      const params = new URLSearchParams();
+      params.append("offset", pagination.offset);
+      params.append("limit", pagination.limit);
+      if (filters.status) params.append("status", filters.status);
+      if (filters.search) params.append("search", filters.search);
 
-      const response = await api.get(`/items/${selectedAccount}?${params}`)
-      console.log('Items API response:', response.data)
-      
+      const response = await api.get(`/items/${selectedAccount}?${params}`);
+      console.log("Items API response:", response.data);
+
       // Handle different response formats (same as Dashboard)
-      let itemsData = { items: [], paging: { total: 0 } }
-      const resData = response.data
-      
+      let itemsData = { items: [], paging: { total: 0 } };
+      const resData = response.data;
+
       if (resData?.success && resData?.data) {
-        itemsData = resData.data
+        itemsData = resData.data;
       } else if (resData?.items) {
-        itemsData = resData
+        itemsData = resData;
       } else if (Array.isArray(resData)) {
-        itemsData = { items: resData, paging: { total: resData.length } }
+        itemsData = { items: resData, paging: { total: resData.length } };
       }
-      
-      console.log('Parsed itemsData:', itemsData)
-      console.log('Items array:', itemsData.items)
-      
-      setItems(itemsData.items || [])
-      setPagination(prev => ({
+
+      console.log("Parsed itemsData:", itemsData);
+      console.log("Items array:", itemsData.items);
+
+      setItems(itemsData.items || []);
+      setPagination((prev) => ({
         ...prev,
-        total: itemsData.paging?.total || itemsData.total || itemsData.items?.length || 0
-      }))
+        total:
+          itemsData.paging?.total ||
+          itemsData.total ||
+          itemsData.items?.length ||
+          0,
+      }));
     } catch (err) {
-      console.error('Error loading items:', err)
+      console.error("Error loading items:", err);
       // Show ML token errors with more detail
-      if (err.response?.data?.code?.startsWith('ML_')) {
-        setError(`Erro de token ML: ${err.response.data.message}. Por favor, reconecte sua conta.`)
+      if (err.response?.data?.code?.startsWith("ML_")) {
+        setError(
+          `Erro de token ML: ${err.response.data.message}. Por favor, reconecte sua conta.`,
+        );
       } else {
-        setError('Erro ao carregar anuncios')
+        setError("Erro ao carregar anuncios");
       }
-      setItems([])
+      setItems([]);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const updateItemStatus = async (itemId, status) => {
     try {
-      await api.put(`/items/${selectedAccount}/${itemId}/status`, { status })
-      await loadItems()
+      await api.put(`/items/${selectedAccount}/${itemId}/status`, { status });
+      await loadItems();
     } catch (err) {
-      setError('Erro ao atualizar status')
+      setError("Erro ao atualizar status");
     }
-  }
+  };
 
   const getStatusBadgeClass = (status) => {
     const statusMap = {
-      'active': 'badge-success',
-      'paused': 'badge-warning',
-      'closed': 'badge-danger',
-      'under_review': 'badge-info'
-    }
-    return statusMap[status] || 'badge-secondary'
-  }
+      active: "badge-success",
+      paused: "badge-warning",
+      closed: "badge-danger",
+      under_review: "badge-info",
+    };
+    return statusMap[status] || "badge-secondary";
+  };
 
   const getStatusLabel = (status) => {
     const labels = {
-      'active': 'Ativo',
-      'paused': 'Pausado',
-      'closed': 'Encerrado',
-      'under_review': 'Em Revisao'
-    }
-    return labels[status] || status
-  }
+      active: "Ativo",
+      paused: "Pausado",
+      closed: "Encerrado",
+      under_review: "Em Revisao",
+    };
+    return labels[status] || status;
+  };
 
-  const formatCurrency = (value, currency = 'BRL') => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: currency
-    }).format(value)
-  }
+  const formatCurrency = (value, currency = "BRL") => {
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: currency,
+    }).format(value);
+  };
 
-  const totalPages = Math.ceil(pagination.total / pagination.limit)
-  const currentPage = Math.floor(pagination.offset / pagination.limit) + 1
+  const totalPages = Math.ceil(pagination.total / pagination.limit);
+  const currentPage = Math.floor(pagination.offset / pagination.limit) + 1;
 
   return (
     <div className="items-page">
@@ -164,7 +170,7 @@ function Items() {
             value={selectedAccount}
             onChange={(e) => setSelectedAccount(e.target.value)}
           >
-            {accounts.map(acc => (
+            {accounts.map((acc) => (
               <option key={acc._id || acc.id} value={acc._id || acc.id}>
                 {acc.nickname || acc.mlUserId}
               </option>
@@ -228,15 +234,16 @@ function Items() {
             </Link>
           </div>
         ) : (
-          items.map(item => {
+          items.map((item) => {
             // Handle both camelCase and snake_case field names from API
-            const itemId = item.id || item.mlItemId || item.ml_item_id
-            const thumbnail = item.thumbnail || item.secure_thumbnail
-            const availableQty = item.availableQuantity || item.available_quantity || 0
-            const soldQty = item.soldQuantity || item.sold_quantity || 0
-            const currencyId = item.currencyId || item.currency_id || 'BRL'
-            const listingType = item.listingType || item.listing_type_id
-            
+            const itemId = item.id || item.mlItemId || item.ml_item_id;
+            const thumbnail = item.thumbnail || item.secure_thumbnail;
+            const availableQty =
+              item.availableQuantity || item.available_quantity || 0;
+            const soldQty = item.soldQuantity || item.sold_quantity || 0;
+            const currencyId = item.currencyId || item.currency_id || "BRL";
+            const listingType = item.listingType || item.listing_type_id;
+
             return (
               <div key={item._id || itemId} className="item-card">
                 <div className="item-image">
@@ -288,20 +295,20 @@ function Items() {
                     Editar
                   </Link>
 
-                  {item.status === 'active' && (
+                  {item.status === "active" && (
                     <button
                       className="btn btn-sm btn-warning"
-                      onClick={() => updateItemStatus(itemId, 'paused')}
+                      onClick={() => updateItemStatus(itemId, "paused")}
                     >
                       <span className="material-icons">pause</span>
                       Pausar
                     </button>
                   )}
 
-                  {item.status === 'paused' && (
+                  {item.status === "paused" && (
                     <button
                       className="btn btn-sm btn-success"
-                      onClick={() => updateItemStatus(itemId, 'active')}
+                      onClick={() => updateItemStatus(itemId, "active")}
                     >
                       <span className="material-icons">play_arrow</span>
                       Ativar
@@ -309,7 +316,10 @@ function Items() {
                   )}
 
                   <a
-                    href={item.permalink || `https://produto.mercadolivre.com.br/${itemId}`}
+                    href={
+                      item.permalink ||
+                      `https://produto.mercadolivre.com.br/${itemId}`
+                    }
                     target="_blank"
                     rel="noopener noreferrer"
                     className="btn btn-sm btn-secondary"
@@ -318,7 +328,7 @@ function Items() {
                   </a>
                 </div>
               </div>
-            )
+            );
           })
         )}
       </div>
@@ -328,7 +338,12 @@ function Items() {
           <button
             className="btn btn-sm btn-secondary"
             disabled={pagination.offset === 0}
-            onClick={() => setPagination(prev => ({ ...prev, offset: Math.max(0, prev.offset - prev.limit) }))}
+            onClick={() =>
+              setPagination((prev) => ({
+                ...prev,
+                offset: Math.max(0, prev.offset - prev.limit),
+              }))
+            }
           >
             <span className="material-icons">chevron_left</span>
             Anterior
@@ -339,7 +354,12 @@ function Items() {
           <button
             className="btn btn-sm btn-secondary"
             disabled={currentPage >= totalPages}
-            onClick={() => setPagination(prev => ({ ...prev, offset: prev.offset + prev.limit }))}
+            onClick={() =>
+              setPagination((prev) => ({
+                ...prev,
+                offset: prev.offset + prev.limit,
+              }))
+            }
           >
             Proxima
             <span className="material-icons">chevron_right</span>
@@ -347,7 +367,7 @@ function Items() {
         </div>
       )}
     </div>
-  )
+  );
 }
 
-export default Items
+export default Items;

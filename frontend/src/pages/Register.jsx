@@ -136,7 +136,7 @@ function Register() {
     <div className="auth-container">
       <div className="auth-card">
         <div className="auth-header">
-          <h1>Projeto SASS</h1>
+          <h1>VENDATA</h1>
           <p>Dashboard com Mercado Livre</p>
         </div>
 

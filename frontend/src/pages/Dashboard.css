@@ -115,12 +115,69 @@
   border-radius: 8px;
   text-decoration: none;
   font-weight: 600;
-  transition: transform 0.2s, box-shadow 0.2s;
+  transition:
+    transform 0.2s,
+    box-shadow 0.2s;
 }
 
 .connect-btn:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+}
+
+/* Error Card */
+.error-card {
+  background: white;
+  border-radius: 16px;
+  padding: 60px 40px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  border: 2px solid #fee2e2;
+}
+
+.error-card .material-icons {
+  font-size: 64px;
+  color: #ef4444;
+  margin-bottom: 16px;
+}
+
+.error-card h2 {
+  font-size: 20px;
+  color: #dc2626;
+  margin: 0 0 8px 0;
+}
+
+.error-card p {
+  color: #64748b;
+  margin: 0 0 24px 0;
+}
+
+.retry-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    transform 0.2s,
+    box-shadow 0.2s;
+}
+
+.retry-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(239, 68, 68, 0.4);
+  background: #dc2626;
+}
+
+.retry-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
 }
 
 /* Loading */
@@ -144,7 +201,9 @@
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Stats Grid */
@@ -190,10 +249,18 @@
   color: white;
 }
 
-.stat-icon.products { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
-.stat-icon.orders { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
-.stat-icon.revenue { background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); }
-.stat-icon.questions { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); }
+.stat-icon.products {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+.stat-icon.orders {
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+}
+.stat-icon.revenue {
+  background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+}
+.stat-icon.questions {
+  background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+}
 
 .stat-content {
   flex: 1;
@@ -221,10 +288,18 @@
   color: #94a3b8;
 }
 
-.stat-sub.highlight { color: #3b82f6; }
-.stat-sub.success { color: #22c55e; }
-.stat-sub.warning { color: #f59e0b; }
-.stat-sub.danger { color: #ef4444; }
+.stat-sub.highlight {
+  color: #3b82f6;
+}
+.stat-sub.success {
+  color: #22c55e;
+}
+.stat-sub.warning {
+  color: #f59e0b;
+}
+.stat-sub.danger {
+  color: #ef4444;
+}
 
 /* Alerts Panel */
 .alerts-panel {
@@ -325,9 +400,15 @@
   display: block;
 }
 
-.alert-card.warning .alert-count { color: #92400e; }
-.alert-card.info .alert-count { color: #1e40af; }
-.alert-card.danger .alert-count { color: #991b1b; }
+.alert-card.warning .alert-count {
+  color: #92400e;
+}
+.alert-card.info .alert-count {
+  color: #1e40af;
+}
+.alert-card.danger .alert-count {
+  color: #991b1b;
+}
 
 .alert-label {
   font-size: 12px;
@@ -626,7 +707,7 @@
   .stats-grid {
     grid-template-columns: repeat(2, 1fr);
   }
-  
+
   .dashboard-grid {
     grid-template-columns: 1fr;
   }
@@ -636,45 +717,45 @@
   .dashboard-container {
     padding: 16px;
   }
-  
+
   .dashboard-header {
     flex-direction: column;
     align-items: stretch;
   }
-  
+
   .header-right {
     flex-wrap: wrap;
   }
-  
+
   .account-selector {
     flex: 1;
     min-width: 0;
   }
-  
+
   .stats-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .stat-card {
     padding: 16px;
   }
-  
+
   .stat-value {
     font-size: 24px;
   }
-  
+
   .alerts-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .actions-grid {
     grid-template-columns: repeat(2, 1fr);
   }
-  
+
   .account-header {
     flex-wrap: wrap;
   }
-  
+
   .manage-btn {
     width: 100%;
     justify-content: center;
@@ -686,16 +767,16 @@
   .dashboard-container {
     padding: 12px;
   }
-  
+
   .header-left h1 {
     font-size: 22px;
   }
-  
+
   .action-btn {
     padding: 14px 10px;
     font-size: 12px;
   }
-  
+
   .action-btn .material-icons {
     font-size: 20px;
   }

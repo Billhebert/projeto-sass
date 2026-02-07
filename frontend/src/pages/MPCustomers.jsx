@@ -1,242 +1,256 @@
-import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
-import { mpCustomersAPI } from '../services/mercadopago'
-import { useToastStore } from '../store/toastStore'
-import './MPCustomers.css'
+import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
+import { mpCustomersAPI } from "../services/mercadopago";
+import { useToastStore } from "../store/toastStore";
+import "./MPCustomers.css";
 
 function MPCustomers() {
-  const [loading, setLoading] = useState(true)
-  const [customers, setCustomers] = useState([])
-  const [selectedCustomer, setSelectedCustomer] = useState(null)
-  const [showModal, setShowModal] = useState(false)
-  const [modalType, setModalType] = useState('view') // 'view', 'create', 'edit'
-  const [actionLoading, setActionLoading] = useState(false)
-  const [customerCards, setCustomerCards] = useState([])
-  const { showToast } = useToastStore()
+  const [loading, setLoading] = useState(true);
+  const [customers, setCustomers] = useState([]);
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [showModal, setShowModal] = useState(false);
+  const [modalType, setModalType] = useState("view"); // 'view', 'create', 'edit'
+  const [actionLoading, setActionLoading] = useState(false);
+  const [customerCards, setCustomerCards] = useState([]);
+  const { showToast } = useToastStore();
 
   // Search
-  const [searchEmail, setSearchEmail] = useState('')
+  const [searchEmail, setSearchEmail] = useState("");
 
   // Form state
   const [customerForm, setCustomerForm] = useState({
-    email: '',
-    first_name: '',
-    last_name: '',
+    email: "",
+    first_name: "",
+    last_name: "",
     phone: {
-      area_code: '',
-      number: '',
+      area_code: "",
+      number: "",
     },
     identification: {
-      type: 'CPF',
-      number: '',
+      type: "CPF",
+      number: "",
     },
     address: {
-      zip_code: '',
-      street_name: '',
-      street_number: '',
+      zip_code: "",
+      street_name: "",
+      street_number: "",
     },
-  })
+  });
 
   useEffect(() => {
-    loadCustomers()
-  }, [])
+    loadCustomers();
+  }, []);
 
   const loadCustomers = async () => {
-    setLoading(true)
+    setLoading(true);
     try {
-      const response = await mpCustomersAPI.search({ email: searchEmail || undefined })
-      setCustomers(response.data?.results || response.data || [])
+      const response = await mpCustomersAPI.search({
+        email: searchEmail || undefined,
+      });
+      setCustomers(response.data?.results || response.data || []);
     } catch (error) {
-      console.error('Error loading customers:', error)
-      showToast('Erro ao carregar clientes', 'error')
+      console.error("Error loading customers:", error);
+      if (error.response?.status === 501) {
+        showToast(
+          "Integração Mercado Pago não disponível. Use Mercado Livre.",
+          "info",
+        );
+      } else {
+        showToast("Erro ao carregar clientes", "error");
+      }
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const handleSearch = (e) => {
-    e.preventDefault()
-    loadCustomers()
-  }
+    e.preventDefault();
+    loadCustomers();
+  };
 
   const loadCustomerCards = async (customerId) => {
     try {
-      const response = await mpCustomersAPI.getCards(customerId)
-      setCustomerCards(response.data || [])
+      const response = await mpCustomersAPI.getCards(customerId);
+      setCustomerCards(response.data || []);
     } catch (error) {
-      console.error('Error loading cards:', error)
-      setCustomerCards([])
+      console.error("Error loading cards:", error);
+      setCustomerCards([]);
     }
-  }
+  };
 
   const openViewModal = async (customer) => {
-    setSelectedCustomer(customer)
-    setModalType('view')
-    setShowModal(true)
-    await loadCustomerCards(customer.id)
-  }
+    setSelectedCustomer(customer);
+    setModalType("view");
+    setShowModal(true);
+    await loadCustomerCards(customer.id);
+  };
 
   const openCreateModal = () => {
     setCustomerForm({
-      email: '',
-      first_name: '',
-      last_name: '',
+      email: "",
+      first_name: "",
+      last_name: "",
       phone: {
-        area_code: '',
-        number: '',
+        area_code: "",
+        number: "",
       },
       identification: {
-        type: 'CPF',
-        number: '',
+        type: "CPF",
+        number: "",
       },
       address: {
-        zip_code: '',
-        street_name: '',
-        street_number: '',
+        zip_code: "",
+        street_name: "",
+        street_number: "",
       },
-    })
-    setModalType('create')
-    setShowModal(true)
-  }
+    });
+    setModalType("create");
+    setShowModal(true);
+  };
 
   const openEditModal = (customer) => {
-    setSelectedCustomer(customer)
+    setSelectedCustomer(customer);
     setCustomerForm({
-      email: customer.email || '',
-      first_name: customer.first_name || '',
-      last_name: customer.last_name || '',
+      email: customer.email || "",
+      first_name: customer.first_name || "",
+      last_name: customer.last_name || "",
       phone: {
-        area_code: customer.phone?.area_code || '',
-        number: customer.phone?.number || '',
+        area_code: customer.phone?.area_code || "",
+        number: customer.phone?.number || "",
       },
       identification: {
-        type: customer.identification?.type || 'CPF',
-        number: customer.identification?.number || '',
+        type: customer.identification?.type || "CPF",
+        number: customer.identification?.number || "",
       },
       address: {
-        zip_code: customer.address?.zip_code || '',
-        street_name: customer.address?.street_name || '',
-        street_number: customer.address?.street_number || '',
+        zip_code: customer.address?.zip_code || "",
+        street_name: customer.address?.street_name || "",
+        street_number: customer.address?.street_number || "",
       },
-    })
-    setModalType('edit')
-    setShowModal(true)
-  }
+    });
+    setModalType("edit");
+    setShowModal(true);
+  };
 
   const handleCreateCustomer = async (e) => {
-    e.preventDefault()
-    setActionLoading(true)
+    e.preventDefault();
+    setActionLoading(true);
     try {
       const data = {
         email: customerForm.email,
         first_name: customerForm.first_name || undefined,
         last_name: customerForm.last_name || undefined,
-      }
+      };
 
       if (customerForm.phone.area_code && customerForm.phone.number) {
-        data.phone = customerForm.phone
+        data.phone = customerForm.phone;
       }
 
       if (customerForm.identification.number) {
-        data.identification = customerForm.identification
+        data.identification = customerForm.identification;
       }
 
       if (customerForm.address.zip_code) {
-        data.address = customerForm.address
+        data.address = customerForm.address;
       }
 
-      await mpCustomersAPI.create(data)
-      showToast('Cliente criado com sucesso', 'success')
-      setShowModal(false)
-      loadCustomers()
+      await mpCustomersAPI.create(data);
+      showToast("Cliente criado com sucesso", "success");
+      setShowModal(false);
+      loadCustomers();
     } catch (error) {
-      console.error('Error creating customer:', error)
-      showToast('Erro ao criar cliente', 'error')
+      console.error("Error creating customer:", error);
+      showToast("Erro ao criar cliente", "error");
     } finally {
-      setActionLoading(false)
+      setActionLoading(false);
     }
-  }
+  };
 
   const handleUpdateCustomer = async (e) => {
-    e.preventDefault()
-    setActionLoading(true)
+    e.preventDefault();
+    setActionLoading(true);
     try {
       const data = {
         first_name: customerForm.first_name || undefined,
         last_name: customerForm.last_name || undefined,
-      }
+      };
 
       if (customerForm.phone.area_code && customerForm.phone.number) {
-        data.phone = customerForm.phone
+        data.phone = customerForm.phone;
       }
 
       if (customerForm.identification.number) {
-        data.identification = customerForm.identification
+        data.identification = customerForm.identification;
       }
 
       if (customerForm.address.zip_code) {
-        data.address = customerForm.address
+        data.address = customerForm.address;
       }
 
-      await mpCustomersAPI.update(selectedCustomer.id, data)
-      showToast('Cliente atualizado com sucesso', 'success')
-      setShowModal(false)
-      loadCustomers()
+      await mpCustomersAPI.update(selectedCustomer.id, data);
+      showToast("Cliente atualizado com sucesso", "success");
+      setShowModal(false);
+      loadCustomers();
     } catch (error) {
-      console.error('Error updating customer:', error)
-      showToast('Erro ao atualizar cliente', 'error')
+      console.error("Error updating customer:", error);
+      showToast("Erro ao atualizar cliente", "error");
     } finally {
-      setActionLoading(false)
+      setActionLoading(false);
     }
-  }
+  };
 
   const handleDeleteCustomer = async (customerId) => {
-    if (!window.confirm('Deseja excluir este cliente? Esta acao nao pode ser desfeita.')) return
+    if (
+      !window.confirm(
+        "Deseja excluir este cliente? Esta acao nao pode ser desfeita.",
+      )
+    )
+      return;
 
-    setActionLoading(true)
+    setActionLoading(true);
     try {
-      await mpCustomersAPI.delete(customerId)
-      showToast('Cliente excluido com sucesso', 'success')
-      loadCustomers()
+      await mpCustomersAPI.delete(customerId);
+      showToast("Cliente excluido com sucesso", "success");
+      loadCustomers();
     } catch (error) {
-      console.error('Error deleting customer:', error)
-      showToast('Erro ao excluir cliente', 'error')
+      console.error("Error deleting customer:", error);
+      showToast("Erro ao excluir cliente", "error");
     } finally {
-      setActionLoading(false)
+      setActionLoading(false);
     }
-  }
+  };
 
   const handleDeleteCard = async (customerId, cardId) => {
-    if (!window.confirm('Deseja excluir este cartao?')) return
+    if (!window.confirm("Deseja excluir este cartao?")) return;
 
-    setActionLoading(true)
+    setActionLoading(true);
     try {
-      await mpCustomersAPI.deleteCard(customerId, cardId)
-      showToast('Cartao excluido com sucesso', 'success')
-      await loadCustomerCards(customerId)
+      await mpCustomersAPI.deleteCard(customerId, cardId);
+      showToast("Cartao excluido com sucesso", "success");
+      await loadCustomerCards(customerId);
     } catch (error) {
-      console.error('Error deleting card:', error)
-      showToast('Erro ao excluir cartao', 'error')
+      console.error("Error deleting card:", error);
+      showToast("Erro ao excluir cartao", "error");
     } finally {
-      setActionLoading(false)
+      setActionLoading(false);
     }
-  }
+  };
 
   const formatDate = (dateString) => {
-    if (!dateString) return '-'
-    return new Date(dateString).toLocaleDateString('pt-BR')
-  }
+    if (!dateString) return "-";
+    return new Date(dateString).toLocaleDateString("pt-BR");
+  };
 
   const getCardBrandIcon = (brand) => {
     const brands = {
-      visa: 'credit_card',
-      mastercard: 'credit_card',
-      amex: 'credit_card',
-      elo: 'credit_card',
-      hipercard: 'credit_card',
-    }
-    return brands[brand?.toLowerCase()] || 'credit_card'
-  }
+      visa: "credit_card",
+      mastercard: "credit_card",
+      amex: "credit_card",
+      elo: "credit_card",
+      hipercard: "credit_card",
+    };
+    return brands[brand?.toLowerCase()] || "credit_card";
+  };
 
   return (
     <div className="mp-customers">
@@ -298,18 +312,21 @@ function MPCustomers() {
             {customers.map((customer) => (
               <div key={customer.id} className="customer-card">
                 <div className="customer-avatar">
-                  {(customer.first_name || customer.email || 'C').charAt(0).toUpperCase()}
+                  {(customer.first_name || customer.email || "C")
+                    .charAt(0)
+                    .toUpperCase()}
                 </div>
                 <div className="customer-info">
                   <h3>
                     {customer.first_name || customer.last_name
-                      ? `${customer.first_name || ''} ${customer.last_name || ''}`.trim()
-                      : 'Cliente sem nome'}
+                      ? `${customer.first_name || ""} ${customer.last_name || ""}`.trim()
+                      : "Cliente sem nome"}
                   </h3>
                   <p className="customer-email">{customer.email}</p>
                   {customer.identification?.number && (
                     <p className="customer-doc">
-                      {customer.identification.type}: {customer.identification.number}
+                      {customer.identification.type}:{" "}
+                      {customer.identification.number}
                     </p>
                   )}
                 </div>
@@ -359,9 +376,9 @@ function MPCustomers() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>
-                {modalType === 'view' && 'Detalhes do Cliente'}
-                {modalType === 'create' && 'Novo Cliente'}
-                {modalType === 'edit' && 'Editar Cliente'}
+                {modalType === "view" && "Detalhes do Cliente"}
+                {modalType === "create" && "Novo Cliente"}
+                {modalType === "edit" && "Editar Cliente"}
               </h2>
               <button className="close-btn" onClick={() => setShowModal(false)}>
                 <span className="material-icons">close</span>
@@ -369,17 +386,24 @@ function MPCustomers() {
             </div>
 
             <div className="modal-body">
-              {modalType === 'view' && selectedCustomer && (
+              {modalType === "view" && selectedCustomer && (
                 <>
                   <div className="customer-profile">
                     <div className="profile-avatar">
-                      {(selectedCustomer.first_name || selectedCustomer.email || 'C').charAt(0).toUpperCase()}
+                      {(
+                        selectedCustomer.first_name ||
+                        selectedCustomer.email ||
+                        "C"
+                      )
+                        .charAt(0)
+                        .toUpperCase()}
                     </div>
                     <div className="profile-info">
                       <h3>
-                        {selectedCustomer.first_name || selectedCustomer.last_name
-                          ? `${selectedCustomer.first_name || ''} ${selectedCustomer.last_name || ''}`.trim()
-                          : 'Cliente sem nome'}
+                        {selectedCustomer.first_name ||
+                        selectedCustomer.last_name
+                          ? `${selectedCustomer.first_name || ""} ${selectedCustomer.last_name || ""}`.trim()
+                          : "Cliente sem nome"}
                       </h3>
                       <p>{selectedCustomer.email}</p>
                     </div>
@@ -404,7 +428,8 @@ function MPCustomers() {
                       <div className="detail-item">
                         <label>Telefone</label>
                         <span>
-                          ({selectedCustomer.phone.area_code}) {selectedCustomer.phone.number}
+                          ({selectedCustomer.phone.area_code}){" "}
+                          {selectedCustomer.phone.number}
                         </span>
                       </div>
                     )}
@@ -412,8 +437,10 @@ function MPCustomers() {
                       <div className="detail-item full-width">
                         <label>Endereco</label>
                         <span>
-                          {selectedCustomer.address.street_name}, {selectedCustomer.address.street_number}
-                          {selectedCustomer.address.zip_code && ` - CEP: ${selectedCustomer.address.zip_code}`}
+                          {selectedCustomer.address.street_name},{" "}
+                          {selectedCustomer.address.street_number}
+                          {selectedCustomer.address.zip_code &&
+                            ` - CEP: ${selectedCustomer.address.zip_code}`}
                         </span>
                       </div>
                     )}
@@ -428,10 +455,16 @@ function MPCustomers() {
                       <div className="cards-list">
                         {customerCards.map((card) => (
                           <div key={card.id} className="card-item">
-                            <span className="material-icons">{getCardBrandIcon(card.issuer?.name)}</span>
+                            <span className="material-icons">
+                              {getCardBrandIcon(card.issuer?.name)}
+                            </span>
                             <div className="card-info">
-                              <span className="card-number">**** **** **** {card.last_four_digits}</span>
-                              <span className="card-brand">{card.issuer?.name || card.payment_method?.name}</span>
+                              <span className="card-number">
+                                **** **** **** {card.last_four_digits}
+                              </span>
+                              <span className="card-brand">
+                                {card.issuer?.name || card.payment_method?.name}
+                              </span>
                             </div>
                             <span className="card-expiry">
                               {card.expiration_month}/{card.expiration_year}
@@ -439,7 +472,9 @@ function MPCustomers() {
                             <button
                               className="btn-action delete"
                               title="Excluir cartao"
-                              onClick={() => handleDeleteCard(selectedCustomer.id, card.id)}
+                              onClick={() =>
+                                handleDeleteCard(selectedCustomer.id, card.id)
+                              }
                               disabled={actionLoading}
                             >
                               <span className="material-icons">delete</span>
@@ -452,20 +487,31 @@ function MPCustomers() {
                 </>
               )}
 
-              {(modalType === 'create' || modalType === 'edit') && (
-                <form onSubmit={modalType === 'create' ? handleCreateCustomer : handleUpdateCustomer}>
+              {(modalType === "create" || modalType === "edit") && (
+                <form
+                  onSubmit={
+                    modalType === "create"
+                      ? handleCreateCustomer
+                      : handleUpdateCustomer
+                  }
+                >
                   <div className="form-section">
                     <h4>Informacoes Basicas</h4>
                     <div className="form-grid">
                       <div className="form-group">
-                        <label>Email {modalType === 'create' && '*'}</label>
+                        <label>Email {modalType === "create" && "*"}</label>
                         <input
                           type="email"
                           value={customerForm.email}
-                          onChange={(e) => setCustomerForm({ ...customerForm, email: e.target.value })}
+                          onChange={(e) =>
+                            setCustomerForm({
+                              ...customerForm,
+                              email: e.target.value,
+                            })
+                          }
                           placeholder="cliente@email.com"
-                          required={modalType === 'create'}
-                          disabled={modalType === 'edit'}
+                          required={modalType === "create"}
+                          disabled={modalType === "edit"}
                         />
                       </div>
                       <div className="form-group">
@@ -473,7 +519,12 @@ function MPCustomers() {
                         <input
                           type="text"
                           value={customerForm.first_name}
-                          onChange={(e) => setCustomerForm({ ...customerForm, first_name: e.target.value })}
+                          onChange={(e) =>
+                            setCustomerForm({
+                              ...customerForm,
+                              first_name: e.target.value,
+                            })
+                          }
                           placeholder="Nome"
                         />
                       </div>
@@ -482,7 +533,12 @@ function MPCustomers() {
                         <input
                           type="text"
                           value={customerForm.last_name}
-                          onChange={(e) => setCustomerForm({ ...customerForm, last_name: e.target.value })}
+                          onChange={(e) =>
+                            setCustomerForm({
+                              ...customerForm,
+                              last_name: e.target.value,
+                            })
+                          }
                           placeholder="Sobrenome"
                         />
                       </div>
@@ -499,7 +555,10 @@ function MPCustomers() {
                           onChange={(e) =>
                             setCustomerForm({
                               ...customerForm,
-                              identification: { ...customerForm.identification, type: e.target.value },
+                              identification: {
+                                ...customerForm.identification,
+                                type: e.target.value,
+                              },
                             })
                           }
                         >
@@ -515,7 +574,10 @@ function MPCustomers() {
                           onChange={(e) =>
                             setCustomerForm({
                               ...customerForm,
-                              identification: { ...customerForm.identification, number: e.target.value },
+                              identification: {
+                                ...customerForm.identification,
+                                number: e.target.value,
+                              },
                             })
                           }
                           placeholder="000.000.000-00"
@@ -535,7 +597,10 @@ function MPCustomers() {
                           onChange={(e) =>
                             setCustomerForm({
                               ...customerForm,
-                              phone: { ...customerForm.phone, area_code: e.target.value },
+                              phone: {
+                                ...customerForm.phone,
+                                area_code: e.target.value,
+                              },
                             })
                           }
                           placeholder="11"
@@ -550,7 +615,10 @@ function MPCustomers() {
                           onChange={(e) =>
                             setCustomerForm({
                               ...customerForm,
-                              phone: { ...customerForm.phone, number: e.target.value },
+                              phone: {
+                                ...customerForm.phone,
+                                number: e.target.value,
+                              },
                             })
                           }
                           placeholder="99999-9999"
@@ -570,7 +638,10 @@ function MPCustomers() {
                           onChange={(e) =>
                             setCustomerForm({
                               ...customerForm,
-                              address: { ...customerForm.address, zip_code: e.target.value },
+                              address: {
+                                ...customerForm.address,
+                                zip_code: e.target.value,
+                              },
                             })
                           }
                           placeholder="00000-000"
@@ -584,7 +655,10 @@ function MPCustomers() {
                           onChange={(e) =>
                             setCustomerForm({
                               ...customerForm,
-                              address: { ...customerForm.address, street_name: e.target.value },
+                              address: {
+                                ...customerForm.address,
+                                street_name: e.target.value,
+                              },
                             })
                           }
                           placeholder="Nome da rua"
@@ -598,7 +672,10 @@ function MPCustomers() {
                           onChange={(e) =>
                             setCustomerForm({
                               ...customerForm,
-                              address: { ...customerForm.address, street_number: e.target.value },
+                              address: {
+                                ...customerForm.address,
+                                street_number: e.target.value,
+                              },
                             })
                           }
                           placeholder="123"
@@ -608,27 +685,41 @@ function MPCustomers() {
                   </div>
 
                   <div className="modal-footer">
-                    <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => setShowModal(false)}
+                    >
                       Cancelar
                     </button>
-                    <button type="submit" className="btn btn-primary" disabled={actionLoading}>
+                    <button
+                      type="submit"
+                      className="btn btn-primary"
+                      disabled={actionLoading}
+                    >
                       {actionLoading
-                        ? 'Salvando...'
-                        : modalType === 'create'
-                        ? 'Criar Cliente'
-                        : 'Salvar Alteracoes'}
+                        ? "Salvando..."
+                        : modalType === "create"
+                          ? "Criar Cliente"
+                          : "Salvar Alteracoes"}
                     </button>
                   </div>
                 </form>
               )}
             </div>
 
-            {modalType === 'view' && (
+            {modalType === "view" && (
               <div className="modal-footer">
-                <button className="btn btn-secondary" onClick={() => setShowModal(false)}>
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => setShowModal(false)}
+                >
                   Fechar
                 </button>
-                <button className="btn btn-primary" onClick={() => openEditModal(selectedCustomer)}>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => openEditModal(selectedCustomer)}
+                >
                   <span className="material-icons">edit</span>
                   Editar
                 </button>
@@ -638,7 +729,7 @@ function MPCustomers() {
         </div>
       )}
     </div>
-  )
+  );
 }
 
-export default MPCustomers
+export default MPCustomers;

@@ -1,120 +1,174 @@
-import { useState, useEffect } from 'react'
-import { useAuthStore } from '../store/authStore'
-import api from '../services/api'
-import './Messages.css'
+import { useState, useEffect } from "react";
+import { useAuthStore } from "../store/authStore";
+import api from "../services/api";
+import "./Messages.css";
 
 function Messages() {
-  const { token } = useAuthStore()
-  const [accounts, setAccounts] = useState([])
-  const [selectedAccount, setSelectedAccount] = useState('')
-  const [conversations, setConversations] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [syncing, setSyncing] = useState(false)
-  const [error, setError] = useState(null)
-  const [filter, setFilter] = useState('unread')
-  const [selectedConversation, setSelectedConversation] = useState(null)
-  const [messages, setMessages] = useState([])
-  const [newMessage, setNewMessage] = useState('')
-  const [sending, setSending] = useState(false)
+  const { token } = useAuthStore();
+  const [accounts, setAccounts] = useState([]);
+  const [selectedAccount, setSelectedAccount] = useState("");
+  const [conversations, setConversations] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [error, setError] = useState(null);
+  const [filter, setFilter] = useState("unread");
+  const [selectedConversation, setSelectedConversation] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [newMessage, setNewMessage] = useState("");
+  const [sending, setSending] = useState(false);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 1000, // Increased limit to fetch more messages
+    total: 0,
+    totalPages: 0,
+  });
 
   useEffect(() => {
-    loadAccounts()
-  }, [])
+    loadAccounts();
+  }, []);
 
   useEffect(() => {
     if (selectedAccount) {
-      loadConversations()
+      loadConversations();
     }
-  }, [selectedAccount, filter])
+  }, [selectedAccount, filter, pagination.page]);
 
   const loadAccounts = async () => {
     try {
-      const response = await api.get('/ml-accounts')
-      const accountsList = response.data.data?.accounts || response.data.accounts || []
-      setAccounts(accountsList)
+      const response = await api.get("/ml-accounts");
+      const accountsList =
+        response.data.data?.accounts || response.data.accounts || [];
+      setAccounts(accountsList);
       if (accountsList.length > 0) {
-        setSelectedAccount(accountsList[0].id)
+        setSelectedAccount(accountsList[0].id);
       }
     } catch (err) {
-      setError('Erro ao carregar contas')
+      setError("Erro ao carregar contas");
     }
-  }
+  };
 
   const loadConversations = async () => {
-    setLoading(true)
-    setError(null)
+    setLoading(true);
+    setError(null);
     try {
-      const endpoint = filter === 'unread'
-        ? `/messages/${selectedAccount}/unread`
-        : `/messages/${selectedAccount}`
-      const response = await api.get(endpoint)
-      setConversations(response.data.messages || [])
+      const offset = (pagination.page - 1) * pagination.limit;
+      const endpoint =
+        filter === "unread"
+          ? `/messages/${selectedAccount}/unread`
+          : `/messages/${selectedAccount}`;
+      const response = await api.get(endpoint, {
+        params: {
+          offset,
+          limit: pagination.limit,
+        },
+      });
+      setConversations(response.data.messages || []);
+
+      // Update pagination info from response
+      const total = response.data.total || response.data.messages?.length || 0;
+      setPagination((prev) => ({
+        ...prev,
+        total,
+        totalPages: Math.ceil(total / prev.limit),
+      }));
     } catch (err) {
-      setError('Erro ao carregar mensagens')
-      setConversations([])
+      setError("Erro ao carregar mensagens");
+      setConversations([]);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const syncMessages = async () => {
-    setSyncing(true)
+    setSyncing(true);
     try {
-      await api.post(`/messages/${selectedAccount}/sync`)
-      await loadConversations()
+      await api.post(`/messages/${selectedAccount}/sync`, { all: true });
+      await loadConversations();
     } catch (err) {
-      setError('Erro ao sincronizar mensagens')
+      setError("Erro ao sincronizar mensagens");
     } finally {
-      setSyncing(false)
+      setSyncing(false);
     }
-  }
+  };
 
   const openConversation = async (packId) => {
     try {
-      const response = await api.get(`/messages/${selectedAccount}/pack/${packId}`)
-      setMessages(response.data.messages || [])
-      setSelectedConversation(packId)
+      const response = await api.get(
+        `/messages/${selectedAccount}/pack/${packId}`,
+      );
+      setMessages(response.data.messages || []);
+      setSelectedConversation(packId);
     } catch (err) {
-      setError('Erro ao carregar conversa')
+      setError("Erro ao carregar conversa");
     }
-  }
+  };
 
   const sendMessage = async () => {
-    if (!newMessage.trim() || !selectedConversation) return
+    if (!newMessage.trim() || !selectedConversation) return;
 
-    setSending(true)
+    setSending(true);
     try {
-      await api.post(`/messages/${selectedAccount}/pack/${selectedConversation}`, {
-        text: newMessage
-      })
-      setNewMessage('')
-      await openConversation(selectedConversation)
+      await api.post(
+        `/messages/${selectedAccount}/pack/${selectedConversation}`,
+        {
+          text: newMessage,
+        },
+      );
+      setNewMessage("");
+      await openConversation(selectedConversation);
     } catch (err) {
-      setError('Erro ao enviar mensagem')
+      setError("Erro ao enviar mensagem");
     } finally {
-      setSending(false)
+      setSending(false);
     }
-  }
+  };
 
   const markAsRead = async (messageId) => {
     try {
-      await api.put(`/messages/${selectedAccount}/${messageId}/read`)
-      await loadConversations()
+      await api.put(`/messages/${selectedAccount}/${messageId}/read`);
+      await loadConversations();
     } catch (err) {
-      console.error('Erro ao marcar como lida:', err)
+      console.error("Erro ao marcar como lida:", err);
     }
-  }
+  };
 
   const formatDate = (dateString) => {
-    if (!dateString) return ''
-    const date = new Date(dateString)
-    const now = new Date()
-    const diff = Math.floor((now - date) / 1000 / 60)
+    if (!dateString) return "";
+    const date = new Date(dateString);
+    const now = new Date();
+    const diff = Math.floor((now - date) / 1000 / 60);
 
-    if (diff < 60) return `${diff}min`
-    if (diff < 1440) return `${Math.floor(diff / 60)}h`
-    return date.toLocaleDateString('pt-BR')
-  }
+    if (diff < 60) return `${diff}min`;
+    if (diff < 1440) return `${Math.floor(diff / 60)}h`;
+    return date.toLocaleDateString("pt-BR");
+  };
+
+  const handleFilterChange = (newFilter) => {
+    setFilter(newFilter);
+    setPagination((prev) => ({ ...prev, page: 1 }));
+  };
+
+  const handleAccountChange = (accountId) => {
+    setSelectedAccount(accountId);
+    setPagination((prev) => ({ ...prev, page: 1 }));
+  };
+
+  const handlePageChange = (newPage) => {
+    setPagination((prev) => ({ ...prev, page: newPage }));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handlePrevPage = () => {
+    if (pagination.page > 1) {
+      handlePageChange(pagination.page - 1);
+    }
+  };
+
+  const handleNextPage = () => {
+    if (pagination.page < pagination.totalPages) {
+      handlePageChange(pagination.page + 1);
+    }
+  };
 
   return (
     <div className="messages-page">
@@ -130,21 +184,21 @@ function Messages() {
           <select
             className="account-select"
             value={selectedAccount}
-            onChange={(e) => setSelectedAccount(e.target.value)}
+            onChange={(e) => handleAccountChange(e.target.value)}
           >
-            {accounts.map(acc => (
+            {accounts.map((acc) => (
               <option key={acc.id} value={acc.id}>
                 {acc.nickname || acc.mlUserId}
               </option>
             ))}
           </select>
-          <button 
+          <button
             className="btn btn-primary"
             onClick={syncMessages}
             disabled={syncing || !selectedAccount}
           >
             <span className="material-icons">sync</span>
-            {syncing ? 'Sincronizando...' : 'Sincronizar'}
+            {syncing ? "Sincronizando..." : "Sincronizar"}
           </button>
         </div>
       </div>
@@ -154,14 +208,14 @@ function Messages() {
           <div className="panel-header">
             <div className="filter-tabs compact">
               <button
-                className={`filter-tab ${filter === 'unread' ? 'active' : ''}`}
-                onClick={() => setFilter('unread')}
+                className={`filter-tab ${filter === "unread" ? "active" : ""}`}
+                onClick={() => handleFilterChange("unread")}
               >
                 Nao lidas
               </button>
               <button
-                className={`filter-tab ${filter === 'all' ? 'active' : ''}`}
-                onClick={() => setFilter('all')}
+                className={`filter-tab ${filter === "all" ? "active" : ""}`}
+                onClick={() => handleFilterChange("all")}
               >
                 Todas
               </button>
@@ -179,23 +233,29 @@ function Messages() {
                 <p>Nenhuma mensagem</p>
               </div>
             ) : (
-              conversations.map(conv => (
+              conversations.map((conv) => (
                 <div
                   key={conv._id || conv.packId}
-                  className={`conversation-item ${selectedConversation === conv.packId ? 'active' : ''} ${!conv.read ? 'unread' : ''}`}
+                  className={`conversation-item ${selectedConversation === conv.packId ? "active" : ""} ${!conv.read ? "unread" : ""}`}
                   onClick={() => openConversation(conv.packId)}
                 >
                   <div className="conv-avatar">
-                    {conv.from?.nickname?.charAt(0) || 'C'}
+                    {conv.from?.nickname?.charAt(0) || "C"}
                   </div>
                   <div className="conv-content">
                     <div className="conv-header">
-                      <span className="conv-name">{conv.from?.nickname || 'Comprador'}</span>
-                      <span className="conv-time">{formatDate(conv.dateReceived)}</span>
+                      <span className="conv-name">
+                        {conv.from?.nickname || "Comprador"}
+                      </span>
+                      <span className="conv-time">
+                        {formatDate(conv.dateReceived)}
+                      </span>
                     </div>
                     <div className="conv-preview">
                       <span className="conv-order">Pedido #{conv.orderId}</span>
-                      <p className="conv-text">{conv.text?.substring(0, 50)}...</p>
+                      <p className="conv-text">
+                        {conv.text?.substring(0, 50)}...
+                      </p>
                     </div>
                   </div>
                   {!conv.read && <div className="unread-dot"></div>}
@@ -203,6 +263,32 @@ function Messages() {
               ))
             )}
           </div>
+
+          {!loading &&
+            conversations.length > 0 &&
+            pagination.totalPages > 1 && (
+              <div className="pagination-controls compact">
+                <button
+                  className="btn btn-secondary pagination-btn"
+                  onClick={handlePrevPage}
+                  disabled={pagination.page === 1}
+                >
+                  <span className="material-icons">chevron_left</span>
+                </button>
+                <div className="pagination-info">
+                  <span className="page-text">
+                    {pagination.page} / {pagination.totalPages}
+                  </span>
+                </div>
+                <button
+                  className="btn btn-secondary pagination-btn"
+                  onClick={handleNextPage}
+                  disabled={pagination.page === pagination.totalPages}
+                >
+                  <span className="material-icons">chevron_right</span>
+                </button>
+              </div>
+            )}
         </div>
 
         <div className="chat-panel">
@@ -228,11 +314,13 @@ function Messages() {
                 {messages.map((msg, idx) => (
                   <div
                     key={idx}
-                    className={`message-bubble ${msg.from?.userId === accounts.find(a => a.id === selectedAccount)?.mlUserId ? 'sent' : 'received'}`}
+                    className={`message-bubble ${msg.from?.userId === accounts.find((a) => a.id === selectedAccount)?.mlUserId ? "sent" : "received"}`}
                   >
                     <div className="bubble-content">
                       <p>{msg.text}</p>
-                      <span className="bubble-time">{formatDate(msg.dateSent || msg.dateReceived)}</span>
+                      <span className="bubble-time">
+                        {formatDate(msg.dateSent || msg.dateReceived)}
+                      </span>
                     </div>
                   </div>
                 ))}
@@ -245,9 +333,9 @@ function Messages() {
                   placeholder="Digite sua mensagem..."
                   rows={2}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault()
-                      sendMessage()
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      sendMessage();
                     }
                   }}
                 />
@@ -280,7 +368,7 @@ function Messages() {
         </div>
       )}
     </div>
-  )
+  );
 }
 
-export default Messages
+export default Messages;

@@ -515,7 +515,7 @@ router.post(
 
 router.get("/profile", authenticateToken, async (req, res) => {
   try {
-    const user = await User.findById(req.user.userId);
+    const user = await User.findOne({ id: req.user.userId });
 
     if (!user) {
       return res.status(404).json({

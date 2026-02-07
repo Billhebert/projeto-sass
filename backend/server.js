@@ -329,6 +329,10 @@ app.use("/api/user-products", userProductsRoutes);
 app.use("/api/kits", kitsRoutes);
 app.use("/api/size-charts", sizeChartsRoutes);
 
+// Product Cost Management (COGS)
+const productCostsRoutes = require("./routes/product-costs");
+app.use("/api/product-costs", productCostsRoutes);
+
 // Mercado Livre - Sales Management
 app.use("/api/orders", ordersRoutes);
 app.use("/api/payments", paymentsRoutes);

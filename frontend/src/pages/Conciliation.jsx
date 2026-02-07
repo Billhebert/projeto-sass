@@ -1,231 +1,289 @@
-import { useState, useEffect } from 'react'
-import api from '../services/api'
-import './Conciliation.css'
+import { useState, useEffect } from "react";
+import api from "../services/api";
+import { exportConciliationToCSV } from "../utils/exportUtils";
+import { exportConciliationToPDF } from "../utils/pdfExportUtils";
+import "./Conciliation.css";
 
 function Conciliation() {
-  const [selectedAccount, setSelectedAccount] = useState('')
-  const [accounts, setAccounts] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState('pending')
-  const [transactions, setTransactions] = useState([])
-  const [selectedTransactions, setSelectedTransactions] = useState([])
-  const [dateRange, setDateRange] = useState({ start: '', end: '' })
-  const [searchTerm, setSearchTerm] = useState('')
-  const [showDetailModal, setShowDetailModal] = useState(false)
-  const [selectedDetail, setSelectedDetail] = useState(null)
+  const [selectedAccount, setSelectedAccount] = useState("");
+  const [accounts, setAccounts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("pending");
+  const [transactions, setTransactions] = useState([]);
+  const [selectedTransactions, setSelectedTransactions] = useState([]);
+  const [dateRange, setDateRange] = useState({ start: "", end: "" });
+  const [searchTerm, setSearchTerm] = useState("");
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [selectedDetail, setSelectedDetail] = useState(null);
   const [stats, setStats] = useState({
     pendingCount: 0,
     pendingAmount: 0,
     reconciledCount: 0,
     reconciledAmount: 0,
     discrepancyCount: 0,
-    discrepancyAmount: 0
-  })
+    discrepancyAmount: 0,
+  });
 
   useEffect(() => {
-    const end = new Date()
-    const start = new Date()
-    start.setDate(start.getDate() - 30)
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - 30);
     setDateRange({
-      start: start.toISOString().split('T')[0],
-      end: end.toISOString().split('T')[0]
-    })
-    fetchAccounts()
-  }, [])
+      start: start.toISOString().split("T")[0],
+      end: end.toISOString().split("T")[0],
+    });
+    fetchAccounts();
+  }, []);
 
   const fetchAccounts = async () => {
     try {
-      const response = await api.get('/ml-accounts')
+      const response = await api.get("/ml-accounts");
       if (response.data.success) {
-        const accountsList = response.data.data?.accounts || []
-        setAccounts(accountsList)
+        const accountsList = response.data.data?.accounts || [];
+        setAccounts(accountsList);
         if (accountsList.length > 0) {
-          setSelectedAccount(accountsList[0].id || accountsList[0].accountId)
+          setSelectedAccount(accountsList[0].id || accountsList[0].accountId);
         }
       }
     } catch (error) {
-      console.error('Error fetching accounts:', error)
+      console.error("Error fetching accounts:", error);
     }
-  }
+  };
 
   useEffect(() => {
     if (selectedAccount && dateRange.start && dateRange.end) {
-      fetchTransactions()
+      fetchTransactions();
     }
-  }, [selectedAccount, dateRange, activeTab])
+  }, [selectedAccount, dateRange, activeTab]);
 
   const fetchTransactions = async () => {
     try {
-      setLoading(true)
-      
-      // Simulated data - replace with actual API calls
-      const mockTransactions = [
-        {
-          id: 'TXN-001',
-          orderId: 'MLB-5001234567',
-          date: '2024-01-15T14:32:00',
-          type: 'sale',
-          amount: 299.90,
-          mlAmount: 299.90,
-          bankAmount: 263.91,
-          fees: 35.99,
-          status: 'pending',
-          buyer: 'Joao Silva',
-          product: 'Smartphone Samsung Galaxy'
-        },
-        {
-          id: 'TXN-002',
-          orderId: 'MLB-5001234568',
-          date: '2024-01-15T12:18:00',
-          type: 'sale',
-          amount: 189.00,
-          mlAmount: 189.00,
-          bankAmount: 166.32,
-          fees: 22.68,
-          status: 'reconciled',
-          buyer: 'Maria Santos',
-          product: 'Fone de Ouvido JBL'
-        },
-        {
-          id: 'TXN-003',
-          orderId: 'MLB-5001234569',
-          date: '2024-01-14T18:45:00',
-          type: 'refund',
-          amount: -149.90,
-          mlAmount: -149.90,
-          bankAmount: -149.90,
-          fees: 0,
-          status: 'reconciled',
-          buyer: 'Pedro Oliveira',
-          product: 'Capa Celular'
-        },
-        {
-          id: 'TXN-004',
-          orderId: 'MLB-5001234570',
-          date: '2024-01-14T10:00:00',
-          type: 'sale',
-          amount: 450.00,
-          mlAmount: 450.00,
-          bankAmount: 390.50,
-          fees: 54.00,
-          status: 'discrepancy',
-          discrepancyReason: 'Diferenca de R$ 5.50 entre ML e banco',
-          buyer: 'Ana Costa',
-          product: 'Tablet Samsung Tab'
-        }
-      ]
+      setLoading(true);
 
-      setTransactions(mockTransactions)
+      // Fetch ALL orders with auto-pagination (no limits!)
+      let allOrders = [];
+      let offset = 0;
+      const limit = 200;
+      let hasMore = true;
+
+      while (hasMore) {
+        const response = await api.get(
+          `/orders/${selectedAccount}?limit=${limit}&offset=${offset}&date_created.from=${dateRange.start}T00:00:00.000Z&date_created.to=${dateRange.end}T23:59:59.999Z`,
+        );
+
+        if (!response.data.success) {
+          throw new Error("Failed to fetch orders");
+        }
+
+        const orders = response.data.data?.orders || [];
+        allOrders = allOrders.concat(orders);
+
+        if (orders.length < limit) {
+          hasMore = false;
+        } else {
+          offset += limit;
+        }
+      }
+
+      // Convert orders to transactions format
+      const convertedTransactions = allOrders.map((order) => {
+        const fees = (order.totalAmount || 0) * 0.12; // Estimated 12% fees
+        const bankAmount = (order.totalAmount || 0) - fees;
+        const isPaid = order.status === "paid" || order.status === "confirmed";
+        const isCancelled = order.status === "cancelled";
+
+        return {
+          id: order.id,
+          orderId: order.mlOrderId || order.id,
+          date: order.dateCreated,
+          type: isCancelled ? "refund" : "sale",
+          amount: order.totalAmount || 0,
+          mlAmount: order.totalAmount || 0,
+          bankAmount: isPaid ? bankAmount : 0,
+          fees: isPaid ? fees : 0,
+          status: isPaid
+            ? "reconciled"
+            : isCancelled
+              ? "reconciled"
+              : "pending",
+          buyer: order.buyer?.nickname || order.buyer?.firstName || "N/A",
+          product: `${order.itemsCount || 0} item(s)`,
+        };
+      });
+
+      // Calculate stats
+      const pending = convertedTransactions.filter(
+        (t) => t.status === "pending",
+      );
+      const reconciled = convertedTransactions.filter(
+        (t) => t.status === "reconciled",
+      );
+      const discrepancy = convertedTransactions.filter(
+        (t) => t.status === "discrepancy",
+      );
+
+      setTransactions(convertedTransactions);
       setStats({
-        pendingCount: 15,
-        pendingAmount: 4520.50,
-        reconciledCount: 230,
-        reconciledAmount: 45890.00,
-        discrepancyCount: 3,
-        discrepancyAmount: 890.50
-      })
+        pendingCount: pending.length,
+        pendingAmount: pending.reduce((sum, t) => sum + t.mlAmount, 0),
+        reconciledCount: reconciled.length,
+        reconciledAmount: reconciled.reduce((sum, t) => sum + t.mlAmount, 0),
+        discrepancyCount: discrepancy.length,
+        discrepancyAmount: discrepancy.reduce(
+          (sum, t) => sum + Math.abs(t.mlAmount - t.bankAmount),
+          0,
+        ),
+      });
     } catch (error) {
-      console.error('Error fetching transactions:', error)
+      console.error("Error fetching transactions:", error);
+      setTransactions([]);
+      setStats({
+        pendingCount: 0,
+        pendingAmount: 0,
+        reconciledCount: 0,
+        reconciledAmount: 0,
+        discrepancyCount: 0,
+        discrepancyAmount: 0,
+      });
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const handleReconcile = async (transactionIds) => {
     try {
       // Simulated reconciliation
-      setTransactions(prev => prev.map(t => {
-        if (transactionIds.includes(t.id)) {
-          return { ...t, status: 'reconciled' }
-        }
-        return t
-      }))
-      setSelectedTransactions([])
-      alert(`${transactionIds.length} transacao(oes) conciliada(s) com sucesso!`)
+      setTransactions((prev) =>
+        prev.map((t) => {
+          if (transactionIds.includes(t.id)) {
+            return { ...t, status: "reconciled" };
+          }
+          return t;
+        }),
+      );
+      setSelectedTransactions([]);
+      alert(
+        `${transactionIds.length} transacao(oes) conciliada(s) com sucesso!`,
+      );
     } catch (error) {
-      console.error('Error reconciling:', error)
+      console.error("Error reconciling:", error);
     }
-  }
+  };
+
+  const handleExportCSV = () => {
+    exportConciliationToCSV(transactions, stats, dateRange);
+  };
+
+  const handleExportPDF = () => {
+    // Prepare stats for PDF
+    const pdfStats = {
+      total: transactions.length,
+      conciliated: stats.reconciledCount,
+      pending: stats.pendingCount,
+      divergent: stats.discrepancyCount,
+      conciliatedValue: stats.reconciledAmount,
+      pendingValue: stats.pendingAmount,
+      divergentValue: stats.discrepancyAmount,
+      totalValue:
+        stats.reconciledAmount + stats.pendingAmount + stats.discrepancyAmount,
+    };
+    exportConciliationToPDF(transactions, pdfStats, dateRange);
+  };
 
   const handleSelectAll = () => {
     const pendingIds = filteredTransactions
-      .filter(t => t.status === 'pending')
-      .map(t => t.id)
-    
+      .filter((t) => t.status === "pending")
+      .map((t) => t.id);
+
     if (selectedTransactions.length === pendingIds.length) {
-      setSelectedTransactions([])
+      setSelectedTransactions([]);
     } else {
-      setSelectedTransactions(pendingIds)
+      setSelectedTransactions(pendingIds);
     }
-  }
+  };
 
   const handleSelectTransaction = (id) => {
-    setSelectedTransactions(prev => {
+    setSelectedTransactions((prev) => {
       if (prev.includes(id)) {
-        return prev.filter(i => i !== id)
+        return prev.filter((i) => i !== id);
       }
-      return [...prev, id]
-    })
-  }
+      return [...prev, id];
+    });
+  };
 
   const handleViewDetail = (transaction) => {
-    setSelectedDetail(transaction)
-    setShowDetailModal(true)
-  }
+    setSelectedDetail(transaction);
+    setShowDetailModal(true);
+  };
 
   const formatCurrency = (value) => {
-    return new Intl.NumberFormat('pt-BR', { 
-      style: 'currency', 
-      currency: 'BRL' 
-    }).format(value || 0)
-  }
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    }).format(value || 0);
+  };
 
   const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-  }
+    return new Date(dateString).toLocaleString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
 
-  const filteredTransactions = transactions.filter(t => {
-    const matchesStatus = activeTab === 'all' || t.status === activeTab
-    const matchesSearch = !searchTerm || 
+  const filteredTransactions = transactions.filter((t) => {
+    const matchesStatus = activeTab === "all" || t.status === activeTab;
+    const matchesSearch =
+      !searchTerm ||
       t.orderId.toLowerCase().includes(searchTerm.toLowerCase()) ||
       t.buyer.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.product.toLowerCase().includes(searchTerm.toLowerCase())
-    return matchesStatus && matchesSearch
-  })
+      t.product.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchesStatus && matchesSearch;
+  });
 
   return (
     <div className="conciliation-page">
       <div className="page-header">
         <div className="header-content">
           <h1>Conciliacao de Pagamentos</h1>
-          <p>Compare e concilie transacoes do Mercado Pago com seu extrato bancario</p>
+          <p>
+            Compare e concilie transacoes do Mercado Pago com seu extrato
+            bancario
+          </p>
         </div>
         <div className="header-actions">
-          <select 
+          <select
             className="account-select"
             value={selectedAccount}
             onChange={(e) => setSelectedAccount(e.target.value)}
           >
             <option value="">Selecione uma conta</option>
-            {accounts.map(account => (
-              <option key={account.id || account.accountId} value={account.id || account.accountId}>
+            {accounts.map((account) => (
+              <option
+                key={account.id || account.accountId}
+                value={account.id || account.accountId}
+              >
                 {account.nickname || account.id || account.accountId}
               </option>
             ))}
           </select>
-          <button className="btn btn-secondary">
-            <span className="material-icons">upload_file</span>
-            Importar Extrato
-          </button>
-          <button className="btn btn-secondary">
+          <button
+            className="btn btn-secondary"
+            onClick={handleExportCSV}
+            disabled={!selectedAccount}
+          >
             <span className="material-icons">download</span>
-            Exportar
+            Exportar CSV
+          </button>
+          <button
+            className="btn btn-secondary"
+            onClick={handleExportPDF}
+            disabled={!selectedAccount}
+          >
+            <span className="material-icons">picture_as_pdf</span>
+            Exportar PDF
           </button>
         </div>
       </div>
@@ -240,230 +298,279 @@ function Conciliation() {
         <>
           {/* Stats */}
           <div className="stats-grid">
-        <div className="stat-card warning">
-          <div className="stat-icon">
-            <span className="material-icons">pending</span>
+            <div className="stat-card warning">
+              <div className="stat-icon">
+                <span className="material-icons">pending</span>
+              </div>
+              <div className="stat-info">
+                <span className="stat-value">{stats.pendingCount}</span>
+                <span className="stat-amount">
+                  {formatCurrency(stats.pendingAmount)}
+                </span>
+                <span className="stat-label">Pendentes</span>
+              </div>
+            </div>
+            <div className="stat-card success">
+              <div className="stat-icon">
+                <span className="material-icons">check_circle</span>
+              </div>
+              <div className="stat-info">
+                <span className="stat-value">{stats.reconciledCount}</span>
+                <span className="stat-amount">
+                  {formatCurrency(stats.reconciledAmount)}
+                </span>
+                <span className="stat-label">Conciliadas</span>
+              </div>
+            </div>
+            <div className="stat-card danger">
+              <div className="stat-icon">
+                <span className="material-icons">error</span>
+              </div>
+              <div className="stat-info">
+                <span className="stat-value">{stats.discrepancyCount}</span>
+                <span className="stat-amount">
+                  {formatCurrency(stats.discrepancyAmount)}
+                </span>
+                <span className="stat-label">Divergencias</span>
+              </div>
+            </div>
           </div>
-          <div className="stat-info">
-            <span className="stat-value">{stats.pendingCount}</span>
-            <span className="stat-amount">{formatCurrency(stats.pendingAmount)}</span>
-            <span className="stat-label">Pendentes</span>
-          </div>
-        </div>
-        <div className="stat-card success">
-          <div className="stat-icon">
-            <span className="material-icons">check_circle</span>
-          </div>
-          <div className="stat-info">
-            <span className="stat-value">{stats.reconciledCount}</span>
-            <span className="stat-amount">{formatCurrency(stats.reconciledAmount)}</span>
-            <span className="stat-label">Conciliadas</span>
-          </div>
-        </div>
-        <div className="stat-card danger">
-          <div className="stat-icon">
-            <span className="material-icons">error</span>
-          </div>
-          <div className="stat-info">
-            <span className="stat-value">{stats.discrepancyCount}</span>
-            <span className="stat-amount">{formatCurrency(stats.discrepancyAmount)}</span>
-            <span className="stat-label">Divergencias</span>
-          </div>
-        </div>
-      </div>
 
-      {/* Filters */}
-      <div className="filters-bar">
-        <div className="date-range">
-          <input
-            type="date"
-            value={dateRange.start}
-            onChange={e => setDateRange(prev => ({ ...prev, start: e.target.value }))}
-          />
-          <span>ate</span>
-          <input
-            type="date"
-            value={dateRange.end}
-            onChange={e => setDateRange(prev => ({ ...prev, end: e.target.value }))}
-          />
-        </div>
-        <div className="search-box">
-          <span className="material-icons">search</span>
-          <input
-            type="text"
-            placeholder="Buscar por pedido, comprador ou produto..."
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-          />
-        </div>
-      </div>
+          {/* Filters */}
+          <div className="filters-bar">
+            <div className="date-range">
+              <input
+                type="date"
+                value={dateRange.start}
+                onChange={(e) =>
+                  setDateRange((prev) => ({ ...prev, start: e.target.value }))
+                }
+              />
+              <span>ate</span>
+              <input
+                type="date"
+                value={dateRange.end}
+                onChange={(e) =>
+                  setDateRange((prev) => ({ ...prev, end: e.target.value }))
+                }
+              />
+            </div>
+            <div className="search-box">
+              <span className="material-icons">search</span>
+              <input
+                type="text"
+                placeholder="Buscar por pedido, comprador ou produto..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+          </div>
 
-      {/* Tabs */}
-      <div className="tabs">
-        <button 
-          className={`tab ${activeTab === 'pending' ? 'active' : ''}`}
-          onClick={() => setActiveTab('pending')}
-        >
-          <span className="material-icons">pending</span>
-          Pendentes
-          <span className="badge">{stats.pendingCount}</span>
-        </button>
-        <button 
-          className={`tab ${activeTab === 'reconciled' ? 'active' : ''}`}
-          onClick={() => setActiveTab('reconciled')}
-        >
-          <span className="material-icons">check_circle</span>
-          Conciliadas
-        </button>
-        <button 
-          className={`tab ${activeTab === 'discrepancy' ? 'active' : ''}`}
-          onClick={() => setActiveTab('discrepancy')}
-        >
-          <span className="material-icons">error</span>
-          Divergencias
-          {stats.discrepancyCount > 0 && (
-            <span className="badge danger">{stats.discrepancyCount}</span>
+          {/* Tabs */}
+          <div className="tabs">
+            <button
+              className={`tab ${activeTab === "pending" ? "active" : ""}`}
+              onClick={() => setActiveTab("pending")}
+            >
+              <span className="material-icons">pending</span>
+              Pendentes
+              <span className="badge">{stats.pendingCount}</span>
+            </button>
+            <button
+              className={`tab ${activeTab === "reconciled" ? "active" : ""}`}
+              onClick={() => setActiveTab("reconciled")}
+            >
+              <span className="material-icons">check_circle</span>
+              Conciliadas
+            </button>
+            <button
+              className={`tab ${activeTab === "discrepancy" ? "active" : ""}`}
+              onClick={() => setActiveTab("discrepancy")}
+            >
+              <span className="material-icons">error</span>
+              Divergencias
+              {stats.discrepancyCount > 0 && (
+                <span className="badge danger">{stats.discrepancyCount}</span>
+              )}
+            </button>
+            <button
+              className={`tab ${activeTab === "all" ? "active" : ""}`}
+              onClick={() => setActiveTab("all")}
+            >
+              <span className="material-icons">list</span>
+              Todas
+            </button>
+          </div>
+
+          {/* Bulk Actions */}
+          {selectedTransactions.length > 0 && (
+            <div className="bulk-actions">
+              <span>
+                {selectedTransactions.length} transacao(oes) selecionada(s)
+              </span>
+              <button
+                className="btn btn-primary"
+                onClick={() => handleReconcile(selectedTransactions)}
+              >
+                <span className="material-icons">check</span>
+                Conciliar Selecionadas
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setSelectedTransactions([])}
+              >
+                Limpar Selecao
+              </button>
+            </div>
           )}
-        </button>
-        <button 
-          className={`tab ${activeTab === 'all' ? 'active' : ''}`}
-          onClick={() => setActiveTab('all')}
-        >
-          <span className="material-icons">list</span>
-          Todas
-        </button>
-      </div>
 
-      {/* Bulk Actions */}
-      {selectedTransactions.length > 0 && (
-        <div className="bulk-actions">
-          <span>{selectedTransactions.length} transacao(oes) selecionada(s)</span>
-          <button 
-            className="btn btn-primary"
-            onClick={() => handleReconcile(selectedTransactions)}
-          >
-            <span className="material-icons">check</span>
-            Conciliar Selecionadas
-          </button>
-          <button 
-            className="btn btn-secondary"
-            onClick={() => setSelectedTransactions([])}
-          >
-            Limpar Selecao
-          </button>
-        </div>
-      )}
-
-      {/* Transactions Table */}
-      <div className="section">
-        {loading ? (
-          <div className="loading-state">
-            <div className="spinner"></div>
-            <p>Carregando transacoes...</p>
-          </div>
-        ) : filteredTransactions.length === 0 ? (
-          <div className="empty-state">
-            <span className="material-icons">receipt_long</span>
-            <h3>Nenhuma transacao encontrada</h3>
-            <p>Nao ha transacoes para o filtro selecionado</p>
-          </div>
-        ) : (
-          <div className="transactions-table-wrapper">
-            <table className="transactions-table">
-              <thead>
-                <tr>
-                  {activeTab === 'pending' && (
-                    <th className="checkbox-col">
-                      <input
-                        type="checkbox"
-                        checked={selectedTransactions.length === filteredTransactions.filter(t => t.status === 'pending').length}
-                        onChange={handleSelectAll}
-                      />
-                    </th>
-                  )}
-                  <th>Data</th>
-                  <th>Pedido</th>
-                  <th>Produto</th>
-                  <th>Comprador</th>
-                  <th>Tipo</th>
-                  <th>Valor ML</th>
-                  <th>Taxas</th>
-                  <th>Valor Banco</th>
-                  <th>Status</th>
-                  <th>Acoes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredTransactions.map(transaction => (
-                  <tr key={transaction.id} className={transaction.status}>
-                    {activeTab === 'pending' && (
-                      <td className="checkbox-col">
-                        <input
-                          type="checkbox"
-                          checked={selectedTransactions.includes(transaction.id)}
-                          onChange={() => handleSelectTransaction(transaction.id)}
-                          disabled={transaction.status !== 'pending'}
-                        />
-                      </td>
-                    )}
-                    <td>{formatDate(transaction.date)}</td>
-                    <td className="order-id">{transaction.orderId}</td>
-                    <td className="product-cell">{transaction.product.substring(0, 30)}...</td>
-                    <td>{transaction.buyer}</td>
-                    <td>
-                      <span className={`type-badge ${transaction.type}`}>
-                        {transaction.type === 'sale' ? 'Venda' : 
-                         transaction.type === 'refund' ? 'Reembolso' : transaction.type}
-                      </span>
-                    </td>
-                    <td className={transaction.amount >= 0 ? 'positive' : 'negative'}>
-                      {formatCurrency(transaction.mlAmount)}
-                    </td>
-                    <td className="fees">{formatCurrency(transaction.fees)}</td>
-                    <td className={transaction.bankAmount >= 0 ? 'positive' : 'negative'}>
-                      {formatCurrency(transaction.bankAmount)}
-                    </td>
-                    <td>
-                      <span className={`status-badge ${transaction.status}`}>
-                        {transaction.status === 'pending' ? 'Pendente' :
-                         transaction.status === 'reconciled' ? 'Conciliada' : 'Divergencia'}
-                      </span>
-                    </td>
-                    <td className="actions-cell">
-                      <button 
-                        className="btn btn-icon"
-                        onClick={() => handleViewDetail(transaction)}
-                        title="Ver detalhes"
-                      >
-                        <span className="material-icons">visibility</span>
-                      </button>
-                      {transaction.status === 'pending' && (
-                        <button 
-                          className="btn btn-icon success"
-                          onClick={() => handleReconcile([transaction.id])}
-                          title="Conciliar"
-                        >
-                          <span className="material-icons">check</span>
-                        </button>
+          {/* Transactions Table */}
+          <div className="section">
+            {loading ? (
+              <div className="loading-state">
+                <div className="spinner"></div>
+                <p>Carregando transacoes...</p>
+              </div>
+            ) : filteredTransactions.length === 0 ? (
+              <div className="empty-state">
+                <span className="material-icons">receipt_long</span>
+                <h3>Nenhuma transacao encontrada</h3>
+                <p>Nao ha transacoes para o filtro selecionado</p>
+              </div>
+            ) : (
+              <div className="transactions-table-wrapper">
+                <table className="transactions-table">
+                  <thead>
+                    <tr>
+                      {activeTab === "pending" && (
+                        <th className="checkbox-col">
+                          <input
+                            type="checkbox"
+                            checked={
+                              selectedTransactions.length ===
+                              filteredTransactions.filter(
+                                (t) => t.status === "pending",
+                              ).length
+                            }
+                            onChange={handleSelectAll}
+                          />
+                        </th>
                       )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      <th>Data</th>
+                      <th>Pedido</th>
+                      <th>Produto</th>
+                      <th>Comprador</th>
+                      <th>Tipo</th>
+                      <th>Valor ML</th>
+                      <th>Taxas</th>
+                      <th>Valor Banco</th>
+                      <th>Status</th>
+                      <th>Acoes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredTransactions.map((transaction) => (
+                      <tr key={transaction.id} className={transaction.status}>
+                        {activeTab === "pending" && (
+                          <td className="checkbox-col">
+                            <input
+                              type="checkbox"
+                              checked={selectedTransactions.includes(
+                                transaction.id,
+                              )}
+                              onChange={() =>
+                                handleSelectTransaction(transaction.id)
+                              }
+                              disabled={transaction.status !== "pending"}
+                            />
+                          </td>
+                        )}
+                        <td>{formatDate(transaction.date)}</td>
+                        <td className="order-id">{transaction.orderId}</td>
+                        <td className="product-cell">
+                          {transaction.product.substring(0, 30)}...
+                        </td>
+                        <td>{transaction.buyer}</td>
+                        <td>
+                          <span className={`type-badge ${transaction.type}`}>
+                            {transaction.type === "sale"
+                              ? "Venda"
+                              : transaction.type === "refund"
+                                ? "Reembolso"
+                                : transaction.type}
+                          </span>
+                        </td>
+                        <td
+                          className={
+                            transaction.amount >= 0 ? "positive" : "negative"
+                          }
+                        >
+                          {formatCurrency(transaction.mlAmount)}
+                        </td>
+                        <td className="fees">
+                          {formatCurrency(transaction.fees)}
+                        </td>
+                        <td
+                          className={
+                            transaction.bankAmount >= 0
+                              ? "positive"
+                              : "negative"
+                          }
+                        >
+                          {formatCurrency(transaction.bankAmount)}
+                        </td>
+                        <td>
+                          <span
+                            className={`status-badge ${transaction.status}`}
+                          >
+                            {transaction.status === "pending"
+                              ? "Pendente"
+                              : transaction.status === "reconciled"
+                                ? "Conciliada"
+                                : "Divergencia"}
+                          </span>
+                        </td>
+                        <td className="actions-cell">
+                          <button
+                            className="btn btn-icon"
+                            onClick={() => handleViewDetail(transaction)}
+                            title="Ver detalhes"
+                          >
+                            <span className="material-icons">visibility</span>
+                          </button>
+                          {transaction.status === "pending" && (
+                            <button
+                              className="btn btn-icon success"
+                              onClick={() => handleReconcile([transaction.id])}
+                              title="Conciliar"
+                            >
+                              <span className="material-icons">check</span>
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
-        )}
-      </div>
         </>
       )}
 
       {/* Detail Modal */}
       {showDetailModal && selectedDetail && (
-        <div className="modal-overlay" onClick={() => setShowDetailModal(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
+        <div
+          className="modal-overlay"
+          onClick={() => setShowDetailModal(false)}
+        >
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Detalhes da Transacao</h2>
-              <button className="btn btn-icon" onClick={() => setShowDetailModal(false)}>
+              <button
+                className="btn btn-icon"
+                onClick={() => setShowDetailModal(false)}
+              >
                 <span className="material-icons">close</span>
               </button>
             </div>
@@ -482,7 +589,9 @@ function Conciliation() {
                   </div>
                   <div className="detail-item">
                     <span className="label">Data</span>
-                    <span className="value">{formatDate(selectedDetail.date)}</span>
+                    <span className="value">
+                      {formatDate(selectedDetail.date)}
+                    </span>
                   </div>
                   <div className="detail-item">
                     <span className="label">Comprador</span>
@@ -500,23 +609,29 @@ function Conciliation() {
                 <div className="values-comparison">
                   <div className="value-box ml">
                     <span className="source">Mercado Pago</span>
-                    <span className="amount">{formatCurrency(selectedDetail.mlAmount)}</span>
+                    <span className="amount">
+                      {formatCurrency(selectedDetail.mlAmount)}
+                    </span>
                   </div>
                   <div className="comparison-arrow">
                     <span className="material-icons">compare_arrows</span>
                   </div>
                   <div className="value-box bank">
                     <span className="source">Banco</span>
-                    <span className="amount">{formatCurrency(selectedDetail.bankAmount)}</span>
+                    <span className="amount">
+                      {formatCurrency(selectedDetail.bankAmount)}
+                    </span>
                   </div>
                 </div>
                 <div className="fees-detail">
                   <span className="label">Taxas deduzidas:</span>
-                  <span className="value">{formatCurrency(selectedDetail.fees)}</span>
+                  <span className="value">
+                    {formatCurrency(selectedDetail.fees)}
+                  </span>
                 </div>
               </div>
 
-              {selectedDetail.status === 'discrepancy' && (
+              {selectedDetail.status === "discrepancy" && (
                 <div className="detail-section warning">
                   <h3>Divergencia Encontrada</h3>
                   <p>{selectedDetail.discrepancyReason}</p>
@@ -525,19 +640,22 @@ function Conciliation() {
             </div>
 
             <div className="modal-footer">
-              {selectedDetail.status === 'pending' && (
-                <button 
+              {selectedDetail.status === "pending" && (
+                <button
                   className="btn btn-primary"
                   onClick={() => {
-                    handleReconcile([selectedDetail.id])
-                    setShowDetailModal(false)
+                    handleReconcile([selectedDetail.id]);
+                    setShowDetailModal(false);
                   }}
                 >
                   <span className="material-icons">check</span>
                   Conciliar Transacao
                 </button>
               )}
-              <button className="btn btn-secondary" onClick={() => setShowDetailModal(false)}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setShowDetailModal(false)}
+              >
                 Fechar
               </button>
             </div>
@@ -545,7 +663,7 @@ function Conciliation() {
         </div>
       )}
     </div>
-  )
+  );
 }
 
-export default Conciliation
+export default Conciliation;

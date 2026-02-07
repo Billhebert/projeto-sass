@@ -1,144 +1,157 @@
-import { useState, useEffect } from 'react'
-import { useAuthStore } from '../store/authStore'
-import api from '../services/api'
-import './Catalog.css'
+import { useState, useEffect } from "react";
+import { useAuthStore } from "../store/authStore";
+import api from "../services/api";
+import "./Catalog.css";
 
 function Catalog() {
-  const { token } = useAuthStore()
-  const [accounts, setAccounts] = useState([])
-  const [selectedAccount, setSelectedAccount] = useState('')
-  const [items, setItems] = useState([])
-  const [catalogProducts, setCatalogProducts] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [syncing, setSyncing] = useState(false)
-  const [error, setError] = useState(null)
-  const [activeTab, setActiveTab] = useState('eligibility')
-  const [searchTerm, setSearchTerm] = useState('')
-  const [selectedItem, setSelectedItem] = useState(null)
-  const [showProductModal, setShowProductModal] = useState(false)
+  const { token } = useAuthStore();
+  const [accounts, setAccounts] = useState([]);
+  const [selectedAccount, setSelectedAccount] = useState("");
+  const [items, setItems] = useState([]);
+  const [catalogProducts, setCatalogProducts] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [error, setError] = useState(null);
+  const [activeTab, setActiveTab] = useState("eligibility");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [showProductModal, setShowProductModal] = useState(false);
   const [stats, setStats] = useState({
     total: 0,
     catalogListed: 0,
     buyBoxWinner: 0,
-    eligible: 0
-  })
+    eligible: 0,
+  });
 
   useEffect(() => {
-    loadAccounts()
-  }, [])
+    loadAccounts();
+  }, []);
 
   useEffect(() => {
     if (selectedAccount) {
-      loadItems()
-      loadStats()
+      loadItems();
+      loadStats();
     }
-  }, [selectedAccount])
+  }, [selectedAccount]);
 
   const loadAccounts = async () => {
     try {
-      const response = await api.get('/ml-accounts')
-      const accountsList = response.data.data?.accounts || response.data.accounts || []
-      setAccounts(accountsList)
+      const response = await api.get("/ml-accounts");
+      const accountsList =
+        response.data.data?.accounts || response.data.accounts || [];
+      setAccounts(accountsList);
       if (accountsList.length > 0) {
-        setSelectedAccount(accountsList[0].id)
+        setSelectedAccount(accountsList[0].id);
       }
     } catch (err) {
-      setError('Erro ao carregar contas')
+      setError("Erro ao carregar contas");
     }
-  }
+  };
 
   const loadItems = async () => {
-    setLoading(true)
-    setError(null)
+    setLoading(true);
+    setError(null);
     try {
-      const response = await api.get(`/catalog/${selectedAccount}/items`)
-      setItems(response.data.items || [])
+      console.log("[Catalog] Carregando items para conta:", selectedAccount);
+      const response = await api.get(`/catalog/${selectedAccount}/items`);
+      console.log("[Catalog] Response recebida:", response.data);
+      console.log("[Catalog] Items:", response.data.items?.length || 0);
+      setItems(response.data.items || []);
     } catch (err) {
-      setError('Erro ao carregar itens')
-      setItems([])
+      console.error("[Catalog] Erro ao carregar items:", err);
+      console.error("[Catalog] Erro response:", err.response?.data);
+      setError(
+        `Erro ao carregar itens: ${err.response?.data?.message || err.message}`,
+      );
+      setItems([]);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const loadStats = async () => {
     try {
-      const response = await api.get(`/catalog/${selectedAccount}/stats`)
-      setStats(response.data.stats || stats)
+      const response = await api.get(`/catalog/${selectedAccount}/stats`);
+      setStats(response.data.stats || stats);
     } catch (err) {
-      console.error('Erro ao carregar estatisticas:', err)
+      console.error("Erro ao carregar estatisticas:", err);
     }
-  }
+  };
 
   const checkEligibility = async (itemId) => {
     try {
-      const response = await api.get(`/catalog/${selectedAccount}/items/${itemId}/eligibility`)
-      return response.data
+      const response = await api.get(
+        `/catalog/${selectedAccount}/items/${itemId}/eligibility`,
+      );
+      return response.data;
     } catch (err) {
-      setError('Erro ao verificar elegibilidade')
-      return null
+      setError("Erro ao verificar elegibilidade");
+      return null;
     }
-  }
+  };
 
   const searchCatalogProducts = async () => {
-    if (!searchTerm.trim()) return
-    
-    setLoading(true)
+    if (!searchTerm.trim()) return;
+
+    setLoading(true);
     try {
-      const response = await api.get(`/catalog/${selectedAccount}/products/search`, {
-        params: { q: searchTerm }
-      })
-      setCatalogProducts(response.data.products || [])
-      setActiveTab('search')
+      const response = await api.get(
+        `/catalog/${selectedAccount}/products/search`,
+        {
+          params: { q: searchTerm },
+        },
+      );
+      setCatalogProducts(response.data.products || []);
+      setActiveTab("search");
     } catch (err) {
-      setError('Erro ao buscar produtos no catalogo')
+      setError("Erro ao buscar produtos no catalogo");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const publishToCatalog = async (itemId, catalogProductId) => {
     try {
       await api.post(`/catalog/${selectedAccount}/items/${itemId}/catalog`, {
-        catalog_product_id: catalogProductId
-      })
-      await loadItems()
-      setShowProductModal(false)
-      setSelectedItem(null)
+        catalog_product_id: catalogProductId,
+      });
+      await loadItems();
+      setShowProductModal(false);
+      setSelectedItem(null);
     } catch (err) {
-      setError('Erro ao publicar no catalogo')
+      setError("Erro ao publicar no catalogo");
     }
-  }
+  };
 
   const getEligibilityBadge = (status) => {
     const badges = {
-      'eligible': { class: 'badge-success', text: 'Elegivel' },
-      'not_eligible': { class: 'badge-danger', text: 'Nao Elegivel' },
-      'pending': { class: 'badge-warning', text: 'Pendente' },
-      'catalog_listed': { class: 'badge-primary', text: 'No Catalogo' }
-    }
-    return badges[status] || { class: 'badge-secondary', text: status }
-  }
+      eligible: { class: "badge-success", text: "Elegivel" },
+      not_eligible: { class: "badge-danger", text: "Nao Elegivel" },
+      pending: { class: "badge-warning", text: "Pendente" },
+      catalog_listed: { class: "badge-primary", text: "No Catalogo" },
+    };
+    return badges[status] || { class: "badge-secondary", text: status };
+  };
 
   const getBuyBoxBadge = (isWinner) => {
-    return isWinner 
-      ? { class: 'badge-success', icon: 'emoji_events', text: 'Ganhador' }
-      : { class: 'badge-warning', icon: 'trending_down', text: 'Competindo' }
-  }
+    return isWinner
+      ? { class: "badge-success", icon: "emoji_events", text: "Ganhador" }
+      : { class: "badge-warning", icon: "trending_down", text: "Competindo" };
+  };
 
-  const formatCurrency = (value, currency = 'BRL') => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: currency
-    }).format(value || 0)
-  }
+  const formatCurrency = (value, currency = "BRL") => {
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: currency,
+    }).format(value || 0);
+  };
 
-  const filteredItems = items.filter(item => {
-    if (activeTab === 'eligibility') return !item.catalogListed
-    if (activeTab === 'catalog') return item.catalogListed
-    if (activeTab === 'buybox') return item.catalogListed && item.inCompetition
-    return true
-  })
+  const filteredItems = items.filter((item) => {
+    if (activeTab === "eligibility") return !item.catalogListed;
+    if (activeTab === "catalog") return item.catalogListed;
+    if (activeTab === "buybox") return item.catalogListed && item.inCompetition;
+    return true;
+  });
 
   return (
     <div className="catalog-page">
@@ -156,13 +169,13 @@ function Catalog() {
             value={selectedAccount}
             onChange={(e) => setSelectedAccount(e.target.value)}
           >
-            {accounts.map(acc => (
+            {accounts.map((acc) => (
               <option key={acc.id} value={acc.id}>
                 {acc.nickname || acc.mlUserId}
               </option>
             ))}
           </select>
-          <button 
+          <button
             className="btn btn-primary"
             onClick={loadItems}
             disabled={loading || !selectedAccount}
@@ -222,9 +235,9 @@ function Catalog() {
             placeholder="Buscar produtos no catalogo por nome, GTIN, EAN..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && searchCatalogProducts()}
+            onKeyPress={(e) => e.key === "Enter" && searchCatalogProducts()}
           />
-          <button 
+          <button
             className="btn btn-primary"
             onClick={searchCatalogProducts}
             disabled={!searchTerm.trim()}
@@ -237,30 +250,30 @@ function Catalog() {
       {/* Tabs */}
       <div className="tabs-bar">
         <button
-          className={`tab ${activeTab === 'eligibility' ? 'active' : ''}`}
-          onClick={() => setActiveTab('eligibility')}
+          className={`tab ${activeTab === "eligibility" ? "active" : ""}`}
+          onClick={() => setActiveTab("eligibility")}
         >
           <span className="material-icons">fact_check</span>
           Elegibilidade
         </button>
         <button
-          className={`tab ${activeTab === 'catalog' ? 'active' : ''}`}
-          onClick={() => setActiveTab('catalog')}
+          className={`tab ${activeTab === "catalog" ? "active" : ""}`}
+          onClick={() => setActiveTab("catalog")}
         >
           <span className="material-icons">menu_book</span>
           No Catalogo
         </button>
         <button
-          className={`tab ${activeTab === 'buybox' ? 'active' : ''}`}
-          onClick={() => setActiveTab('buybox')}
+          className={`tab ${activeTab === "buybox" ? "active" : ""}`}
+          onClick={() => setActiveTab("buybox")}
         >
           <span className="material-icons">emoji_events</span>
           Buy Box
         </button>
         {catalogProducts.length > 0 && (
           <button
-            className={`tab ${activeTab === 'search' ? 'active' : ''}`}
-            onClick={() => setActiveTab('search')}
+            className={`tab ${activeTab === "search" ? "active" : ""}`}
+            onClick={() => setActiveTab("search")}
           >
             <span className="material-icons">search</span>
             Resultados ({catalogProducts.length})
@@ -282,9 +295,9 @@ function Catalog() {
             <div className="spinner"></div>
             <p>Carregando...</p>
           </div>
-        ) : activeTab === 'search' && catalogProducts.length > 0 ? (
+        ) : activeTab === "search" && catalogProducts.length > 0 ? (
           <div className="catalog-products-grid">
-            {catalogProducts.map(product => (
+            {catalogProducts.map((product) => (
               <div key={product.id} className="catalog-product-card">
                 <div className="product-image">
                   {product.thumbnail ? (
@@ -296,7 +309,9 @@ function Catalog() {
                 <div className="product-info">
                   <h3>{product.name}</h3>
                   <p className="product-id">ID: {product.id}</p>
-                  {product.gtin && <p className="product-gtin">GTIN: {product.gtin}</p>}
+                  {product.gtin && (
+                    <p className="product-gtin">GTIN: {product.gtin}</p>
+                  )}
                   <div className="product-attributes">
                     {product.attributes?.slice(0, 3).map((attr, idx) => (
                       <span key={idx} className="attribute-tag">
@@ -306,11 +321,11 @@ function Catalog() {
                   </div>
                 </div>
                 <div className="product-actions">
-                  <button 
+                  <button
                     className="btn btn-sm btn-primary"
                     onClick={() => {
-                      setSelectedItem({ catalogProductId: product.id })
-                      setShowProductModal(true)
+                      setSelectedItem({ catalogProductId: product.id });
+                      setShowProductModal(true);
                     }}
                   >
                     <span className="material-icons">add</span>
@@ -323,13 +338,16 @@ function Catalog() {
         ) : filteredItems.length === 0 ? (
           <div className="empty-state">
             <span className="material-icons">
-              {activeTab === 'buybox' ? 'emoji_events' : 'menu_book'}
+              {activeTab === "buybox" ? "emoji_events" : "menu_book"}
             </span>
             <h3>Nenhum item encontrado</h3>
             <p>
-              {activeTab === 'eligibility' && 'Seus itens elegiveis para catalogo aparecerao aqui'}
-              {activeTab === 'catalog' && 'Seus itens no catalogo aparecerao aqui'}
-              {activeTab === 'buybox' && 'Seus itens competindo no Buy Box aparecerao aqui'}
+              {activeTab === "eligibility" &&
+                "Seus itens elegiveis para catalogo aparecerao aqui"}
+              {activeTab === "catalog" &&
+                "Seus itens no catalogo aparecerao aqui"}
+              {activeTab === "buybox" &&
+                "Seus itens competindo no Buy Box aparecerao aqui"}
             </p>
           </div>
         ) : (
@@ -339,17 +357,20 @@ function Catalog() {
                 <tr>
                   <th>Item</th>
                   <th>Status</th>
-                  {activeTab === 'buybox' && <th>Buy Box</th>}
+                  {activeTab === "buybox" && <th>Buy Box</th>}
                   <th>Preco</th>
-                  {activeTab === 'buybox' && <th>Competidores</th>}
+                  {activeTab === "buybox" && <th>Competidores</th>}
                   <th>Acoes</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredItems.map(item => {
-                  const eligibility = getEligibilityBadge(item.catalogStatus)
-                  const buyBox = item.buyBoxWinner !== undefined ? getBuyBoxBadge(item.buyBoxWinner) : null
-                  
+                {filteredItems.map((item) => {
+                  const eligibility = getEligibilityBadge(item.catalogStatus);
+                  const buyBox =
+                    item.buyBoxWinner !== undefined
+                      ? getBuyBoxBadge(item.buyBoxWinner)
+                      : null;
+
                   return (
                     <tr key={item.id}>
                       <td>
@@ -372,23 +393,37 @@ function Catalog() {
                           {eligibility.text}
                         </span>
                       </td>
-                      {activeTab === 'buybox' && buyBox && (
+                      {activeTab === "buybox" && (
                         <td>
-                          <span className={`badge ${buyBox.class}`}>
-                            <span className="material-icons">{buyBox.icon}</span>
-                            {buyBox.text}
-                          </span>
+                          {buyBox ? (
+                            <span className={`badge ${buyBox.class}`}>
+                              <span className="material-icons">
+                                {buyBox.icon}
+                              </span>
+                              {buyBox.text}
+                            </span>
+                          ) : (
+                            <span className="badge badge-secondary">
+                              <span className="material-icons">
+                                help_outline
+                              </span>
+                              Verificando...
+                            </span>
+                          )}
                         </td>
                       )}
                       <td>
-                        <span className="price">{formatCurrency(item.price)}</span>
-                        {item.competitorPrice && item.competitorPrice < item.price && (
-                          <span className="competitor-price">
-                            Menor: {formatCurrency(item.competitorPrice)}
-                          </span>
-                        )}
+                        <span className="price">
+                          {formatCurrency(item.price)}
+                        </span>
+                        {item.competitorPrice &&
+                          item.competitorPrice < item.price && (
+                            <span className="competitor-price">
+                              Menor: {formatCurrency(item.competitorPrice)}
+                            </span>
+                          )}
                       </td>
-                      {activeTab === 'buybox' && (
+                      {activeTab === "buybox" && (
                         <td>
                           <span className="competitors-count">
                             {item.competitorsCount || 0} vendedores
@@ -397,18 +432,19 @@ function Catalog() {
                       )}
                       <td>
                         <div className="actions">
-                          {!item.catalogListed && item.catalogStatus === 'eligible' && (
-                            <button
-                              className="btn btn-sm btn-primary"
-                              onClick={() => {
-                                setSelectedItem(item)
-                                setShowProductModal(true)
-                              }}
-                            >
-                              <span className="material-icons">add</span>
-                              Publicar
-                            </button>
-                          )}
+                          {!item.catalogListed &&
+                            item.catalogStatus === "eligible" && (
+                              <button
+                                className="btn btn-sm btn-primary"
+                                onClick={() => {
+                                  setSelectedItem(item);
+                                  setShowProductModal(true);
+                                }}
+                              >
+                                <span className="material-icons">add</span>
+                                Publicar
+                              </button>
+                            )}
                           <button
                             className="btn btn-sm btn-secondary"
                             onClick={() => checkEligibility(item.id)}
@@ -427,7 +463,7 @@ function Catalog() {
                         </div>
                       </td>
                     </tr>
-                  )
+                  );
                 })}
               </tbody>
             </table>
@@ -437,11 +473,17 @@ function Catalog() {
 
       {/* Product Selection Modal */}
       {showProductModal && (
-        <div className="modal-overlay" onClick={() => setShowProductModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
+        <div
+          className="modal-overlay"
+          onClick={() => setShowProductModal(false)}
+        >
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Selecionar Produto do Catalogo</h2>
-              <button className="close-btn" onClick={() => setShowProductModal(false)}>
+              <button
+                className="close-btn"
+                onClick={() => setShowProductModal(false)}
+              >
                 <span className="material-icons">close</span>
               </button>
             </div>
@@ -452,20 +494,27 @@ function Catalog() {
                   placeholder="Buscar produto por nome, GTIN, EAN..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && searchCatalogProducts()}
+                  onKeyPress={(e) =>
+                    e.key === "Enter" && searchCatalogProducts()
+                  }
                 />
-                <button className="btn btn-primary" onClick={searchCatalogProducts}>
+                <button
+                  className="btn btn-primary"
+                  onClick={searchCatalogProducts}
+                >
                   Buscar
                 </button>
               </div>
-              
+
               {catalogProducts.length > 0 && (
                 <div className="products-list">
-                  {catalogProducts.map(product => (
-                    <div 
-                      key={product.id} 
+                  {catalogProducts.map((product) => (
+                    <div
+                      key={product.id}
                       className="product-option"
-                      onClick={() => publishToCatalog(selectedItem.id, product.id)}
+                      onClick={() =>
+                        publishToCatalog(selectedItem.id, product.id)
+                      }
                     >
                       <div className="product-thumb">
                         {product.thumbnail ? (
@@ -478,7 +527,9 @@ function Catalog() {
                         <span className="product-name">{product.name}</span>
                         <span className="product-id">{product.id}</span>
                       </div>
-                      <span className="material-icons select-icon">chevron_right</span>
+                      <span className="material-icons select-icon">
+                        chevron_right
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -488,7 +539,7 @@ function Catalog() {
         </div>
       )}
     </div>
-  )
+  );
 }
 
-export default Catalog
+export default Catalog;

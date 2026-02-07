@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import {
   mpPaymentsAPI,
   mpSubscriptionsAPI,
@@ -7,8 +7,8 @@ import {
   formatMPCurrency,
   getMPStatusColor,
   getMPStatusLabel,
-} from '../services/mercadopago'
-import { useToastStore } from '../store/toastStore'
+} from "../services/mercadopago";
+import { useToastStore } from "../store/toastStore";
 import {
   LineChart,
   Line,
@@ -22,77 +22,110 @@ import {
   PieChart,
   Pie,
   Cell,
-} from 'recharts'
-import './MPDashboard.css'
+} from "recharts";
+import "./MPDashboard.css";
 
 function MPDashboard() {
-  const [loading, setLoading] = useState(true)
-  const [accountInfo, setAccountInfo] = useState(null)
-  const [balance, setBalance] = useState(null)
-  const [paymentStats, setPaymentStats] = useState(null)
-  const [subscriptionStats, setSubscriptionStats] = useState(null)
-  const [recentPayments, setRecentPayments] = useState([])
-  const { showToast } = useToastStore()
+  const [loading, setLoading] = useState(true);
+  const [accountInfo, setAccountInfo] = useState(null);
+  const [balance, setBalance] = useState(null);
+  const [paymentStats, setPaymentStats] = useState(null);
+  const [subscriptionStats, setSubscriptionStats] = useState(null);
+  const [recentPayments, setRecentPayments] = useState([]);
+  const { showToast } = useToastStore();
 
   useEffect(() => {
-    loadDashboardData()
-  }, [])
+    loadDashboardData();
+  }, []);
 
   const loadDashboardData = async () => {
-    setLoading(true)
+    setLoading(true);
     try {
       // Load all data in parallel
-      const [accountRes, balanceRes, paymentsRes, subsStatsRes, recentRes] = await Promise.allSettled([
-        mpAccountAPI.getMe(),
-        mpAccountAPI.getBalance(),
-        mpPaymentsAPI.getStats({}),
-        mpSubscriptionsAPI.getStats(),
-        mpPaymentsAPI.search({ limit: 10, sort: 'date_created', criteria: 'desc' }),
-      ])
+      const [accountRes, balanceRes, paymentsRes, subsStatsRes, recentRes] =
+        await Promise.allSettled([
+          mpAccountAPI.getMe(),
+          mpAccountAPI.getBalance(),
+          mpPaymentsAPI.getStats({}),
+          mpSubscriptionsAPI.getStats(),
+          mpPaymentsAPI.search({
+            limit: 100, // Increased limit to fetch more recent payments
+            sort: "date_created",
+            criteria: "desc",
+          }),
+        ]);
 
-      if (accountRes.status === 'fulfilled') {
-        setAccountInfo(accountRes.value.data)
+      if (accountRes.status === "fulfilled") {
+        setAccountInfo(accountRes.value.data);
       }
 
-      if (balanceRes.status === 'fulfilled') {
-        setBalance(balanceRes.value.data)
+      if (balanceRes.status === "fulfilled") {
+        setBalance(balanceRes.value.data);
       }
 
-      if (paymentsRes.status === 'fulfilled') {
-        setPaymentStats(paymentsRes.value.data)
+      if (paymentsRes.status === "fulfilled") {
+        setPaymentStats(paymentsRes.value.data);
       }
 
-      if (subsStatsRes.status === 'fulfilled') {
-        setSubscriptionStats(subsStatsRes.value.data)
+      if (subsStatsRes.status === "fulfilled") {
+        setSubscriptionStats(subsStatsRes.value.data);
       }
 
-      if (recentRes.status === 'fulfilled') {
-        setRecentPayments(recentRes.value.data?.results || [])
+      if (recentRes.status === "fulfilled") {
+        setRecentPayments(recentRes.value.data?.results || []);
+      }
+
+      // Check if all requests failed with 501 (MP disabled)
+      const all501 = [
+        accountRes,
+        balanceRes,
+        paymentsRes,
+        subsStatsRes,
+        recentRes,
+      ].every(
+        (res) =>
+          res.status === "rejected" && res.reason?.response?.status === 501,
+      );
+
+      if (all501) {
+        showToast(
+          "Integração Mercado Pago não disponível. Use Mercado Livre.",
+          "info",
+        );
       }
     } catch (error) {
-      console.error('Error loading dashboard:', error)
-      showToast('Erro ao carregar dados do dashboard', 'error')
+      console.error("Error loading dashboard:", error);
+      if (error.response?.status === 501) {
+        showToast(
+          "Integração Mercado Pago não disponível. Use Mercado Livre.",
+          "info",
+        );
+      } else {
+        showToast("Erro ao carregar dados do dashboard", "error");
+      }
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const getPaymentChartData = () => {
-    if (!paymentStats?.payment) return []
-    
-    const data = []
-    Object.entries(paymentStats.payment.byStatus || {}).forEach(([status, info]) => {
-      data.push({
-        name: getMPStatusLabel(status),
-        value: info.count,
-        amount: info.amount,
-        color: getMPStatusColor(status),
-      })
-    })
-    return data
-  }
+    if (!paymentStats?.payment) return [];
 
-  const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8']
+    const data = [];
+    Object.entries(paymentStats.payment.byStatus || {}).forEach(
+      ([status, info]) => {
+        data.push({
+          name: getMPStatusLabel(status),
+          value: info.count,
+          amount: info.amount,
+          color: getMPStatusColor(status),
+        });
+      },
+    );
+    return data;
+  };
+
+  const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8"];
 
   if (loading) {
     return (
@@ -102,7 +135,7 @@ function MPDashboard() {
           <p>Carregando dados do Mercado Pago...</p>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -176,9 +209,7 @@ function MPDashboard() {
             <span className="material-icons">autorenew</span>
           </div>
           <div className="stat-content">
-            <span className="stat-value">
-              {subscriptionStats?.active || 0}
-            </span>
+            <span className="stat-value">{subscriptionStats?.active || 0}</span>
             <span className="stat-label">Assinaturas Ativas</span>
           </div>
         </div>
@@ -215,7 +246,10 @@ function MPDashboard() {
                   label={({ name, value }) => `${name}: ${value}`}
                 >
                   {getPaymentChartData().map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color || COLORS[index % COLORS.length]} />
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={entry.color || COLORS[index % COLORS.length]}
+                    />
                   ))}
                 </Pie>
                 <Tooltip formatter={(value, name) => [value, name]} />
@@ -229,19 +263,27 @@ function MPDashboard() {
           <h3>Assinaturas</h3>
           <div className="subscription-stats">
             <div className="sub-stat">
-              <span className="sub-stat-value active">{subscriptionStats?.active || 0}</span>
+              <span className="sub-stat-value active">
+                {subscriptionStats?.active || 0}
+              </span>
               <span className="sub-stat-label">Ativas</span>
             </div>
             <div className="sub-stat">
-              <span className="sub-stat-value paused">{subscriptionStats?.paused || 0}</span>
+              <span className="sub-stat-value paused">
+                {subscriptionStats?.paused || 0}
+              </span>
               <span className="sub-stat-label">Pausadas</span>
             </div>
             <div className="sub-stat">
-              <span className="sub-stat-value cancelled">{subscriptionStats?.cancelled || 0}</span>
+              <span className="sub-stat-value cancelled">
+                {subscriptionStats?.cancelled || 0}
+              </span>
               <span className="sub-stat-label">Canceladas</span>
             </div>
             <div className="sub-stat">
-              <span className="sub-stat-value total">{subscriptionStats?.total || 0}</span>
+              <span className="sub-stat-value total">
+                {subscriptionStats?.total || 0}
+              </span>
               <span className="sub-stat-label">Total</span>
             </div>
           </div>
@@ -296,15 +338,24 @@ function MPDashboard() {
                 recentPayments.map((payment) => (
                   <tr key={payment.id}>
                     <td className="payment-id">#{payment.id}</td>
-                    <td>{new Date(payment.date_created).toLocaleDateString('pt-BR')}</td>
+                    <td>
+                      {new Date(payment.date_created).toLocaleDateString(
+                        "pt-BR",
+                      )}
+                    </td>
                     <td className="payment-amount">
-                      {formatMPCurrency(payment.transaction_amount, payment.currency_id)}
+                      {formatMPCurrency(
+                        payment.transaction_amount,
+                        payment.currency_id,
+                      )}
                     </td>
                     <td>{payment.payment_method_id}</td>
                     <td>
-                      <span 
+                      <span
                         className="status-badge"
-                        style={{ backgroundColor: getMPStatusColor(payment.status) }}
+                        style={{
+                          backgroundColor: getMPStatusColor(payment.status),
+                        }}
                       >
                         {getMPStatusLabel(payment.status)}
                       </span>
@@ -323,7 +374,7 @@ function MPDashboard() {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
-export default MPDashboard
+export default MPDashboard;

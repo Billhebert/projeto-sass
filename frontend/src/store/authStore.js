@@ -4,14 +4,20 @@ import api from "../services/api";
 export const useAuthStore = create((set) => ({
   token: null,
   user: null,
+  mlAccounts: [],
   loading: false,
   error: null,
 
   loadToken: () => {
     const token = localStorage.getItem("token");
     const user = localStorage.getItem("user");
+    const mlAccounts = localStorage.getItem("mlAccounts");
     if (token && user) {
-      set({ token, user: JSON.parse(user) });
+      set({
+        token,
+        user: JSON.parse(user),
+        mlAccounts: mlAccounts ? JSON.parse(mlAccounts) : [],
+      });
     }
   },
 
@@ -20,10 +26,11 @@ export const useAuthStore = create((set) => ({
     try {
       const response = await api.post("/auth/login", { email, password });
 
-      // API returns { success: true, data: { user, token } }
+      // API returns { success: true, data: { user, token, mlAccounts } }
       const responseData = response.data.data || response.data;
       const actualToken = responseData.token;
       const actualUser = responseData.user;
+      const mlAccounts = responseData.mlAccounts || [];
 
       if (!actualToken || !actualUser) {
         console.error("Invalid response format:", response.data);
@@ -32,7 +39,8 @@ export const useAuthStore = create((set) => ({
 
       localStorage.setItem("token", actualToken);
       localStorage.setItem("user", JSON.stringify(actualUser));
-      set({ token: actualToken, user: actualUser, loading: false });
+      localStorage.setItem("mlAccounts", JSON.stringify(mlAccounts));
+      set({ token: actualToken, user: actualUser, mlAccounts, loading: false });
       return true;
     } catch (error) {
       let message = "Login failed";

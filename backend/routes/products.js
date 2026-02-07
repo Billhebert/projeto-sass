@@ -10,25 +10,35 @@
  * GET    /api/products/:accountId/stats       - Get product statistics
  */
 
-const express = require('express');
-const axios = require('axios');
-const logger = require('../logger');
-const { authenticateToken } = require('../middleware/auth');
-const { validateMLToken } = require('../middleware/ml-token-validation');
-const Product = require('../db/models/Product');
-const MLAccount = require('../db/models/MLAccount');
+const express = require("express");
+const axios = require("axios");
+const logger = require("../logger");
+const sdkManager = require("../services/sdk-manager");
+const { authenticateToken } = require("../middleware/auth");
+const { validateMLToken } = require("../middleware/ml-token-validation");
+const Product = require("../db/models/Product");
+const MLAccount = require("../db/models/MLAccount");
 
 const router = express.Router();
 
-const ML_API_BASE = 'https://api.mercadolibre.com';
+const ML_API_BASE = "https://api.mercadolibre.com";
 
 /**
  * GET /api/products
  * List all products for the authenticated user
  */
-router.get('/', authenticateToken, async (req, res) => {
+router.get("/", authenticateToken, async (req, res) => {
   try {
-    const { limit = 20, offset = 0, status, sort = '-createdAt' } = req.query;
+    const {
+      limit: queryLimit,
+      offset = 0,
+      status,
+      sort = "-createdAt",
+      all,
+    } = req.query;
+
+    // If all=true, fetch everything. Otherwise use limit (default 100)
+    const limit = all === "true" ? 999999 : queryLimit || 100;
 
     const query = { userId: req.user.userId };
     if (status) query.status = status;
@@ -43,7 +53,7 @@ router.get('/', authenticateToken, async (req, res) => {
     res.json({
       success: true,
       data: {
-        products: products.map(p => p.getSummary()),
+        products: products.map((p) => p.getSummary()),
         total,
         limit: parseInt(limit),
         offset: parseInt(offset),
@@ -51,14 +61,14 @@ router.get('/', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     logger.error({
-      action: 'GET_PRODUCTS_ERROR',
+      action: "GET_PRODUCTS_ERROR",
       userId: req.user.userId,
       error: error.message,
     });
 
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch products',
+      message: "Failed to fetch products",
       error: error.message,
     });
   }
@@ -68,7 +78,7 @@ router.get('/', authenticateToken, async (req, res) => {
  * GET /api/products/:accountId/stats
  * Get product statistics for an account
  */
-router.get('/:accountId/stats', authenticateToken, async (req, res) => {
+router.get("/:accountId/stats", authenticateToken, async (req, res) => {
   try {
     const { accountId } = req.params;
 
@@ -81,7 +91,7 @@ router.get('/:accountId/stats', authenticateToken, async (req, res) => {
     if (!account) {
       return res.status(404).json({
         success: false,
-        message: 'Account not found',
+        message: "Account not found",
       });
     }
 
@@ -89,32 +99,32 @@ router.get('/:accountId/stats', authenticateToken, async (req, res) => {
     const totalProducts = await Product.countDocuments({
       accountId,
       userId: req.user.userId,
-      status: { $ne: 'removed' },
+      status: { $ne: "removed" },
     });
 
     const activeProducts = await Product.countDocuments({
       accountId,
       userId: req.user.userId,
-      status: 'active',
+      status: "active",
     });
 
     const pausedProducts = await Product.countDocuments({
       accountId,
       userId: req.user.userId,
-      status: 'paused',
+      status: "paused",
     });
 
     const lowStockProducts = await Product.countDocuments({
       accountId,
       userId: req.user.userId,
-      status: 'active',
-      'quantity.available': { $lte: 5, $gt: 0 },
+      status: "active",
+      "quantity.available": { $lte: 5, $gt: 0 },
     });
 
     const outOfStockProducts = await Product.countDocuments({
       accountId,
       userId: req.user.userId,
-      'quantity.available': 0,
+      "quantity.available": 0,
     });
 
     // Get total sales and views
@@ -128,13 +138,13 @@ router.get('/:accountId/stats', authenticateToken, async (req, res) => {
       {
         $group: {
           _id: null,
-          totalSales: { $sum: '$salesCount' },
-          totalViews: { $sum: '$viewCount' },
-          totalQuestions: { $sum: '$questionCount' },
-          totalInventory: { $sum: '$quantity.available' },
+          totalSales: { $sum: "$salesCount" },
+          totalViews: { $sum: "$viewCount" },
+          totalQuestions: { $sum: "$questionCount" },
+          totalInventory: { $sum: "$quantity.available" },
           totalValue: {
             $sum: {
-              $multiply: ['$price.amount', '$quantity.available'],
+              $multiply: ["$price.amount", "$quantity.available"],
             },
           },
         },
@@ -169,7 +179,7 @@ router.get('/:accountId/stats', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     logger.error({
-      action: 'GET_PRODUCT_STATS_ERROR',
+      action: "GET_PRODUCT_STATS_ERROR",
       accountId: req.params.accountId,
       userId: req.user.userId,
       error: error.message,
@@ -177,15 +187,24 @@ router.get('/:accountId/stats', authenticateToken, async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: 'Failed to get product statistics',
+      message: "Failed to get product statistics",
       error: error.message,
     });
   }
 });
-router.get('/:accountId', authenticateToken, async (req, res) => {
+router.get("/:accountId", authenticateToken, async (req, res) => {
   try {
     const { accountId } = req.params;
-    const { limit = 20, offset = 0, status, sort = '-createdAt' } = req.query;
+    const {
+      limit: queryLimit,
+      offset = 0,
+      status,
+      sort = "-createdAt",
+      all,
+    } = req.query;
+
+    // If all=true, fetch everything. Otherwise use limit (default 100)
+    const limit = all === "true" ? 999999 : queryLimit || 100;
 
     // Verify account belongs to user
     const account = await MLAccount.findOne({
@@ -196,7 +215,7 @@ router.get('/:accountId', authenticateToken, async (req, res) => {
     if (!account) {
       return res.status(404).json({
         success: false,
-        message: 'Account not found',
+        message: "Account not found",
       });
     }
 
@@ -217,7 +236,7 @@ router.get('/:accountId', authenticateToken, async (req, res) => {
           id: account.id,
           nickname: account.nickname,
         },
-        products: products.map(p => p.getSummary()),
+        products: products.map((p) => p.getSummary()),
         total,
         limit: parseInt(limit),
         offset: parseInt(offset),
@@ -225,7 +244,7 @@ router.get('/:accountId', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     logger.error({
-      action: 'GET_ACCOUNT_PRODUCTS_ERROR',
+      action: "GET_ACCOUNT_PRODUCTS_ERROR",
       accountId: req.params.accountId,
       userId: req.user.userId,
       error: error.message,
@@ -233,7 +252,7 @@ router.get('/:accountId', authenticateToken, async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch products',
+      message: "Failed to fetch products",
       error: error.message,
     });
   }
@@ -243,7 +262,7 @@ router.get('/:accountId', authenticateToken, async (req, res) => {
  * GET /api/products/:accountId/:productId
  * Get detailed product information
  */
-router.get('/:accountId/:productId', authenticateToken, async (req, res) => {
+router.get("/:accountId/:productId", authenticateToken, async (req, res) => {
   try {
     const { accountId, productId } = req.params;
 
@@ -256,7 +275,7 @@ router.get('/:accountId/:productId', authenticateToken, async (req, res) => {
     if (!product) {
       return res.status(404).json({
         success: false,
-        message: 'Product not found',
+        message: "Product not found",
       });
     }
 
@@ -266,7 +285,7 @@ router.get('/:accountId/:productId', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     logger.error({
-      action: 'GET_PRODUCT_ERROR',
+      action: "GET_PRODUCT_ERROR",
       productId: req.params.productId,
       userId: req.user.userId,
       error: error.message,
@@ -274,80 +293,245 @@ router.get('/:accountId/:productId', authenticateToken, async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch product',
+      message: "Failed to fetch product",
       error: error.message,
     });
   }
 });
 
 /**
+ * GET /api/products/:accountId/:productId/competitors
+ * Get competitors for a specific product
+ */
+router.get(
+  "/:accountId/:productId/competitors",
+  authenticateToken,
+  validateMLToken("accountId"),
+  async (req, res) => {
+    try {
+      const { accountId, productId } = req.params;
+      const account = req.mlAccount;
+
+      const headers = {
+        Authorization: `Bearer ${account.accessToken}`,
+        "Content-Type": "application/json",
+      };
+
+      // Get the product first to get its catalog_product_id or search by title
+      const productRes = await axios.get(`${ML_API_BASE}/items/${productId}`, {
+        headers,
+      });
+
+      const product = productRes.data;
+      let competitors = [];
+
+      // If product has catalog_product_id, search by that
+      if (product.catalog_product_id) {
+        const searchRes = await axios.get(
+          `${ML_API_BASE}/sites/${SITE_ID}/search`,
+          {
+            params: {
+              catalog_product_id: product.catalog_product_id,
+              limit: 50,
+            },
+          },
+        );
+
+        competitors = searchRes.data.results
+          .filter((item) => item.id !== productId)
+          .map((item) => ({
+            id: item.id,
+            seller: item.seller?.nickname || "N/A",
+            seller_id: item.seller?.id,
+            reputation: item.seller?.seller_reputation?.level_id || "unknown",
+            totalSales: item.sold_quantity || 0,
+            price: item.price,
+            shipping: item.shipping?.free_shipping
+              ? "free"
+              : item.shipping?.cost || 0,
+            listingType: item.listing_type_id,
+            condition: item.condition,
+            available: item.available_quantity || 0,
+            permalink: item.permalink,
+            thumbnail: item.thumbnail,
+          }))
+          .sort((a, b) => a.price - b.price);
+      } else {
+        // Search by title (less accurate but works)
+        const searchRes = await axios.get(
+          `${ML_API_BASE}/sites/${SITE_ID}/search`,
+          {
+            params: {
+              q: product.title,
+              limit: 50,
+            },
+          },
+        );
+
+        competitors = searchRes.data.results
+          .filter(
+            (item) =>
+              item.id !== productId &&
+              item.title.includes(product.title.split(" ")[0]),
+          )
+          .map((item) => ({
+            id: item.id,
+            seller: item.seller?.nickname || "N/A",
+            seller_id: item.seller?.id,
+            reputation: item.seller?.seller_reputation?.level_id || "unknown",
+            totalSales: item.sold_quantity || 0,
+            price: item.price,
+            shipping: item.shipping?.free_shipping
+              ? "free"
+              : item.shipping?.cost || 0,
+            listingType: item.listing_type_id,
+            condition: item.condition,
+            available: item.available_quantity || 0,
+            permalink: item.permalink,
+            thumbnail: item.thumbnail,
+          }))
+          .sort((a, b) => a.price - b.price);
+      }
+
+      logger.info({
+        action: "GET_PRODUCT_COMPETITORS",
+        accountId,
+        productId,
+        competitorsFound: competitors.length,
+        userId: req.user.userId,
+      });
+
+      res.json({
+        success: true,
+        data: {
+          product: {
+            id: product.id,
+            title: product.title,
+            price: product.price,
+            catalog_product_id: product.catalog_product_id,
+          },
+          competitors,
+          stats: {
+            total: competitors.length,
+            avg_price:
+              competitors.length > 0
+                ? competitors.reduce((sum, c) => sum + c.price, 0) /
+                  competitors.length
+                : 0,
+            min_price:
+              competitors.length > 0
+                ? Math.min(...competitors.map((c) => c.price))
+                : 0,
+            max_price:
+              competitors.length > 0
+                ? Math.max(...competitors.map((c) => c.price))
+                : 0,
+          },
+        },
+      });
+    } catch (error) {
+      logger.error({
+        action: "GET_PRODUCT_COMPETITORS_ERROR",
+        accountId: req.params.accountId,
+        productId: req.params.productId,
+        userId: req.user.userId,
+        error: error.response?.data || error.message,
+      });
+
+      res.status(error.response?.status || 500).json({
+        success: false,
+        message: "Failed to fetch competitors",
+        error: error.response?.data?.message || error.message,
+      });
+    }
+  },
+);
+
+/**
  * POST /api/products/:accountId/sync
- * Sync products from Mercado Livre usando access token do usuário
- * 
+ * Sync products from Mercado Livre API
+ * Body params:
+ *   - all: If true, fetch ALL products with auto-pagination (default false, limits to 500)
+ *
  * Middleware validateMLToken:
  * - Verifies token is not expired
  * - Auto-refreshes if about to expire (if refreshToken available)
  * - Returns error if token is invalid/expired
  */
-router.post('/:accountId/sync', authenticateToken, validateMLToken('accountId'), async (req, res) => {
-  try {
-    const { accountId } = req.params;
-    // Use account from middleware instead of fetching again
-    const account = req.mlAccount;
+router.post(
+  "/:accountId/sync",
+  authenticateToken,
+  validateMLToken("accountId"),
+  async (req, res) => {
+    try {
+      const { accountId } = req.params;
+      const { all = false } = req.body;
+      // Use account from middleware instead of fetching again
+      const account = req.mlAccount;
 
-    logger.info({
-      action: 'PRODUCTS_SYNC_STARTED',
-      accountId,
-      userId: req.user.userId,
-      timestamp: new Date().toISOString(),
-    });
-
-    // Fetch products from ML usando o token do usuário
-    const mlProducts = await fetchMLProducts(account.mlUserId, account.accessToken);
-
-    // Store/update products in database
-    const savedProducts = await saveProducts(accountId, req.user.userId, mlProducts);
-
-    logger.info({
-      action: 'PRODUCTS_SYNC_COMPLETED',
-      accountId,
-      userId: req.user.userId,
-      productsCount: savedProducts.length,
-      timestamp: new Date().toISOString(),
-    });
-
-    res.json({
-      success: true,
-      message: `Synchronized ${savedProducts.length} products`,
-      data: {
+      logger.info({
+        action: "PRODUCTS_SYNC_STARTED",
         accountId,
-        productsCount: savedProducts.length,
-        products: savedProducts.map(p => p.getSummary()),
-        syncedAt: new Date().toISOString(),
-      },
-    });
-  } catch (error) {
-    logger.error({
-      action: 'PRODUCTS_SYNC_ERROR',
-      accountId: req.params.accountId,
-      userId: req.user.userId,
-      error: error.message,
-      timestamp: new Date().toISOString(),
-    });
+        userId: req.user.userId,
+        all,
+        timestamp: new Date().toISOString(),
+      });
 
-    res.status(500).json({
-      success: false,
-      message: 'Failed to sync products',
-      error: error.message,
-    });
-  }
-});
+      // Fetch products from ML usando o token do usuário
+      const mlProducts = await fetchMLProducts(
+        account.mlUserId,
+        account.accessToken,
+        { all },
+      );
+
+      // Store/update products in database
+      const savedProducts = await saveProducts(
+        accountId,
+        req.user.userId,
+        mlProducts,
+      );
+
+      logger.info({
+        action: "PRODUCTS_SYNC_COMPLETED",
+        accountId,
+        userId: req.user.userId,
+        productsCount: savedProducts.length,
+        timestamp: new Date().toISOString(),
+      });
+
+      res.json({
+        success: true,
+        message: `Synchronized ${savedProducts.length} products`,
+        data: {
+          accountId,
+          productsCount: savedProducts.length,
+          products: savedProducts.map((p) => p.getSummary()),
+          syncedAt: new Date().toISOString(),
+        },
+      });
+    } catch (error) {
+      logger.error({
+        action: "PRODUCTS_SYNC_ERROR",
+        accountId: req.params.accountId,
+        userId: req.user.userId,
+        error: error.message,
+        timestamp: new Date().toISOString(),
+      });
+
+      res.status(500).json({
+        success: false,
+        message: "Failed to sync products",
+        error: error.message,
+      });
+    }
+  },
+);
 
 /**
  * DELETE /api/products/:accountId/:productId
  * Remove a product
  */
-router.delete('/:accountId/:productId', authenticateToken, async (req, res) => {
+router.delete("/:accountId/:productId", authenticateToken, async (req, res) => {
   try {
     const { accountId, productId } = req.params;
 
@@ -360,16 +544,16 @@ router.delete('/:accountId/:productId', authenticateToken, async (req, res) => {
     if (!product) {
       return res.status(404).json({
         success: false,
-        message: 'Product not found',
+        message: "Product not found",
       });
     }
 
     // Mark as removed instead of deleting
-    product.status = 'removed';
+    product.status = "removed";
     await product.save();
 
     logger.info({
-      action: 'PRODUCT_REMOVED',
+      action: "PRODUCT_REMOVED",
       productId,
       accountId,
       userId: req.user.userId,
@@ -377,11 +561,11 @@ router.delete('/:accountId/:productId', authenticateToken, async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Product removed successfully',
+      message: "Product removed successfully",
     });
   } catch (error) {
     logger.error({
-      action: 'REMOVE_PRODUCT_ERROR',
+      action: "REMOVE_PRODUCT_ERROR",
       productId: req.params.productId,
       userId: req.user.userId,
       error: error.message,
@@ -389,7 +573,7 @@ router.delete('/:accountId/:productId', authenticateToken, async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: 'Failed to remove product',
+      message: "Failed to remove product",
       error: error.message,
     });
   }
@@ -405,12 +589,19 @@ router.delete('/:accountId/:productId', authenticateToken, async (req, res) => {
  * Buscar produtos do Mercado Livre API usando token do usuário
  * Busca todos os produtos usando paginação
  */
-async function fetchMLProducts(mlUserId, accessToken) {
+/**
+ * Fetch products from Mercado Livre API
+ * Options:
+ *   - all: If true, fetch ALL products with auto-pagination (default false)
+ */
+async function fetchMLProducts(mlUserId, accessToken, options = {}) {
   try {
     const headers = {
-      'Authorization': `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
     };
+
+    const { all = false } = options;
 
     // First, get the total count and first batch of items
     let allItemIds = [];
@@ -422,7 +613,7 @@ async function fetchMLProducts(mlUserId, accessToken) {
     do {
       const response = await axios.get(
         `${ML_API_BASE}/users/${mlUserId}/items/search?limit=${limit}&offset=${offset}`,
-        { headers }
+        { headers },
       );
 
       const itemIds = response.data.results || [];
@@ -431,19 +622,22 @@ async function fetchMLProducts(mlUserId, accessToken) {
       offset += limit;
 
       logger.info({
-        action: 'FETCH_ML_ITEMS_PROGRESS',
+        action: "FETCH_ML_ITEMS_PROGRESS",
         mlUserId,
         fetched: allItemIds.length,
         total,
       });
-    } while (offset < total && allItemIds.length < 500); // Limit to 500 products max
+
+      // If NOT in unlimited mode, stop at 500
+      if (!all && allItemIds.length >= 500) break;
+    } while (offset < total);
 
     if (allItemIds.length === 0) {
       return [];
     }
 
     logger.info({
-      action: 'FETCH_ML_ITEMS_COMPLETE',
+      action: "FETCH_ML_ITEMS_COMPLETE",
       mlUserId,
       totalItems: allItemIds.length,
     });
@@ -454,21 +648,21 @@ async function fetchMLProducts(mlUserId, accessToken) {
 
     for (let i = 0; i < allItemIds.length; i += batchSize) {
       const batch = allItemIds.slice(i, i + batchSize);
-      
+
       // Use multiget endpoint for better performance
       try {
         const multigetResponse = await axios.get(
-          `${ML_API_BASE}/items?ids=${batch.join(',')}`,
-          { headers }
+          `${ML_API_BASE}/items?ids=${batch.join(",")}`,
+          { headers },
         );
-        
+
         // Multiget returns array of objects with body property
         for (const item of multigetResponse.data) {
           if (item.code === 200 && item.body) {
             detailedProducts.push(item.body);
           } else {
             logger.warn({
-              action: 'FETCH_PRODUCT_SKIPPED',
+              action: "FETCH_PRODUCT_SKIPPED",
               itemId: batch[multigetResponse.data.indexOf(item)],
               code: item.code,
               error: item.body?.message,
@@ -478,32 +672,32 @@ async function fetchMLProducts(mlUserId, accessToken) {
       } catch (batchError) {
         // Fallback to individual requests if multiget fails
         logger.warn({
-          action: 'MULTIGET_FAILED_FALLBACK',
+          action: "MULTIGET_FAILED_FALLBACK",
           error: batchError.message,
         });
-        
+
         const batchResults = await Promise.all(
-          batch.map(itemId =>
+          batch.map((itemId) =>
             axios
               .get(`${ML_API_BASE}/items/${itemId}`, { headers })
-              .then(res => res.data)
-              .catch(error => {
+              .then((res) => res.data)
+              .catch((error) => {
                 logger.warn({
-                  action: 'FETCH_PRODUCT_DETAILS_ERROR',
+                  action: "FETCH_PRODUCT_DETAILS_ERROR",
                   itemId,
                   error: error.message,
                 });
                 return null;
-              })
-          )
+              }),
+          ),
         );
-        
-        detailedProducts.push(...batchResults.filter(p => p !== null));
+
+        detailedProducts.push(...batchResults.filter((p) => p !== null));
       }
     }
 
     logger.info({
-      action: 'FETCH_ML_PRODUCTS_COMPLETE',
+      action: "FETCH_ML_PRODUCTS_COMPLETE",
       mlUserId,
       totalProducts: detailedProducts.length,
     });
@@ -511,11 +705,13 @@ async function fetchMLProducts(mlUserId, accessToken) {
     return detailedProducts;
   } catch (error) {
     logger.error({
-      action: 'FETCH_ML_PRODUCTS_ERROR',
+      action: "FETCH_ML_PRODUCTS_ERROR",
       mlUserId,
       error: error.response?.data || error.message,
     });
-    throw new Error(`Failed to fetch products from Mercado Livre: ${error.message}`);
+    throw new Error(
+      `Failed to fetch products from Mercado Livre: ${error.message}`,
+    );
   }
 }
 
@@ -538,7 +734,7 @@ async function saveProducts(accountId, userId, mlProducts) {
           categoryName: mlProduct.category_name,
         },
         price: {
-          currency: mlProduct.currency_id || 'BRL',
+          currency: mlProduct.currency_id || "BRL",
           amount: mlProduct.price,
           originalPrice: mlProduct.original_price,
         },
@@ -547,7 +743,7 @@ async function saveProducts(accountId, userId, mlProducts) {
           sold: mlProduct.sold_quantity || 0,
           reserved: 0,
         },
-        status: mlProduct.status || 'active',
+        status: mlProduct.status || "active",
         mlStatus: mlProduct.status,
         images: (mlProduct.pictures || []).map((pic, idx) => ({
           url: pic.url,
@@ -567,7 +763,7 @@ async function saveProducts(accountId, userId, mlProducts) {
           averageScore: mlProduct.rating,
           totalRatings: mlProduct.ratingcount || 0,
         },
-        attributes: (mlProduct.attributes || []).map(attr => ({
+        attributes: (mlProduct.attributes || []).map((attr) => ({
           name: attr.name,
           value: attr.value_name || attr.value_id,
         })),
@@ -603,7 +799,7 @@ async function saveProducts(accountId, userId, mlProducts) {
       savedProducts.push(product);
     } catch (error) {
       logger.error({
-        action: 'SAVE_PRODUCT_ERROR',
+        action: "SAVE_PRODUCT_ERROR",
         mlProductId: mlProduct.id,
         accountId,
         error: error.message,

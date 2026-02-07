@@ -13,6 +13,7 @@ const express = require('express');
 const router = express.Router();
 const axios = require('axios');
 const logger = require('../logger');
+const sdkManager = require("../services/sdk-manager");
 const { authenticateToken } = require('../middleware/auth');
 
 const ML_API_BASE = 'https://api.mercadolibre.com';

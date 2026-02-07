@@ -1,101 +1,105 @@
-import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
-import { useAuthStore } from '../store/authStore'
-import { toast } from '../store/toastStore'
-import validators from '../utils/validation'
-import './Auth.css'
+import { useState } from "react";
+import { useNavigate, Link } from "react-router-dom";
+import { useAuthStore } from "../store/authStore";
+import { toast } from "../store/toastStore";
+import validators from "../utils/validation";
+import "./Auth.css";
 
 function Login() {
-  const navigate = useNavigate()
-  const { login, loading } = useAuthStore()
+  const navigate = useNavigate();
+  const { login, loading } = useAuthStore();
   const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-  })
-  const [errors, setErrors] = useState({})
-  const [touched, setTouched] = useState({})
+    email: "",
+    password: "",
+  });
+  const [errors, setErrors] = useState({});
+  const [touched, setTouched] = useState({});
 
   const handleChange = (e) => {
-    const { name, value } = e.target
-    setFormData(prev => ({ ...prev, [name]: value }))
-    
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+
     // Clear error when user starts typing
     if (errors[name]) {
-      setErrors(prev => ({ ...prev, [name]: null }))
+      setErrors((prev) => ({ ...prev, [name]: null }));
     }
-  }
+  };
 
   const handleBlur = (e) => {
-    const { name, value } = e.target
-    setTouched(prev => ({ ...prev, [name]: true }))
-    
+    const { name, value } = e.target;
+    setTouched((prev) => ({ ...prev, [name]: true }));
+
     // Validate on blur
-    let error = null
+    let error = null;
     switch (name) {
-      case 'email':
-        error = validators.email(value)
-        break
-      case 'password':
-        error = validators.required(value, 'Senha')
-        break
+      case "email":
+        error = validators.email(value);
+        break;
+      case "password":
+        error = validators.required(value, "Senha");
+        break;
     }
-    
+
     if (error) {
-      setErrors(prev => ({ ...prev, [name]: error }))
+      setErrors((prev) => ({ ...prev, [name]: error }));
     }
-  }
+  };
 
   const validateForm = () => {
-    const newErrors = {}
-    
-    const emailError = validators.email(formData.email)
-    if (emailError) newErrors.email = emailError
-    
-    const passwordError = validators.required(formData.password, 'Senha')
-    if (passwordError) newErrors.password = passwordError
-    
-    setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
-  }
+    const newErrors = {};
+
+    const emailError = validators.email(formData.email);
+    if (emailError) newErrors.email = emailError;
+
+    const passwordError = validators.required(formData.password, "Senha");
+    if (passwordError) newErrors.password = passwordError;
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
   const handleSubmit = async (e) => {
-    e.preventDefault()
-    
+    e.preventDefault();
+
     // Mark all fields as touched
     setTouched({
       email: true,
       password: true,
-    })
+    });
 
     if (!validateForm()) {
-      toast.error('Por favor, preencha todos os campos corretamente')
-      return
+      toast.error("Por favor, preencha todos os campos corretamente");
+      return;
     }
 
-    const success = await login(formData.email, formData.password)
+    const success = await login(formData.email, formData.password);
     if (success) {
-      toast.success('Login realizado com sucesso!')
-      navigate('/')
+      toast.success("Login realizado com sucesso!");
+      navigate("/");
     } else {
-      toast.error('Email ou senha inválidos')
+      toast.error("Email ou senha inválidos");
     }
-  }
+  };
 
   const getInputClassName = (fieldName) => {
-    let className = 'form-input'
+    let className = "form-input";
     if (touched[fieldName] && errors[fieldName]) {
-      className += ' input-error'
-    } else if (touched[fieldName] && formData[fieldName] && !errors[fieldName]) {
-      className += ' input-success'
+      className += " input-error";
+    } else if (
+      touched[fieldName] &&
+      formData[fieldName] &&
+      !errors[fieldName]
+    ) {
+      className += " input-success";
     }
-    return className
-  }
+    return className;
+  };
 
   return (
     <div className="auth-container">
       <div className="auth-card">
         <div className="auth-header">
-          <h1>Projeto SASS</h1>
+          <h1>VENDATA</h1>
           <p>Dashboard com Mercado Livre</p>
         </div>
 
@@ -107,7 +111,7 @@ function Login() {
             <input
               type="email"
               name="email"
-              className={getInputClassName('email')}
+              className={getInputClassName("email")}
               value={formData.email}
               onChange={handleChange}
               onBlur={handleBlur}
@@ -123,7 +127,7 @@ function Login() {
             <input
               type="password"
               name="password"
-              className={getInputClassName('password')}
+              className={getInputClassName("password")}
               value={formData.password}
               onChange={handleChange}
               onBlur={handleBlur}
@@ -139,7 +143,7 @@ function Login() {
             className="btn btn-primary w-full btn-lg"
             disabled={loading}
           >
-            {loading ? 'Entrando...' : 'Entrar'}
+            {loading ? "Entrando..." : "Entrar"}
           </button>
         </form>
 
@@ -148,7 +152,7 @@ function Login() {
         </p>
       </div>
     </div>
-  )
+  );
 }
 
-export default Login
+export default Login;

@@ -27,11 +27,18 @@ api.interceptors.response.use(
       const errorCode = error.response?.data?.code || "";
       const isMLTokenError = errorCode.startsWith("ML_");
 
-      if (!isMLTokenError) {
+      if (
+        !isMLTokenError &&
+        error.response?.data?.message !== "User not found or inactive"
+      ) {
         // JWT token expired or invalid - logout
+        console.warn("JWT auth error, logging out:", error.response?.data);
         localStorage.removeItem("token");
         localStorage.removeItem("user");
-        window.location.href = "/login";
+        // Only redirect if not already on login page
+        if (!window.location.pathname.includes("/login")) {
+          window.location.href = "/login";
+        }
       }
     }
 

@@ -1,23 +1,23 @@
 /**
  * Database Module for Accounts
- * 
+ *
  * This module provides data persistence for:
  * - Mercado Livre account connections
  * - OAuth tokens and credentials
  * - Sync status and metadata
  * - Webhook events
- * 
+ *
  * Currently uses in-memory storage for development.
  * For production, implement with MongoDB, PostgreSQL, or Firebase.
  */
 
-const fs = require('fs');
-const path = require('path');
+const fs = require("fs");
+const path = require("path");
 
 // Data storage location
-const DATA_DIR = path.join(__dirname, '..', 'data');
-const ACCOUNTS_FILE = path.join(DATA_DIR, 'accounts.json');
-const EVENTS_FILE = path.join(DATA_DIR, 'events.json');
+const DATA_DIR = path.join(__dirname, "..", "data");
+const ACCOUNTS_FILE = path.join(DATA_DIR, "accounts.json");
+const EVENTS_FILE = path.join(DATA_DIR, "events.json");
 
 // Ensure data directory exists
 if (!fs.existsSync(DATA_DIR)) {
@@ -32,18 +32,18 @@ let eventsCache = [];
 function loadFromStorage() {
   try {
     if (fs.existsSync(ACCOUNTS_FILE)) {
-      const data = fs.readFileSync(ACCOUNTS_FILE, 'utf8');
+      const data = fs.readFileSync(ACCOUNTS_FILE, "utf8");
       accountsCache = JSON.parse(data);
       console.log(`Loaded ${accountsCache.length} accounts from storage`);
     }
   } catch (error) {
-    console.error('Error loading accounts from storage:', error.message);
+    console.error("Error loading accounts from storage:", error.message);
     accountsCache = [];
   }
 
   try {
     if (fs.existsSync(EVENTS_FILE)) {
-      const data = fs.readFileSync(EVENTS_FILE, 'utf8');
+      const data = fs.readFileSync(EVENTS_FILE, "utf8");
       eventsCache = JSON.parse(data);
       // Keep only recent events (last 1000)
       if (eventsCache.length > 1000) {
@@ -53,7 +53,7 @@ function loadFromStorage() {
       console.log(`Loaded ${eventsCache.length} events from storage`);
     }
   } catch (error) {
-    console.error('Error loading events from storage:', error.message);
+    console.error("Error loading events from storage:", error.message);
     eventsCache = [];
   }
 }
@@ -63,9 +63,13 @@ function loadFromStorage() {
  */
 function saveAccountsToStorage() {
   try {
-    fs.writeFileSync(ACCOUNTS_FILE, JSON.stringify(accountsCache, null, 2), 'utf8');
+    fs.writeFileSync(
+      ACCOUNTS_FILE,
+      JSON.stringify(accountsCache, null, 2),
+      "utf8",
+    );
   } catch (error) {
-    console.error('Error saving accounts to storage:', error.message);
+    console.error("Error saving accounts to storage:", error.message);
   }
 }
 
@@ -74,9 +78,9 @@ function saveAccountsToStorage() {
  */
 function saveEventsToStorage() {
   try {
-    fs.writeFileSync(EVENTS_FILE, JSON.stringify(eventsCache, null, 2), 'utf8');
+    fs.writeFileSync(EVENTS_FILE, JSON.stringify(eventsCache, null, 2), "utf8");
   } catch (error) {
-    console.error('Error saving events to storage:', error.message);
+    console.error("Error saving events to storage:", error.message);
   }
 }
 
@@ -90,11 +94,11 @@ async function getAllAccounts() {
 /**
  * Get account by ID or user ID
  */
-async function getAccount(identifier, searchBy = 'id') {
-  if (searchBy === 'id') {
-    return accountsCache.find(acc => acc.id === identifier) || null;
-  } else if (searchBy === 'userId') {
-    return accountsCache.find(acc => acc.userId === identifier) || null;
+async function getAccount(identifier, searchBy = "id") {
+  if (searchBy === "id") {
+    return accountsCache.find((acc) => acc.id === identifier) || null;
+  } else if (searchBy === "userId") {
+    return accountsCache.find((acc) => acc.userId === identifier) || null;
   }
   return null;
 }
@@ -103,7 +107,7 @@ async function getAccount(identifier, searchBy = 'id') {
  * Get account by user ID
  */
 async function getAccountByUserId(userId) {
-  return accountsCache.find(acc => acc.userId === userId) || null;
+  return accountsCache.find((acc) => acc.userId === userId) || null;
 }
 
 /**
@@ -111,7 +115,7 @@ async function getAccountByUserId(userId) {
  */
 async function saveAccount(account) {
   // Check if account already exists
-  const existing = accountsCache.find(acc => acc.id === account.id);
+  const existing = accountsCache.find((acc) => acc.id === account.id);
   if (existing) {
     throw new Error(`Account with ID ${account.id} already exists`);
   }
@@ -126,8 +130,8 @@ async function saveAccount(account) {
  * Update account
  */
 async function updateAccount(accountId, updates) {
-  const index = accountsCache.findIndex(acc => acc.id === accountId);
-  
+  const index = accountsCache.findIndex((acc) => acc.id === accountId);
+
   if (index === -1) {
     throw new Error(`Account with ID ${accountId} not found`);
   }
@@ -135,7 +139,7 @@ async function updateAccount(accountId, updates) {
   accountsCache[index] = {
     ...accountsCache[index],
     ...updates,
-    updatedAt: new Date().toISOString()
+    updatedAt: new Date().toISOString(),
   };
 
   saveAccountsToStorage();
@@ -147,8 +151,8 @@ async function updateAccount(accountId, updates) {
  * Delete account
  */
 async function deleteAccount(accountId) {
-  const index = accountsCache.findIndex(acc => acc.id === accountId);
-  
+  const index = accountsCache.findIndex((acc) => acc.id === accountId);
+
   if (index === -1) {
     throw new Error(`Account with ID ${accountId} not found`);
   }
@@ -164,12 +168,12 @@ async function deleteAccount(accountId) {
  */
 async function saveEvent(event) {
   eventsCache.push(event);
-  
+
   // Keep only recent events
   if (eventsCache.length > 5000) {
     eventsCache = eventsCache.slice(-5000);
   }
-  
+
   saveEventsToStorage();
   return event;
 }
@@ -179,7 +183,7 @@ async function saveEvent(event) {
  */
 async function getEventsByAccount(accountId, limit = 100) {
   return eventsCache
-    .filter(evt => evt.accountId === accountId)
+    .filter((evt) => evt.accountId === accountId)
     .slice(-limit)
     .reverse();
 }
@@ -189,7 +193,7 @@ async function getEventsByAccount(accountId, limit = 100) {
  */
 async function getEventsByTopic(topic, limit = 100) {
   return eventsCache
-    .filter(evt => evt.topic === topic)
+    .filter((evt) => evt.topic === topic)
     .slice(-limit)
     .reverse();
 }
@@ -202,7 +206,7 @@ async function clearOldEvents(daysOld = 30) {
   cutoffDate.setDate(cutoffDate.getDate() - daysOld);
 
   const before = eventsCache.length;
-  eventsCache = eventsCache.filter(evt => {
+  eventsCache = eventsCache.filter((evt) => {
     return new Date(evt.processedAt) > cutoffDate;
   });
 
@@ -213,6 +217,13 @@ async function clearOldEvents(daysOld = 30) {
   }
 
   return removed;
+}
+
+/**
+ * Get all accounts for a user
+ */
+async function getAccountsByUserId(userId) {
+  return accountsCache.filter((acc) => acc.userId === userId);
 }
 
 // Initialize on module load
@@ -228,5 +239,6 @@ module.exports = {
   saveEvent,
   getEventsByAccount,
   getEventsByTopic,
-  clearOldEvents
+  clearOldEvents,
+  getAccountsByUserId,
 };

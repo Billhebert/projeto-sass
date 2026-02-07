@@ -9,34 +9,45 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import api from "../services/api";
-import { useAuth } from "../store/authStore";
+import { useAuthStore } from "../store/authStore";
 import "./OAuthCallback.css";
 
 export default function OAuthCallback() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user } = useAuth();
+  const { user, loadToken } = useAuthStore();
   const [status, setStatus] = useState("processing");
   const [message, setMessage] = useState("Processing OAuth callback...");
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    // Check if user is logged in
-    if (!user) {
-      setStatus("error");
-      setError("You must be logged in to connect a Mercado Livre account");
-      setTimeout(() => {
-        navigate("/login", {
-          state: {
-            redirect: location.pathname + location.search,
-            message: "Please login first to connect your Mercado Livre account",
-          },
-        });
-      }, 3000);
-      return;
-    }
+    // First, load the token
+    loadToken();
+  }, [loadToken]);
 
-    handleCallback();
+  useEffect(() => {
+    // Wait a bit for token to load
+    const checkAuth = setTimeout(() => {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        setStatus("error");
+        setError("You must be logged in to connect a Mercado Livre account");
+        setTimeout(() => {
+          navigate("/login", {
+            state: {
+              redirect: location.pathname + location.search,
+              message:
+                "Please login first to connect your Mercado Livre account",
+            },
+          });
+        }, 3000);
+        return;
+      }
+
+      handleCallback();
+    }, 500);
+
+    return () => clearTimeout(checkAuth);
   }, [user, navigate, location]);
 
   const handleCallback = async () => {
@@ -143,6 +154,7 @@ export default function OAuthCallback() {
       }
 
       if (!code) {
+        console.error("No authorization code found in URL");
         throw new Error(
           "Missing authorization code in callback. Check that redirect_uri is configured correctly in Mercado Livre.",
         );
@@ -151,7 +163,10 @@ export default function OAuthCallback() {
       setMessage("Exchanging authorization code for tokens...");
 
       // Get credentials from sessionStorage
+      console.log("Reading ml_oauth_config from sessionStorage...");
       const storedCredentials = sessionStorage.getItem("ml_oauth_config");
+      console.log("Stored credentials:", storedCredentials);
+
       if (!storedCredentials) {
         throw new Error(
           "OAuth credentials not found. Please start the OAuth flow again.",
@@ -160,6 +175,11 @@ export default function OAuthCallback() {
 
       const { clientId, clientSecret, redirectUri } =
         JSON.parse(storedCredentials);
+
+      console.log("Exchanging code for tokens with:", {
+        clientId,
+        redirectUri,
+      });
 
       // Step 1: Exchange code for tokens
       setMessage("Requesting access tokens...");
