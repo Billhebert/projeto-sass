@@ -53,6 +53,85 @@ const {
   getAccountsByUserId,
 } = require("../db/accounts");
 
+// ============================================
+// CORE HELPER FUNCTIONS (used by all endpoints)
+// ============================================
+
+/**
+ * Unified error response handler
+ * Consolidates 15+ error response patterns into one function
+ */
+function handleError(res, statusCode, message, error, context = {}) {
+  const errorContext = {
+    action: context.action || "ERROR",
+    error: error?.message || message,
+    timestamp: new Date().toISOString(),
+    ...context,
+  };
+
+  logger.error(errorContext);
+
+  return res.status(statusCode).json({
+    success: false,
+    error: message,
+    ...(error && { details: error.message }),
+  });
+}
+
+/**
+ * Unified success response handler
+ * Consolidates 12+ success response patterns into one function
+ */
+function sendSuccess(res, data, message, statusCode = 200) {
+  return res.status(statusCode).json({
+    success: true,
+    message,
+    data,
+  });
+}
+
+/**
+ * Extract JWT token from Authorization header
+ * Consolidates 12+ token extraction patterns into one function
+ */
+function getTokenFromHeader(req) {
+  const authHeader = req.headers["authorization"];
+  return authHeader && authHeader.split(" ")[1];
+}
+
+/**
+ * Verify JWT token and return decoded payload
+ * Returns { valid: boolean, decoded: object|null, error: string|null }
+ */
+function verifyJWT(token, errorIfInvalid = true) {
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || "your-secret-key");
+    return { valid: true, decoded, error: null };
+  } catch (error) {
+    if (!errorIfInvalid) {
+      try {
+        const decoded = jwt.decode(token);
+        return { valid: false, decoded, error: null };
+      } catch (_) {}
+    }
+    return { valid: false, decoded: null, error: error.message };
+  }
+}
+
+/**
+ * Validate required fields in request body
+ * Returns { valid: boolean, missingFields: string[] }
+ */
+function validateRequired(req, fields) {
+  const missingFields = fields.filter(
+    (field) => req.body[field] === undefined || req.body[field] === null || req.body[field] === ""
+  );
+  return {
+    valid: missingFields.length === 0,
+    missingFields,
+  };
+}
+
 /**
  * POST /api/auth/register
  * Register a new user
@@ -60,51 +139,41 @@ const {
  */
 router.post("/register", registerLimiter, async (req, res) => {
   try {
+    const validation = validateRequired(req, ["email", "password", "firstName", "lastName"]);
+    if (!validation.valid) {
+      return handleError(res, 400, "Missing required fields: " + validation.missingFields.join(", "), null, {
+        action: "REGISTER_INVALID_REQUEST",
+      });
+    }
+
     const { email, password, firstName, lastName } = req.body;
 
-    // Validation
-    if (!email || !password || !firstName || !lastName) {
-      return res.status(400).json({
-        success: false,
-        error: "Email, password, firstName, and lastName are required",
-      });
-    }
-
     if (password.length < 8) {
-      return res.status(400).json({
-        success: false,
-        error: "Password must be at least 8 characters",
+      return handleError(res, 400, "Password must be at least 8 characters", null, {
+        action: "REGISTER_WEAK_PASSWORD",
       });
     }
 
-    // Check if user exists
     const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {
-      return res.status(409).json({
-        success: false,
-        error: "User with this email already exists",
+      return handleError(res, 409, "User with this email already exists", null, {
+        action: "REGISTER_EMAIL_EXISTS",
       });
     }
 
-    // Create user (password will be hashed by pre-save middleware)
-    // Users require admin approval to login
     const user = new User({
       email: email.toLowerCase(),
-      password, // Pre-save hook will hash this
+      password,
       firstName,
       lastName,
-      emailVerified: false, // Requires admin approval
+      emailVerified: false,
     });
 
-    // Skip email sending - admin approves users manually
     await user.save();
 
-    // Return success
-    return res.status(201).json({
-      success: true,
-      message:
-        "Registro realizado! Aguarde a aprovação do administrador para fazer login.",
-      data: {
+    return sendSuccess(
+      res,
+      {
         user: {
           id: user.id,
           email: user.email,
@@ -114,16 +183,12 @@ router.post("/register", registerLimiter, async (req, res) => {
           status: user.status,
         },
       },
-    });
+      "Registro realizado! Aguarde a aprovação do administrador para fazer login.",
+      201
+    );
   } catch (error) {
-    logger.error({
+    return handleError(res, 500, "Failed to register user", error, {
       action: "REGISTER_ERROR",
-      error: error.message,
-      timestamp: new Date().toISOString(),
-    });
-    return res.status(500).json({
-      success: false,
-      error: "Failed to register user",
     });
   }
 });
@@ -135,104 +200,1639 @@ router.post("/register", registerLimiter, async (req, res) => {
  */
 router.post("/login", loginLimiter, async (req, res) => {
   try {
-    const { email, password } = req.body;
-
-    // DEBUG: Log request details
-    console.log(
-      "LOGIN DEBUG - IP:",
-      req.ip,
-      "Email received:",
-      email,
-      "Password length:",
-      password ? password.length : 0,
-    );
-
-    // Validation
-    if (!email || !password) {
-      console.log("LOGIN DEBUG - Missing email or password");
-      return res.status(400).json({
-        success: false,
-        error: "Email and password are required",
+    const validation = validateRequired(req, ["email", "password"]);
+    if (!validation.valid) {
+      return handleError(res, 400, "Email and password are required", null, {
+        action: "LOGIN_INVALID_REQUEST",
       });
     }
 
-    // Find user and include password for comparison
-    const user = await User.findOne({ email: email.toLowerCase() }).select(
-      "+password",
-    );
-
-    console.log("LOGIN DEBUG - User found:", user ? user.email : "NOT FOUND");
+    const { email, password } = req.body;
+    const user = await User.findOne({ email: email.toLowerCase() }).select("+password");
 
     if (!user) {
-      return res.status(401).json({
-        success: false,
-        error: "Email ou senha inválidos",
+      return handleError(res, 401, "Email ou senha inválidos", null, {
+        action: "LOGIN_USER_NOT_FOUND",
       });
     }
 
-    // Check if user is approved by admin
     if (!user.emailVerified) {
-      return res.status(403).json({
-        success: false,
-        error:
-          "Sua conta está aguardando aprovação. Entre em contato com o administrador.",
-      });
+      return handleError(
+        res,
+        403,
+        "Sua conta está aguardando aprovação. Entre em contato com o administrador.",
+        null,
+        { action: "LOGIN_USER_NOT_APPROVED" }
+      );
     }
 
-    // Check if user is active
     if (user.status !== "active") {
-      return res.status(403).json({
-        success: false,
-        error:
-          "Sua conta está desativada. Entre em contato com o administrador.",
-      });
+      return handleError(
+        res,
+        403,
+        "Sua conta está desativada. Entre em contato com o administrador.",
+        null,
+        { action: "LOGIN_USER_INACTIVE" }
+      );
     }
 
-    // Compare passwords
     const isPasswordValid = await bcrypt.compare(password, user.password);
-
     if (!isPasswordValid) {
-      return res.status(401).json({
-        success: false,
-        error: "Invalid email or password",
+      return handleError(res, 401, "Invalid email or password", null, {
+        action: "LOGIN_INVALID_PASSWORD",
       });
     }
 
-    // Generate JWT token
-    const token = jwt.sign(
-      { userId: user.id, email: user.email },
-      process.env.JWT_SECRET || "your-secret-key",
-      { expiresIn: "7d" },
-    );
+    const token = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET || "your-secret-key", {
+      expiresIn: "7d",
+    });
 
-    // Remove password from response
     const userResponse = user.toObject();
     delete userResponse.password;
 
-    // Fetch ML accounts for this user
     let mlAccounts = [];
     try {
       mlAccounts = await getAccountsByUserId(user.id);
     } catch (e) {
-      console.error("Error fetching ML accounts:", e.message);
+      logger.error({ action: "LOGIN_ML_ACCOUNTS_FETCH_ERROR", error: e.message });
     }
 
-    return res.status(200).json({
-      success: true,
-      data: {
+    return sendSuccess(
+      res,
+      {
         user: userResponse,
         token,
         mlAccounts: mlAccounts || [],
       },
-    });
+      "Login successful",
+      200
+    );
   } catch (error) {
-    console.error("Login error:", error);
-    return res.status(500).json({
-      success: false,
-      error: "Failed to login",
+    return handleError(res, 500, "Failed to login", error, {
+      action: "LOGIN_ERROR",
     });
   }
 });
+
+/**
+ * GET /api/auth/ml-login-url
+ *
+ * Get the Mercado Livre OAuth authorization URL
+ * User should be redirected to this URL to authorize the app
+ *
+ * Response:
+ * {
+ *   authUrl: "https://auth.mercadolibre.com/authorization?..."
+ * }
+ */
+router.get("/ml-login-url", (req, res) => {
+  try {
+    const CLIENT_ID = process.env.ML_CLIENT_ID;
+    const REDIRECT_URI =
+      process.env.ML_CALLBACK_URL ||
+      "http://localhost:3011/api/auth/ml-callback";
+
+    if (!CLIENT_ID) {
+      return handleError(res, 500, "ML_CLIENT_ID not configured", null, {
+        action: "ML_LOGIN_URL_MISSING_CONFIG",
+      });
+    }
+
+    const state = crypto.randomBytes(32).toString("hex");
+    const authUrl = `${ML_AUTH_URL}?client_id=${CLIENT_ID}&response_type=code&platform_id=MLB&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&state=${state}`;
+
+    return sendSuccess(res, { authUrl }, "Authorization URL generated");
+  } catch (error) {
+    return handleError(res, 500, "Failed to generate authorization URL", error, {
+      action: "ML_LOGIN_URL_ERROR",
+    });
+  }
+});
+
+/**
+ * POST /api/auth/ml-oauth-url
+ *
+ * Generate OAuth authorization URL using user-provided credentials.
+ * This allows users to provide their own App ID, Secret, and Redirect URI.
+ *
+ * Request body:
+ * {
+ *   clientId: string,      // User's Mercado Livre App ID
+ *   clientSecret: string,  // User's Mercado Livre App Secret
+ *   redirectUri: string    // OAuth redirect URI (e.g., http://localhost:5173/auth/callback)
+ * }
+ */
+router.post("/ml-oauth-url", (req, res) => {
+  try {
+    const validation = validateRequired(req, ["clientId", "clientSecret", "redirectUri"]);
+    if (!validation.valid) {
+      return handleError(res, 400, "clientId, clientSecret, and redirectUri are required", null, {
+        action: "ML_OAUTH_URL_INVALID_REQUEST",
+      });
+    }
+
+    const { clientId, clientSecret, redirectUri } = req.body;
+    const state = crypto.randomBytes(32).toString("hex");
+    const authUrl = `${ML_AUTH_URL}?client_id=${encodeURIComponent(clientId)}&response_type=code&platform_id=MLB&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
+
+    return sendSuccess(res, { authUrl, state }, "Authorization URL generated");
+  } catch (error) {
+    return handleError(res, 500, "Failed to generate authorization URL", error, {
+      action: "ML_OAUTH_URL_ERROR",
+    });
+  }
+});
+
+/**
+ * GET /api/ml-auth/url
+ *
+ * Alias endpoint for compatibility with MLAuth component.
+ * Uses environment variables for app credentials.
+ */
+router.get("/ml-auth/url", (req, res) => {
+  try {
+    const CLIENT_ID = process.env.ML_CLIENT_ID;
+    const CLIENT_SECRET = process.env.ML_CLIENT_SECRET;
+    const REDIRECT_URI = process.env.ML_REDIRECT_URI;
+
+    if (!CLIENT_ID || !CLIENT_SECRET || !REDIRECT_URI) {
+      return handleError(
+        res,
+        400,
+        "ML_CLIENT_ID, ML_CLIENT_SECRET, and ML_REDIRECT_URI environment variables are not configured",
+        null,
+        { action: "ML_AUTH_URL_MISSING_CONFIG" }
+      );
+    }
+
+    const state = crypto.randomBytes(32).toString("hex");
+    const authUrl = `${ML_AUTH_URL}?client_id=${encodeURIComponent(CLIENT_ID)}&response_type=code&platform_id=MLB&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&state=${state}`;
+
+    return sendSuccess(
+      res,
+      {
+        authUrl,
+        state,
+        clientId: CLIENT_ID,
+        clientSecret: CLIENT_SECRET,
+        redirectUri: REDIRECT_URI,
+      },
+      "Authorization URL generated"
+    );
+  } catch (error) {
+    return handleError(res, 500, "Failed to generate authorization URL", error, {
+      action: "ML_AUTH_URL_ERROR",
+    });
+  }
+});
+
+/**
+ * POST /api/auth/ml-token-exchange
+ *
+ * Exchange authorization code for access and refresh tokens.
+ * This is called from the OAuth callback page with user-provided credentials.
+ */
+router.post("/ml-token-exchange", async (req, res) => {
+  try {
+    const validation = validateRequired(req, ["code", "clientId", "clientSecret", "redirectUri"]);
+    if (!validation.valid) {
+      return handleError(res, 400, "code, clientId, clientSecret, and redirectUri are required", null, {
+        action: "TOKEN_EXCHANGE_INVALID_REQUEST",
+        missingFields: validation.missingFields,
+      });
+    }
+
+    const { code, clientId, clientSecret, redirectUri } = req.body;
+
+    logger.info({
+      action: "TOKEN_EXCHANGE_START",
+      clientId: clientId.substring(0, 8) + "***",
+      redirectUri,
+      timestamp: new Date().toISOString(),
+    });
+
+    const tokenResponse = await exchangeCodeForTokenWithCredentials(
+      code,
+      clientId,
+      clientSecret,
+      redirectUri
+    );
+
+    if (!tokenResponse.access_token) {
+      return handleError(res, 400, "Failed to exchange code for token", null, {
+        action: "TOKEN_EXCHANGE_NO_ACCESS_TOKEN",
+        responseKeys: Object.keys(tokenResponse),
+      });
+    }
+
+    logger.info({
+      action: "TOKEN_EXCHANGE_SUCCESS",
+      clientId: clientId.substring(0, 8) + "***",
+      expiresIn: tokenResponse.expires_in,
+      hasRefreshToken: !!tokenResponse.refresh_token,
+    });
+
+    return sendSuccess(
+      res,
+      {
+        accessToken: tokenResponse.access_token,
+        refreshToken: tokenResponse.refresh_token,
+        expiresIn: tokenResponse.expires_in,
+        tokenType: tokenResponse.token_type || "Bearer",
+        userId: tokenResponse.user_id,
+        scope: tokenResponse.scope,
+        obtainedAt: new Date().toISOString(),
+      },
+      "Token exchange completed successfully"
+    );
+  } catch (error) {
+    return handleError(res, error.response?.status || 500, "Failed to exchange code for token", error, {
+      action: "TOKEN_EXCHANGE_ERROR",
+      statusCode: error.response?.status,
+      mlErrorData: error.response?.data,
+    });
+  }
+});
+
+/**
+ * GET /api/auth/ml-app-token
+ *
+ * Get access token using Client Credentials Flow (Server-to-Server)
+ */
+router.get("/ml-app-token", async (req, res) => {
+  try {
+    const CLIENT_ID = process.env.ML_CLIENT_ID;
+    const CLIENT_SECRET = process.env.ML_CLIENT_SECRET;
+
+    if (!CLIENT_ID || !CLIENT_SECRET) {
+      return handleError(res, 500, "ML_CLIENT_ID or ML_CLIENT_SECRET not configured", null, {
+        action: "ML_APP_TOKEN_MISSING_CONFIG",
+      });
+    }
+
+    const response = await axios.post(ML_TOKEN_URL, {
+      grant_type: "client_credentials",
+      client_id: CLIENT_ID,
+      client_secret: CLIENT_SECRET,
+    });
+
+    const { access_token, expires_in, token_type } = response.data;
+
+    if (!access_token) {
+      return handleError(res, 400, "Failed to obtain access token from Mercado Livre", null, {
+        action: "ML_APP_TOKEN_FAILED",
+      });
+    }
+
+    return sendSuccess(
+      res,
+      {
+        accessToken: access_token,
+        expiresIn: expires_in,
+        tokenType: token_type,
+        obtainedAt: new Date().toISOString(),
+      },
+      "Access token obtained successfully"
+    );
+  } catch (error) {
+    return handleError(res, 500, "Failed to get access token from Mercado Livre", error, {
+      action: "ML_APP_TOKEN_ERROR",
+    });
+  }
+});
+
+/**
+ * GET /api/auth/ml-auth/status
+ *
+ * Get ML OAuth status and connected accounts.
+ */
+router.get("/ml-auth/status", async (req, res) => {
+  try {
+    const token = getTokenFromHeader(req);
+
+    let userId = null;
+    if (token) {
+      const verification = verifyJWT(token, false);
+      if (verification.decoded) {
+        userId = verification.decoded.userId;
+      }
+    }
+
+    if (!userId) {
+      return sendSuccess(res, { accounts: [] }, "No authenticated user");
+    }
+
+    const accounts = await getAccountsByUserId(userId);
+    return sendSuccess(res, { accounts: accounts || [] }, "ML accounts retrieved");
+  } catch (error) {
+    return handleError(res, 500, "Failed to get ML accounts status", error, {
+      action: "ML_AUTH_STATUS_ERROR",
+    });
+  }
+});
+
+/**
+ * POST /api/auth/ml-callback
+ *
+ * Handle OAuth callback from Mercado Livre.
+ */
+router.post("/ml-callback", async (req, res, next) => {
+  try {
+    if (!req.body.code) {
+      return handleError(res, 400, 'Missing authorization code. The "code" parameter is required', null, {
+        action: "ML_CALLBACK_MISSING_CODE",
+      });
+    }
+
+    const token = getTokenFromHeader(req);
+    if (!token) {
+      return handleError(res, 401, "User not authenticated. JWT token is required to link ML account to user", null, {
+        action: "ML_CALLBACK_NOT_AUTHENTICATED",
+      });
+    }
+
+    const verification = verifyJWT(token);
+    if (!verification.valid) {
+      return handleError(res, 401, "Invalid or expired token", verification.error, {
+        action: "ML_CALLBACK_INVALID_TOKEN",
+      });
+    }
+
+    const jwtUserId = verification.decoded.userId;
+    const user = await User.findById(jwtUserId);
+
+    if (!user) {
+      return handleError(res, 404, "User not found. The authenticated user does not exist", null, {
+        action: "ML_CALLBACK_USER_NOT_FOUND",
+      });
+    }
+
+    const { code, state, clientId, clientSecret, redirectUri } = req.body;
+
+    let tokenResponse;
+    if (clientId && clientSecret && redirectUri) {
+      tokenResponse = await exchangeCodeForTokenWithCredentials(code, clientId, clientSecret, redirectUri);
+    } else {
+      tokenResponse = await exchangeCodeForToken(code);
+    }
+
+    if (!tokenResponse.access_token) {
+      return handleError(res, 400, "Failed to exchange code for token", null, {
+        action: "ML_CALLBACK_NO_ACCESS_TOKEN",
+      });
+    }
+
+    const userInfo = await getUserInfo(tokenResponse.access_token);
+
+    if (!userInfo.id) {
+      return handleError(res, 400, "Failed to get user information", null, {
+        action: "ML_CALLBACK_NO_USER_ID",
+      });
+    }
+
+    const existingAccount = await getAccountByUserId(userInfo.id);
+    const accountId = existingAccount?.id || generateAccountId();
+    const tokenExpiry = Date.now() + tokenResponse.expires_in * 1000;
+
+    const account = {
+      id: accountId,
+      userId: userInfo.id,
+      nickname: userInfo.nickname,
+      email: userInfo.email,
+      firstName: userInfo.first_name,
+      lastName: userInfo.last_name,
+      accessToken: tokenResponse.access_token,
+      refreshToken: tokenResponse.refresh_token,
+      tokenExpiry: tokenExpiry,
+      clientId: clientId || process.env.ML_CLIENT_ID || null,
+      clientSecret: clientSecret || process.env.ML_CLIENT_SECRET || null,
+      redirectUri: redirectUri || process.env.ML_REDIRECT_URI || null,
+      createdAt: existingAccount?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      status: "connected",
+    };
+
+    if (existingAccount) {
+      await updateAccount(accountId, account);
+    } else {
+      await saveAccount(account);
+    }
+
+    const mlAccountInfo = {
+      accountId: accountId,
+      mlUserId: userInfo.id,
+      nickname: userInfo.nickname,
+      connectedAt: new Date().toISOString(),
+    };
+
+    const accountAlreadyLinked = user.mlAccounts.some((acc) => acc.accountId === accountId);
+
+    if (!accountAlreadyLinked) {
+      user.mlAccounts.push(mlAccountInfo);
+      await user.save();
+    }
+
+    return sendSuccess(
+      res,
+      {
+        account: {
+          id: account.id,
+          userId: account.userId,
+          nickname: account.nickname,
+          email: account.email,
+          firstName: account.firstName,
+          lastName: account.lastName,
+          tokenExpiry: account.tokenExpiry,
+          status: account.status,
+        },
+      },
+      "OAuth token exchange completed successfully"
+    );
+  } catch (error) {
+    return handleError(res, 500, "OAuth callback error", error, {
+      action: "ML_CALLBACK_ERROR",
+    });
+  }
+});
+
+/**
+ * POST /api/auth/ml-refresh
+ *
+ * Refresh an expired access token using the refresh token.
+ */
+router.post("/ml-refresh", async (req, res, next) => {
+  try {
+    if (!req.body.accountId) {
+      return handleError(res, 400, 'Missing accountId. The "accountId" parameter is required', null, {
+        action: "ML_REFRESH_MISSING_ID",
+      });
+    }
+
+    const { accountId } = req.body;
+    const account = await getAccount(accountId);
+
+    if (!account) {
+      return handleError(res, 404, "Account not found", null, {
+        action: "ML_REFRESH_ACCOUNT_NOT_FOUND",
+        accountId,
+      });
+    }
+
+    if (!account.refreshToken) {
+      return handleError(res, 400, "No refresh token available. Account needs to be re-authenticated", null, {
+        action: "ML_REFRESH_NO_TOKEN",
+      });
+    }
+
+    const clientId = account.clientId || null;
+    const clientSecret = account.clientSecret || null;
+
+    const tokenResponse = await refreshToken(account.refreshToken, clientId, clientSecret);
+
+    if (!tokenResponse.access_token) {
+      return handleError(res, 400, "Failed to refresh token", null, {
+        action: "ML_REFRESH_FAILED",
+      });
+    }
+
+    const tokenExpiry = Date.now() + tokenResponse.expires_in * 1000;
+
+    account.accessToken = tokenResponse.access_token;
+    if (tokenResponse.refresh_token) {
+      account.refreshToken = tokenResponse.refresh_token;
+    }
+    account.tokenExpiry = tokenExpiry;
+    account.updatedAt = new Date().toISOString();
+
+    await updateAccount(accountId, account);
+
+    return sendSuccess(
+      res,
+      {
+        accessToken: tokenResponse.access_token,
+        tokenExpiry: tokenExpiry,
+      },
+      "Token refreshed successfully"
+    );
+  } catch (error) {
+    return handleError(res, 500, "Token refresh error", error, {
+      action: "ML_REFRESH_ERROR",
+    });
+  }
+});
+
+/**
+ * POST /api/auth/ml-add-token
+ *
+ * Manually add a Mercado Libre account using access token and refresh token.
+ */
+router.post("/ml-add-token", authenticateToken, async (req, res, next) => {
+  try {
+    if (!req.body.accessToken) {
+      return handleError(res, 400, "Access token é obrigatório", null, {
+        action: "ML_ADD_TOKEN_MISSING_TOKEN",
+      });
+    }
+
+    const { accessToken, refreshToken, userId, nickname } = req.body;
+    const jwtUserId = req.user.userId;
+
+    let mlUserData;
+    try {
+      const mlResponse = await axios.get("https://api.mercadolibre.com/users/me", {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      mlUserData = mlResponse.data;
+    } catch (error) {
+      return handleError(res, 400, "Token inválido ou expirado", error, {
+        action: "ML_ADD_TOKEN_INVALID_TOKEN",
+      });
+    }
+
+    const accountId = mlUserData.id.toString();
+    const accountData = {
+      id: accountId,
+      userId: userId || mlUserData.id,
+      nickname: nickname || mlUserData.nickname,
+      email: mlUserData.email || null,
+      firstName: mlUserData.first_name || null,
+      lastName: mlUserData.last_name || null,
+      thumbnail: mlUserData.thumbnail?.http || mlUserData.logo || null,
+      permalink: mlUserData.permalink || null,
+      siteId: mlUserData.site_id || "MLB",
+      accessToken: accessToken,
+      refreshToken: refreshToken || null,
+      tokenExpiry: refreshToken ? Date.now() + 21600000 : null,
+      status: "active",
+      authType: "manual_token",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const existingAccount = await getAccount(accountId);
+    if (existingAccount) {
+      await updateAccount(accountId, accountData);
+    } else {
+      await createAccount(accountData);
+    }
+
+    const user = await User.findById(jwtUserId);
+    if (!user) {
+      return handleError(res, 404, "Usuário não encontrado", null, {
+        action: "ML_ADD_TOKEN_USER_NOT_FOUND",
+      });
+    }
+
+    const mlAccountInfo = {
+      accountId: accountId,
+      nickname: accountData.nickname,
+      email: accountData.email,
+      addedAt: new Date().toISOString(),
+    };
+
+    const accountAlreadyLinked = user.mlAccounts.some((acc) => acc.accountId === accountId);
+
+    if (!accountAlreadyLinked) {
+      user.mlAccounts.push(mlAccountInfo);
+      await user.save();
+    }
+
+    return sendSuccess(
+      res,
+      {
+        account: {
+          id: accountData.id,
+          nickname: accountData.nickname,
+          siteId: accountData.siteId,
+          email: accountData.email,
+          status: accountData.status,
+          authType: accountData.authType,
+        },
+      },
+      "Account added successfully via tokens",
+      200
+    );
+  } catch (error) {
+    return handleError(res, 500, "Failed to add ML account", error, {
+      action: "ML_ADD_TOKEN_ERROR",
+    });
+  }
+});
+
+/**
+ * POST /api/auth/ml-logout
+ *
+ * Logout and revoke tokens for an account.
+ */
+router.post("/ml-logout", async (req, res, next) => {
+  try {
+    if (!req.body.accountId) {
+      return handleError(res, 400, "Missing accountId", null, {
+        action: "ML_LOGOUT_MISSING_ID",
+      });
+    }
+
+    const { accountId } = req.body;
+    const account = await getAccount(accountId);
+
+    if (!account) {
+      return handleError(res, 404, "Account not found", null, {
+        action: "ML_LOGOUT_ACCOUNT_NOT_FOUND",
+      });
+    }
+
+    account.status = "disconnected";
+    account.accessToken = null;
+    account.refreshToken = null;
+    account.tokenExpiry = null;
+    account.updatedAt = new Date().toISOString();
+
+    await updateAccount(accountId, account);
+
+    return sendSuccess(res, {}, "Account disconnected successfully");
+  } catch (error) {
+    return handleError(res, 500, "Logout error", error, {
+      action: "ML_LOGOUT_ERROR",
+    });
+  }
+});
+
+/**
+ * POST /api/auth/verify-email
+ * Verify user email with token
+ */
+router.post("/verify-email", async (req, res) => {
+  try {
+    if (!req.body.token) {
+      return handleError(res, 400, "Verification token is required", null, {
+        action: "VERIFY_EMAIL_MISSING_TOKEN",
+      });
+    }
+
+    const { token } = req.body;
+    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+
+    const user = await User.findOne({
+      emailVerificationToken: hashedToken,
+      emailVerificationExpires: { $gt: new Date() },
+    });
+
+    if (!user) {
+      return handleError(res, 404, "Invalid or expired verification token", null, {
+        action: "VERIFY_EMAIL_INVALID_TOKEN",
+      });
+    }
+
+    user.emailVerified = true;
+    user.emailVerificationToken = null;
+    user.emailVerificationExpires = null;
+    await user.save();
+
+    logger.info({
+      action: "EMAIL_VERIFIED",
+      userId: user.id,
+      email: user.email,
+      timestamp: new Date().toISOString(),
+    });
+
+    if (!process.env.JWT_SECRET) {
+      throw new Error("JWT_SECRET environment variable is required");
+    }
+
+    const jwtToken = jwt.sign(
+      { userId: user.id, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    return sendSuccess(
+      res,
+      {
+        user: {
+          id: user.id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          emailVerified: user.emailVerified,
+        },
+        token: jwtToken,
+      },
+      "Email verified successfully!",
+      200
+    );
+  } catch (error) {
+    return handleError(res, 500, "Failed to verify email", error, {
+      action: "EMAIL_VERIFICATION_ERROR",
+    });
+  }
+});
+
+/**
+ * POST /api/auth/resend-verification-email
+ * Resend verification email to user
+ */
+router.post("/resend-verification-email", async (req, res) => {
+  try {
+    if (!req.body.email) {
+      return handleError(res, 400, "Email is required", null, {
+        action: "RESEND_VERIFICATION_MISSING_EMAIL",
+      });
+    }
+
+    const { email } = req.body;
+    const user = await User.findOne({ email: email.toLowerCase() });
+
+    if (!user) {
+      return sendSuccess(
+        res,
+        {},
+        "If this email is registered, you will receive a verification link shortly",
+        200
+      );
+    }
+
+    if (user.emailVerified) {
+      return handleError(res, 400, "Email is already verified", null, {
+        action: "RESEND_VERIFICATION_ALREADY_VERIFIED",
+      });
+    }
+
+    const verificationToken = user.generateEmailVerificationToken();
+    await user.save();
+
+    try {
+      const emailService = require("../services/email");
+      await emailService.sendVerificationEmail(email, verificationToken, user.firstName);
+
+      logger.info({
+        action: "VERIFICATION_EMAIL_RESENT",
+        email: user.email,
+        userId: user.id,
+        timestamp: new Date().toISOString(),
+      });
+
+      return sendSuccess(res, {}, "Verification email sent! Please check your inbox.", 200);
+    } catch (emailError) {
+      return handleError(res, 500, "Failed to send verification email. Please try again later.", emailError, {
+        action: "RESEND_VERIFICATION_EMAIL_FAILED",
+        email: user.email,
+      });
+    }
+  } catch (error) {
+    return handleError(res, 500, "Failed to resend verification email", error, {
+      action: "RESEND_VERIFICATION_ERROR",
+    });
+  }
+});
+
+/**
+ * GET /api/auth/email-status/:email
+ * Check if email is verified
+ */
+router.get("/email-status/:email", async (req, res) => {
+  try {
+    const user = await User.findOne({ email: req.params.email.toLowerCase() });
+
+    if (!user) {
+      return handleError(res, 404, "User not found", null, {
+        action: "EMAIL_STATUS_USER_NOT_FOUND",
+      });
+    }
+
+    return sendSuccess(
+      res,
+      {
+        email: user.email,
+        emailVerified: user.emailVerified,
+        emailVerificationExpires: user.emailVerificationExpires,
+      },
+      "Email status retrieved",
+      200
+    );
+  } catch (error) {
+    return handleError(res, 500, "Failed to check email status", error, {
+      action: "EMAIL_STATUS_ERROR",
+    });
+  }
+});
+
+/**
+ * POST /api/auth/ml-compressed-callback
+ *
+ * Handle Mercado Livre's compressed URL format.
+ */
+router.post("/ml-compressed-callback", async (req, res) => {
+  try {
+    const validation = validateRequired(req, ["compressedData", "clientId", "clientSecret", "redirectUri"]);
+    if (!validation.valid) {
+      return handleError(
+        res,
+        400,
+        "compressedData, clientId, clientSecret, and redirectUri are required",
+        null,
+        { action: "ML_COMPRESSED_CALLBACK_INVALID_REQUEST" }
+      );
+    }
+
+    const { compressedData, clientId, clientSecret, redirectUri } = req.body;
+
+    logger.info({
+      action: "ML_COMPRESSED_CALLBACK_START",
+      clientId: clientId.substring(0, 8) + "***",
+      timestamp: new Date().toISOString(),
+    });
+
+    let decoded;
+    try {
+      const binaryString = Buffer.from(compressedData, "base64");
+      const zlib = require("zlib");
+      decoded = JSON.parse(zlib.gunzipSync(binaryString).toString("utf8"));
+    } catch (decodeError) {
+      try {
+        const binaryString = atob(compressedData);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        const zlib = require("zlib");
+        decoded = JSON.parse(zlib.gunzipSync(bytes).toString("utf8"));
+      } catch (altError) {
+        return handleError(res, 400, "Failed to decode compressed data", decodeError, {
+          action: "ML_COMPRESSED_DECODE_ERROR",
+        });
+      }
+    }
+
+    logger.info({
+      action: "ML_COMPRESSED_DECODED",
+      hasCode: !!decoded.code,
+      hasAccessToken: !!decoded.access_token,
+      keys: Object.keys(decoded),
+    });
+
+    if (decoded.access_token) {
+      return sendSuccess(
+        res,
+        {
+          accessToken: decoded.access_token,
+          refreshToken: decoded.refresh_token,
+          expiresIn: decoded.expires_in,
+          userId: decoded.user_id,
+        },
+        "Compressed callback processed successfully"
+      );
+    }
+
+    if (decoded.code) {
+      const tokenResponse = await exchangeCodeForTokenWithCredentials(
+        decoded.code,
+        clientId,
+        clientSecret,
+        redirectUri
+      );
+
+      return sendSuccess(
+        res,
+        {
+          accessToken: tokenResponse.access_token,
+          refreshToken: tokenResponse.refresh_token,
+          expiresIn: tokenResponse.expires_in,
+          userId: tokenResponse.user_id,
+        },
+        "Compressed callback processed successfully"
+      );
+    }
+
+    return handleError(res, 400, "No authorization code or access token in compressed data", null, {
+      action: "ML_COMPRESSED_CALLBACK_NO_DATA",
+    });
+  } catch (error) {
+    return handleError(res, 500, "Failed to process compressed callback", error, {
+      action: "ML_COMPRESSED_CALLBACK_ERROR",
+    });
+  }
+});
+
+/**
+ * POST /api/auth/forgot-password
+ * Request a password reset token
+ */
+router.post("/forgot-password", async (req, res) => {
+  try {
+    if (!req.body.email) {
+      return handleError(res, 400, "Email is required", null, {
+        action: "FORGOT_PASSWORD_MISSING_EMAIL",
+      });
+    }
+
+    const { email } = req.body;
+    const user = await User.findOne({ email: email.toLowerCase() });
+
+    if (!user) {
+      return sendSuccess(
+        res,
+        {},
+        "Se essa conta existe, você receberá um link para resetar sua senha.",
+        200
+      );
+    }
+
+    const resetToken = user.generatePasswordResetToken();
+    await user.save();
+
+    logger.info({
+      action: "PASSWORD_RESET_REQUESTED",
+      email: user.email,
+      resetToken,
+      expiresIn: "30 minutes",
+      timestamp: new Date().toISOString(),
+    });
+
+    return sendSuccess(
+      res,
+      { resetToken },
+      "Se essa conta existe, você receberá um link para resetar sua senha.",
+      200
+    );
+  } catch (error) {
+    return handleError(res, 500, "Failed to process password reset request", error, {
+      action: "FORGOT_PASSWORD_ERROR",
+    });
+  }
+});
+
+/**
+ * POST /api/auth/reset-password
+ * Reset password using a reset token
+ */
+router.post("/reset-password", async (req, res) => {
+  try {
+    const validation = validateRequired(req, ["email", "resetToken", "newPassword"]);
+    if (!validation.valid) {
+      return handleError(res, 400, "Email, reset token, and new password are required", null, {
+        action: "RESET_PASSWORD_INVALID_REQUEST",
+        missingFields: validation.missingFields,
+      });
+    }
+
+    const { email, resetToken, newPassword } = req.body;
+
+    if (newPassword.length < 8) {
+      return handleError(res, 400, "Password must be at least 8 characters", null, {
+        action: "RESET_PASSWORD_WEAK_PASSWORD",
+      });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase() }).select("+password");
+
+    if (!user) {
+      return handleError(res, 404, "User not found", null, {
+        action: "RESET_PASSWORD_USER_NOT_FOUND",
+      });
+    }
+
+    if (!user.verifyPasswordResetToken(resetToken)) {
+      return handleError(
+        res,
+        400,
+        "Invalid or expired reset token. Please request a new password reset.",
+        null,
+        { action: "RESET_PASSWORD_INVALID_TOKEN" }
+      );
+    }
+
+    user.password = newPassword;
+    user.passwordResetToken = null;
+    user.passwordResetExpires = null;
+    await user.save();
+
+    logger.info({
+      action: "PASSWORD_RESET_SUCCESSFUL",
+      userId: user.id,
+      email: user.email,
+      timestamp: new Date().toISOString(),
+    });
+
+    const userProfile = user.getProfile();
+
+    return sendSuccess(
+      res,
+      { user: userProfile },
+      "Senha resetada com sucesso. Você pode fazer login agora.",
+      200
+    );
+  } catch (error) {
+    return handleError(res, 500, "Failed to reset password", error, {
+      action: "RESET_PASSWORD_ERROR",
+    });
+  }
+});
+
+/**
+ * POST /api/auth/verify-reset-token
+ * Verify if a reset token is valid
+ */
+router.post("/verify-reset-token", async (req, res) => {
+  try {
+    const validation = validateRequired(req, ["email", "resetToken"]);
+    if (!validation.valid) {
+      return handleError(res, 400, "Email and reset token are required", null, {
+        action: "VERIFY_RESET_TOKEN_INVALID_REQUEST",
+        missingFields: validation.missingFields,
+      });
+    }
+
+    const { email, resetToken } = req.body;
+    const user = await User.findOne({ email: email.toLowerCase() });
+
+    if (!user) {
+      return handleError(res, 404, "User not found", null, {
+        action: "VERIFY_RESET_TOKEN_USER_NOT_FOUND",
+      });
+    }
+
+    const isValid = user.verifyPasswordResetToken(resetToken);
+
+    return sendSuccess(
+      res,
+      { valid: isValid },
+      isValid ? "Reset token is valid" : "Reset token is invalid or expired",
+      200
+    );
+  } catch (error) {
+    return handleError(res, 500, "Failed to verify reset token", error, {
+      action: "VERIFY_RESET_TOKEN_ERROR",
+    });
+  }
+});
+
+/**
+ * POST /api/auth/2fa/setup
+ * Setup two-factor authentication for a user (admin only)
+ */
+router.post("/2fa/setup", async (req, res) => {
+  try {
+    const token = getTokenFromHeader(req);
+    if (!token) {
+      return handleError(res, 401, "Authentication required", null, {
+        action: "2FA_SETUP_NO_TOKEN",
+      });
+    }
+
+    const verification = verifyJWT(token);
+    if (!verification.valid) {
+      return handleError(res, 401, "Invalid or expired token", verification.error, {
+        action: "2FA_SETUP_INVALID_TOKEN",
+      });
+    }
+
+    const user = await User.findOne({ id: verification.decoded.userId });
+    if (!user) {
+      return handleError(res, 404, "User not found", null, {
+        action: "2FA_SETUP_USER_NOT_FOUND",
+      });
+    }
+
+    if (user.role !== "admin") {
+      return handleError(res, 403, "Only admins can enable 2FA", null, {
+        action: "2FA_SETUP_UNAUTHORIZED",
+      });
+    }
+
+    const secret = speakeasy.generateSecret({
+      name: `Projeto SASS (${user.email})`,
+      issuer: "Projeto SASS",
+      length: 32,
+    });
+
+    const qrCode = await QRCode.toDataURL(secret.otpauth_url);
+
+    user.twoFactorSecret = secret.base32;
+
+    const backupCodes = [];
+    for (let i = 0; i < 10; i++) {
+      backupCodes.push({
+        code: crypto.randomBytes(4).toString("hex").toUpperCase(),
+        used: false,
+      });
+    }
+    user.backupCodes = backupCodes;
+    await user.save();
+
+    logger.info({
+      action: "2FA_SETUP_INITIATED",
+      userId: user.id,
+      email: user.email,
+      timestamp: new Date().toISOString(),
+    });
+
+    return sendSuccess(
+      res,
+      {
+        secret: secret.base32,
+        qrCode,
+        backupCodes: backupCodes.map((b) => b.code),
+      },
+      "2FA setup initiated. Please verify with your authenticator app.",
+      200
+    );
+  } catch (error) {
+    return handleError(res, 500, "Failed to setup 2FA", error, {
+      action: "2FA_SETUP_ERROR",
+    });
+  }
+});
+
+/**
+ * POST /api/auth/2fa/verify
+ * Verify 2FA code and enable 2FA for account
+ */
+router.post("/2fa/verify", async (req, res) => {
+  try {
+    const token = getTokenFromHeader(req);
+    if (!token) {
+      return handleError(res, 401, "Authentication required", null, {
+        action: "2FA_VERIFY_NO_TOKEN",
+      });
+    }
+
+    if (!req.body.code) {
+      return handleError(res, 400, "Verification code is required", null, {
+        action: "2FA_VERIFY_MISSING_CODE",
+      });
+    }
+
+    const verification = verifyJWT(token);
+    if (!verification.valid) {
+      return handleError(res, 401, "Invalid or expired token", verification.error, {
+        action: "2FA_VERIFY_INVALID_TOKEN",
+      });
+    }
+
+    const user = await User.findOne({ id: verification.decoded.userId }).select("+twoFactorSecret");
+    if (!user) {
+      return handleError(res, 404, "User not found", null, {
+        action: "2FA_VERIFY_USER_NOT_FOUND",
+      });
+    }
+
+    if (!user.twoFactorSecret) {
+      return handleError(res, 400, "No pending 2FA setup found. Start setup first.", null, {
+        action: "2FA_VERIFY_NO_SETUP",
+      });
+    }
+
+    const verified = speakeasy.totp.verify({
+      secret: user.twoFactorSecret,
+      encoding: "base32",
+      token: req.body.code,
+      window: 2,
+    });
+
+    if (!verified) {
+      logger.warn({
+        action: "2FA_VERIFY_FAILED",
+        userId: user.id,
+        email: user.email,
+        timestamp: new Date().toISOString(),
+      });
+      return handleError(res, 400, "Invalid verification code", null, {
+        action: "2FA_VERIFY_INVALID_CODE",
+      });
+    }
+
+    user.twoFactorEnabled = true;
+    await user.save();
+
+    logger.info({
+      action: "2FA_ENABLED",
+      userId: user.id,
+      email: user.email,
+      timestamp: new Date().toISOString(),
+    });
+
+    return sendSuccess(
+      res,
+      {
+        backupCodes: user.backupCodes.map((b) => b.code),
+      },
+      "2FA enabled successfully",
+      200
+    );
+  } catch (error) {
+    return handleError(res, 500, "Failed to verify 2FA code", error, {
+      action: "2FA_VERIFY_ERROR",
+    });
+  }
+});
+
+/**
+ * POST /api/auth/2fa/login
+ * Complete login with 2FA code for users with 2FA enabled
+ */
+router.post("/2fa/login", async (req, res) => {
+  try {
+    const { code } = req.body;
+    const userId = req.query.userId;
+
+    if (!code || !userId) {
+      return handleError(res, 400, "Code and userId are required", null, {
+        action: "2FA_LOGIN_MISSING_PARAMS",
+      });
+    }
+
+    const user = await User.findOne({ id: userId }).select("+twoFactorSecret");
+    if (!user) {
+      return handleError(res, 404, "User not found", null, {
+        action: "2FA_LOGIN_USER_NOT_FOUND",
+      });
+    }
+
+    if (!user.twoFactorEnabled) {
+      return handleError(res, 400, "2FA is not enabled for this account", null, {
+        action: "2FA_LOGIN_NOT_ENABLED",
+      });
+    }
+
+    let verified = speakeasy.totp.verify({
+      secret: user.twoFactorSecret,
+      encoding: "base32",
+      token: code,
+      window: 2,
+    });
+
+    if (!verified) {
+      const backupCodeIndex = user.backupCodes.findIndex((b) => b.code === code && !b.used);
+      if (backupCodeIndex !== -1) {
+        verified = true;
+        user.backupCodes[backupCodeIndex].used = true;
+        user.backupCodes[backupCodeIndex].usedAt = new Date();
+      }
+    }
+
+    if (!verified) {
+      logger.warn({
+        action: "2FA_LOGIN_FAILED",
+        userId: user.id,
+        email: user.email,
+        timestamp: new Date().toISOString(),
+      });
+      return handleError(res, 400, "Invalid 2FA code", null, {
+        action: "2FA_LOGIN_INVALID_CODE",
+      });
+    }
+
+    if (user.isModified("backupCodes")) {
+      await user.save();
+    }
+
+    const token = jwt.sign(
+      { userId: user.id, email: user.email, role: user.role },
+      process.env.JWT_SECRET || "your-secret-key",
+      { expiresIn: "7d" }
+    );
+
+    logger.info({
+      action: "2FA_LOGIN_SUCCESS",
+      userId: user.id,
+      email: user.email,
+      timestamp: new Date().toISOString(),
+    });
+
+    return sendSuccess(
+      res,
+      { token },
+      "2FA verification successful",
+      200
+    );
+  } catch (error) {
+    return handleError(res, 500, "Failed to verify 2FA code", error, {
+      action: "2FA_LOGIN_ERROR",
+    });
+  }
+});
+
+/**
+ * POST /api/auth/2fa/disable
+ * Disable 2FA for a user
+ */
+router.post("/2fa/disable", async (req, res) => {
+  try {
+    const token = getTokenFromHeader(req);
+    if (!token) {
+      return handleError(res, 401, "Authentication required", null, {
+        action: "2FA_DISABLE_NO_TOKEN",
+      });
+    }
+
+    if (!req.body.password) {
+      return handleError(res, 400, "Password is required for disabling 2FA", null, {
+        action: "2FA_DISABLE_MISSING_PASSWORD",
+      });
+    }
+
+    const verification = verifyJWT(token);
+    if (!verification.valid) {
+      return handleError(res, 401, "Invalid or expired token", verification.error, {
+        action: "2FA_DISABLE_INVALID_TOKEN",
+      });
+    }
+
+    const user = await User.findOne({ id: verification.decoded.userId }).select("+password +twoFactorSecret");
+    if (!user) {
+      return handleError(res, 404, "User not found", null, {
+        action: "2FA_DISABLE_USER_NOT_FOUND",
+      });
+    }
+
+    const isPasswordValid = await bcrypt.compare(req.body.password, user.password);
+    if (!isPasswordValid) {
+      return handleError(res, 401, "Invalid password", null, {
+        action: "2FA_DISABLE_INVALID_PASSWORD",
+      });
+    }
+
+    user.twoFactorEnabled = false;
+    user.twoFactorSecret = null;
+    user.backupCodes = [];
+    await user.save();
+
+    logger.info({
+      action: "2FA_DISABLED",
+      userId: user.id,
+      email: user.email,
+      timestamp: new Date().toISOString(),
+    });
+
+    return sendSuccess(res, {}, "2FA disabled successfully", 200);
+  } catch (error) {
+    return handleError(res, 500, "Failed to disable 2FA", error, {
+      action: "2FA_DISABLE_ERROR",
+    });
+  }
+});
+
+/**
+ * GET /api/auth/2fa/status
+ * Get 2FA status for current user
+ */
+router.get("/2fa/status", async (req, res) => {
+  try {
+    const token = getTokenFromHeader(req);
+    if (!token) {
+      return handleError(res, 401, "Authentication required", null, {
+        action: "2FA_STATUS_NO_TOKEN",
+      });
+    }
+
+    const verification = verifyJWT(token);
+    if (!verification.valid) {
+      return handleError(res, 401, "Invalid or expired token", verification.error, {
+        action: "2FA_STATUS_INVALID_TOKEN",
+      });
+    }
+
+    const user = await User.findOne({ id: verification.decoded.userId });
+    if (!user) {
+      return handleError(res, 404, "User not found", null, {
+        action: "2FA_STATUS_USER_NOT_FOUND",
+      });
+    }
+
+    return sendSuccess(
+      res,
+      {
+        twoFactorEnabled: user.twoFactorEnabled,
+        backupCodesRemaining: user.backupCodes.filter((b) => !b.used).length,
+      },
+      "2FA status retrieved",
+      200
+    );
+  } catch (error) {
+    return handleError(res, 500, "Failed to get 2FA status", error, {
+      action: "2FA_STATUS_ERROR",
+    });
+  }
+});
+
+/**
+ * POST /api/auth/refresh-token
+ * Refresh JWT token to extend session
+ */
+router.post("/refresh-token", async (req, res) => {
+  try {
+    let token = req.body.token;
+    if (!token) {
+      token = getTokenFromHeader(req);
+    }
+
+    if (!token) {
+      return handleError(res, 401, "Token is required", null, {
+        action: "REFRESH_TOKEN_MISSING",
+      });
+    }
+
+    const verification = verifyJWT(token, false);
+    const decoded = verification.decoded;
+
+    if (!decoded) {
+      return handleError(res, 401, "Invalid or malformed token", verification.error, {
+        action: "REFRESH_TOKEN_INVALID",
+      });
+    }
+
+    const user = await User.findOne({ id: decoded.userId });
+    if (!user) {
+      return handleError(res, 404, "User not found", null, {
+        action: "REFRESH_TOKEN_USER_NOT_FOUND",
+      });
+    }
+
+    if (user.status !== "active") {
+      return handleError(res, 403, "User account is not active", null, {
+        action: "REFRESH_TOKEN_USER_INACTIVE",
+      });
+    }
+
+    const newToken = jwt.sign(
+      {
+        userId: user.id,
+        email: user.email,
+        role: user.role,
+      },
+      process.env.JWT_SECRET || "your-secret-key",
+      { expiresIn: "7d" }
+    );
+
+    logger.info({
+      action: "TOKEN_REFRESH_SUCCESS",
+      userId: user.id,
+      email: user.email,
+      timestamp: new Date().toISOString(),
+    });
+
+    return sendSuccess(
+      res,
+      {
+        token: newToken,
+        expiresIn: "7 days",
+      },
+      "Token refreshed successfully",
+      200
+    );
+  } catch (error) {
+    return handleError(res, 500, "Failed to refresh token", error, {
+      action: "REFRESH_TOKEN_ERROR",
+    });
+  }
+});
+
+/**
+ * GET /api/auth/me
+ * Get current authenticated user profile
+ */
+router.get("/me", async (req, res) => {
+  try {
+    const token = getTokenFromHeader(req);
+    if (!token) {
+      return handleError(res, 401, "Authentication required", null, {
+        action: "GET_ME_NO_TOKEN",
+      });
+    }
+
+    const verification = verifyJWT(token);
+    if (!verification.valid) {
+      return handleError(res, 401, "Invalid or expired token", verification.error, {
+        action: "GET_ME_INVALID_TOKEN",
+      });
+    }
+
+    const user = await User.findOne({ id: verification.decoded.userId });
+    if (!user) {
+      return handleError(res, 404, "User not found", null, {
+        action: "GET_ME_USER_NOT_FOUND",
+      });
+    }
+
+    return sendSuccess(
+      res,
+      { user: user.getProfile() },
+      "User profile retrieved",
+      200
+    );
+  } catch (error) {
+    return handleError(res, 500, "Failed to get user profile", error, {
+      action: "GET_USER_PROFILE_ERROR",
+    });
+  }
+});
+
+/**
+ * POST /api/auth/logout
+ * Logout user (invalidate session)
+ */
+router.post("/logout", async (req, res) => {
+  try {
+    const token = getTokenFromHeader(req);
+    if (!token) {
+      return handleError(res, 401, "Authentication required", null, {
+        action: "LOGOUT_NO_TOKEN",
+      });
+    }
+
+    const verification = verifyJWT(token);
+    if (!verification.valid) {
+      return handleError(res, 401, "Invalid or expired token", verification.error, {
+        action: "LOGOUT_INVALID_TOKEN",
+      });
+    }
+
+    const user = await User.findOne({ id: verification.decoded.userId });
+    if (user) {
+      logger.info({
+        action: "USER_LOGOUT",
+        userId: user.id,
+        email: user.email,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    return sendSuccess(res, {}, "Logged out successfully", 200);
+  } catch (error) {
+    return handleError(res, 500, "Failed to logout", error, {
+      action: "LOGOUT_ERROR",
+    });
+  }
+});
+
+/**
+ * POST /api/auth/change-password
+ * Change user password
+ */
+router.post("/change-password", async (req, res) => {
+  try {
+    const token = getTokenFromHeader(req);
+    if (!token) {
+      return handleError(res, 401, "Authentication required", null, {
+        action: "CHANGE_PASSWORD_NO_TOKEN",
+      });
+    }
+
+    const validation = validateRequired(req, ["currentPassword", "newPassword"]);
+    if (!validation.valid) {
+      return handleError(res, 400, "Current password and new password are required", null, {
+        action: "CHANGE_PASSWORD_MISSING_FIELDS",
+        missingFields: validation.missingFields,
+      });
+    }
+
+    const { currentPassword, newPassword } = req.body;
+
+    if (newPassword.length < 8) {
+      return handleError(res, 400, "New password must be at least 8 characters", null, {
+        action: "CHANGE_PASSWORD_WEAK_PASSWORD",
+      });
+    }
+
+    const verification = verifyJWT(token);
+    if (!verification.valid) {
+      return handleError(res, 401, "Invalid or expired token", verification.error, {
+        action: "CHANGE_PASSWORD_INVALID_TOKEN",
+      });
+    }
+
+    const user = await User.findOne({ id: verification.decoded.userId }).select("+password");
+    if (!user) {
+      return handleError(res, 404, "User not found", null, {
+        action: "CHANGE_PASSWORD_USER_NOT_FOUND",
+      });
+    }
+
+    const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
+    if (!isPasswordValid) {
+      return handleError(res, 401, "Current password is incorrect", null, {
+        action: "CHANGE_PASSWORD_INVALID_CURRENT",
+      });
+    }
+
+    user.password = newPassword;
+    await user.save();
+
+    logger.info({
+      action: "PASSWORD_CHANGED",
+      userId: user.id,
+      email: user.email,
+      timestamp: new Date().toISOString(),
+    });
+
+    return sendSuccess(res, {}, "Password changed successfully", 200);
+  } catch (error) {
+    return handleError(res, 500, "Failed to change password", error, {
+      action: "CHANGE_PASSWORD_ERROR",
+    });
+  }
+});
+
 
 /**
  * GET /api/auth/ml-login-url
@@ -1040,6 +2640,7 @@ router.post("/ml-logout", async (req, res, next) => {
   }
 });
 
+
 // ============================================
 // HELPER FUNCTIONS
 // ============================================
@@ -1067,33 +2668,18 @@ async function exchangeCodeForToken(code) {
 
     return response.data;
   } catch (error) {
-    console.error(
-      "Token exchange failed:",
-      error.response?.data || error.message,
-    );
-    throw new Error(`Failed to exchange code for token: ${error.message}`);
+    logger.error({
+      action: "TOKEN_EXCHANGE_FAILED",
+      error: error.message,
+      statusCode: error.response?.status,
+    });
+    throw error;
   }
 }
 
 /**
- * Exchange authorization code for tokens using provided credentials
- * Used when user provides their own App ID, Secret, and Redirect URI
- */
-/**
  * Exchange authorization code for access and refresh tokens
  * Using user-provided credentials
- *
- * Flow:
- * 1. Client provides: code, clientId, clientSecret, redirectUri
- * 2. We send to Mercado Libre OAuth endpoint
- * 3. Mercado Libre returns: access_token, refresh_token, expires_in, user_id
- * 4. We return tokens to client
- *
- * @param {string} code - Authorization code from Mercado Livre
- * @param {string} clientId - User's Mercado Livre App ID
- * @param {string} clientSecret - User's Mercado Livre App Secret
- * @param {string} redirectUri - Redirect URI (must match what was used in authUrl)
- * @returns {Promise<Object>} Token response from Mercado Livre
  */
 async function exchangeCodeForTokenWithCredentials(
   code,
@@ -1108,7 +2694,6 @@ async function exchangeCodeForTokenWithCredentials(
       redirectUri: redirectUri,
     });
 
-    // Make request to Mercado Livre OAuth endpoint
     const response = await axios.post(
       ML_TOKEN_URL,
       {
@@ -1123,7 +2708,7 @@ async function exchangeCodeForTokenWithCredentials(
           Accept: "application/json",
           "Content-Type": "application/x-www-form-urlencoded",
         },
-        timeout: 10000, // 10 second timeout
+        timeout: 10000,
       },
     );
 
@@ -1152,17 +2737,6 @@ async function exchangeCodeForTokenWithCredentials(
 
 /**
  * Refresh an access token using refresh token
- *
- * Flow:
- * 1. Client provides: old refresh token
- * 2. We send to Mercado Libre OAuth endpoint with app credentials
- * 3. Mercado Libre returns: new access_token, new refresh_token, expires_in
- * 4. We return new tokens (refresh token is single-use, new one issued)
- *
- * @param {string} refreshTokenValue - Current refresh token
- * @param {string} clientId - Optional client ID (uses env var if not provided)
- * @param {string} clientSecret - Optional client secret (uses env var if not provided)
- * @returns {Promise<Object>} New token response from Mercado Livre
  */
 async function refreshToken(
   refreshTokenValue,
@@ -1170,7 +2744,6 @@ async function refreshToken(
   clientSecret = null,
 ) {
   try {
-    // Use provided credentials or fall back to environment variables
     const CLIENT_ID = clientId || process.env.ML_CLIENT_ID;
     const CLIENT_SECRET = clientSecret || process.env.ML_CLIENT_SECRET;
 
@@ -1237,11 +2810,11 @@ async function getUserInfo(accessToken) {
 
     return response.data;
   } catch (error) {
-    console.error(
-      "Get user info failed:",
-      error.response?.data || error.message,
-    );
-    throw new Error(`Failed to get user information: ${error.message}`);
+    logger.error({
+      action: "GET_USER_INFO_FAILED",
+      error: error.message,
+    });
+    throw error;
   }
 }
 
@@ -1251,1395 +2824,5 @@ async function getUserInfo(accessToken) {
 function generateAccountId() {
   return `ml_${Date.now()}_${crypto.randomBytes(8).toString("hex")}`;
 }
-
-/**
- * POST /api/auth/verify-email
- * Verify user email with token
- *
- * Request body:
- * {
- *   token: string  // Email verification token sent to email
- * }
- */
-router.post("/verify-email", async (req, res) => {
-  try {
-    const { token } = req.body;
-
-    if (!token) {
-      return res.status(400).json({
-        success: false,
-        error: "Verification token is required",
-      });
-    }
-
-    // Hash the token
-    const crypto = require("crypto");
-    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
-
-    // Find user with this verification token
-    const user = await User.findOne({
-      emailVerificationToken: hashedToken,
-      emailVerificationExpires: { $gt: new Date() },
-    });
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: "Invalid or expired verification token",
-      });
-    }
-
-    // This block is no longer needed since we fixed the query above
-    // but keeping variable name as foundUser for rest of the code
-    const foundUser = user;
-
-    // Verify email
-    foundUser.emailVerified = true;
-    foundUser.emailVerificationToken = null;
-    foundUser.emailVerificationExpires = null;
-    await foundUser.save();
-
-    logger.info({
-      action: "EMAIL_VERIFIED",
-      userId: foundUser.id,
-      email: foundUser.email,
-      timestamp: new Date().toISOString(),
-    });
-
-    // Generate JWT token
-    if (!process.env.JWT_SECRET) {
-      throw new Error("JWT_SECRET environment variable is required");
-    }
-
-    const jwtToken = jwt.sign(
-      { userId: foundUser.id, email: foundUser.email },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" },
-    );
-
-    return res.status(200).json({
-      success: true,
-      message: "Email verified successfully!",
-      data: {
-        user: {
-          id: foundUser.id,
-          email: foundUser.email,
-          firstName: foundUser.firstName,
-          lastName: foundUser.lastName,
-          emailVerified: foundUser.emailVerified,
-        },
-        token: jwtToken,
-      },
-    });
-  } catch (error) {
-    logger.error({
-      action: "EMAIL_VERIFICATION_ERROR",
-      error: error.message,
-      timestamp: new Date().toISOString(),
-    });
-    return res.status(500).json({
-      success: false,
-      error: "Failed to verify email",
-    });
-  }
-});
-
-/**
- * POST /api/auth/resend-verification-email
- * Resend verification email to user
- *
- * Request body:
- * {
- *   email: string  // User email address
- * }
- */
-router.post("/resend-verification-email", async (req, res) => {
-  try {
-    const { email } = req.body;
-
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        error: "Email is required",
-      });
-    }
-
-    const user = await User.findOne({ email: email.toLowerCase() });
-
-    if (!user) {
-      // Don't reveal if user exists for security
-      return res.status(400).json({
-        success: false,
-        error:
-          "If this email is registered, you will receive a verification link shortly",
-      });
-    }
-
-    if (user.emailVerified) {
-      return res.status(400).json({
-        success: false,
-        error: "Email is already verified",
-      });
-    }
-
-    // Generate new verification token
-    const verificationToken = user.generateEmailVerificationToken();
-    await user.save();
-
-    try {
-      const emailService = require("../services/email");
-      await emailService.sendVerificationEmail(
-        user.email,
-        verificationToken,
-        user.firstName,
-      );
-
-      logger.info({
-        action: "VERIFICATION_EMAIL_RESENT",
-        email: user.email,
-        userId: user.id,
-        timestamp: new Date().toISOString(),
-      });
-
-      return res.status(200).json({
-        success: true,
-        message: "Verification email sent! Please check your inbox.",
-      });
-    } catch (emailError) {
-      logger.error({
-        action: "RESEND_VERIFICATION_EMAIL_FAILED",
-        email: user.email,
-        error: emailError.message,
-        timestamp: new Date().toISOString(),
-      });
-      return res.status(500).json({
-        success: false,
-        error: "Failed to send verification email. Please try again later.",
-      });
-    }
-  } catch (error) {
-    logger.error({
-      action: "RESEND_VERIFICATION_ERROR",
-      error: error.message,
-      timestamp: new Date().toISOString(),
-    });
-    return res.status(500).json({
-      success: false,
-      error: "Failed to resend verification email",
-    });
-  }
-});
-
-/**
- * GET /api/auth/email-status/:email
- * Check if email is verified
- */
-router.get("/email-status/:email", async (req, res) => {
-  try {
-    const user = await User.findOne({ email: req.params.email.toLowerCase() });
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: "User not found",
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      data: {
-        email: user.email,
-        emailVerified: user.emailVerified,
-        emailVerificationExpires: user.emailVerificationExpires,
-      },
-    });
-  } catch (error) {
-    logger.error({
-      action: "EMAIL_STATUS_ERROR",
-      error: error.message,
-      timestamp: new Date().toISOString(),
-    });
-    return res.status(500).json({
-      success: false,
-      error: "Failed to check email status",
-    });
-  }
-});
-
-/**
- * POST /api/auth/ml-compressed-callback
- *
- * Handle Mercado Livre's compressed URL format.
- * ML sometimes returns the OAuth response as gzip-compressed base64 in the URL path.
- *
- * Request body:
- * {
- *   compressedData: string,  // The compressed data from ML URL path
- *   clientId: string,         // User's ML App ID
- *   clientSecret: string,     // User's ML App Secret
- *   redirectUri: string       // OAuth redirect URI
- * }
- */
-router.post("/ml-compressed-callback", async (req, res) => {
-  try {
-    const { compressedData, clientId, clientSecret, redirectUri } = req.body;
-
-    if (!compressedData || !clientId || !clientSecret || !redirectUri) {
-      return res.status(400).json({
-        success: false,
-        error:
-          "compressedData, clientId, clientSecret, and redirectUri are required",
-      });
-    }
-
-    logger.info({
-      action: "ML_COMPRESSED_CALLBACK_START",
-      clientId: clientId.substring(0, 8) + "***",
-      timestamp: new Date().toISOString(),
-    });
-
-    // Decode the compressed data
-    let decoded;
-    try {
-      const binaryString = Buffer.from(compressedData, "base64");
-      const zlib = require("zlib");
-      decoded = JSON.parse(zlib.gunzipSync(binaryString).toString("utf8"));
-    } catch (decodeError) {
-      // Try alternative decoding
-      try {
-        const binaryString = atob(compressedData);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
-        const zlib = require("zlib");
-        decoded = JSON.parse(zlib.gunzipSync(bytes).toString("utf8"));
-      } catch (altError) {
-        logger.error({
-          action: "ML_COMPRESSED_DECODE_ERROR",
-          error: decodeError.message,
-          altError: altError.message,
-        });
-        return res.status(400).json({
-          success: false,
-          error: "Failed to decode compressed data",
-        });
-      }
-    }
-
-    logger.info({
-      action: "ML_COMPRESSED_DECODED",
-      hasCode: !!decoded.code,
-      hasAccessToken: !!decoded.access_token,
-      keys: Object.keys(decoded),
-    });
-
-    // If we got tokens directly, return them
-    if (decoded.access_token) {
-      return res.json({
-        success: true,
-        data: {
-          accessToken: decoded.access_token,
-          refreshToken: decoded.refresh_token,
-          expiresIn: decoded.expires_in,
-          userId: decoded.user_id,
-        },
-      });
-    }
-
-    // Exchange code for tokens
-    if (decoded.code) {
-      const tokenResponse = await exchangeCodeForTokenWithCredentials(
-        decoded.code,
-        clientId,
-        clientSecret,
-        redirectUri,
-      );
-
-      return res.json({
-        success: true,
-        data: {
-          accessToken: tokenResponse.access_token,
-          refreshToken: tokenResponse.refresh_token,
-          expiresIn: tokenResponse.expires_in,
-          userId: tokenResponse.user_id,
-        },
-      });
-    }
-
-    return res.status(400).json({
-      success: false,
-      error: "No authorization code or access token in compressed data",
-    });
-  } catch (error) {
-    logger.error({
-      action: "ML_COMPRESSED_CALLBACK_ERROR",
-      error: error.message,
-      timestamp: new Date().toISOString(),
-    });
-    return res.status(500).json({
-      success: false,
-      error: "Failed to process compressed callback",
-      details: error.message,
-    });
-  }
-});
-
-/**
- * POST /api/auth/forgot-password
- * Request a password reset token
- *
- * Request body:
- * {
- *   email: string  // User's email address
- * }
- *
- * Response:
- * {
- *   success: boolean,
- *   message: string,
- *   data: {
- *     resetToken: string  // Token to use for password reset
- *   }
- * }
- */
-router.post("/forgot-password", async (req, res) => {
-  try {
-    const { email } = req.body;
-
-    // Validation
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        error: "Email is required",
-      });
-    }
-
-    // Find user by email
-    const user = await User.findOne({ email: email.toLowerCase() });
-
-    if (!user) {
-      // For security, don't reveal if email exists or not
-      return res.status(200).json({
-        success: true,
-        message:
-          "Se essa conta existe, você receberá um link para resetar sua senha.",
-      });
-    }
-
-    // Generate password reset token
-    const resetToken = user.generatePasswordResetToken();
-    await user.save();
-
-    // Log the token (in production, send via email)
-    logger.info({
-      action: "PASSWORD_RESET_REQUESTED",
-      email: user.email,
-      resetToken,
-      expiresIn: "30 minutes",
-      timestamp: new Date().toISOString(),
-    });
-
-    // Return reset token (in production, don't expose this directly)
-    // Instead, send it via email and only return success message
-    return res.status(200).json({
-      success: true,
-      message:
-        "Se essa conta existe, você receberá um link para resetar sua senha.",
-      data: {
-        resetToken, // For testing purposes - remove in production
-      },
-    });
-  } catch (error) {
-    logger.error({
-      action: "FORGOT_PASSWORD_ERROR",
-      error: error.message,
-      timestamp: new Date().toISOString(),
-    });
-    return res.status(500).json({
-      success: false,
-      error: "Failed to process password reset request",
-    });
-  }
-});
-
-/**
- * POST /api/auth/reset-password
- * Reset password using a reset token
- *
- * Request body:
- * {
- *   email: string,          // User's email address
- *   resetToken: string,     // Token from forgot-password endpoint
- *   newPassword: string     // New password (min 8 characters)
- * }
- *
- * Response:
- * {
- *   success: boolean,
- *   message: string,
- *   data: {
- *     user: object  // Updated user profile
- *   }
- * }
- */
-router.post("/reset-password", async (req, res) => {
-  try {
-    const { email, resetToken, newPassword } = req.body;
-
-    // Validation
-    if (!email || !resetToken || !newPassword) {
-      return res.status(400).json({
-        success: false,
-        error: "Email, reset token, and new password are required",
-      });
-    }
-
-    if (newPassword.length < 8) {
-      return res.status(400).json({
-        success: false,
-        error: "Password must be at least 8 characters",
-      });
-    }
-
-    // Find user by email
-    const user = await User.findOne({ email: email.toLowerCase() }).select(
-      "+password",
-    );
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: "User not found",
-      });
-    }
-
-    // Verify reset token
-    if (!user.verifyPasswordResetToken(resetToken)) {
-      return res.status(400).json({
-        success: false,
-        error:
-          "Invalid or expired reset token. Please request a new password reset.",
-      });
-    }
-
-    // Update password
-    user.password = newPassword;
-    user.passwordResetToken = null;
-    user.passwordResetExpires = null;
-    await user.save();
-
-    logger.info({
-      action: "PASSWORD_RESET_SUCCESSFUL",
-      userId: user.id,
-      email: user.email,
-      timestamp: new Date().toISOString(),
-    });
-
-    // Return user profile without sensitive data
-    const userProfile = user.getProfile();
-
-    return res.status(200).json({
-      success: true,
-      message: "Senha resetada com sucesso. Você pode fazer login agora.",
-      data: {
-        user: userProfile,
-      },
-    });
-  } catch (error) {
-    logger.error({
-      action: "RESET_PASSWORD_ERROR",
-      error: error.message,
-      timestamp: new Date().toISOString(),
-    });
-    return res.status(500).json({
-      success: false,
-      error: "Failed to reset password",
-    });
-  }
-});
-
-/**
- * POST /api/auth/verify-reset-token
- * Verify if a reset token is valid
- *
- * Request body:
- * {
- *   email: string,      // User's email address
- *   resetToken: string  // Token to verify
- * }
- *
- * Response:
- * {
- *   success: boolean,
- *   valid: boolean      // Whether token is valid and not expired
- * }
- */
-router.post("/verify-reset-token", async (req, res) => {
-  try {
-    const { email, resetToken } = req.body;
-
-    // Validation
-    if (!email || !resetToken) {
-      return res.status(400).json({
-        success: false,
-        error: "Email and reset token are required",
-      });
-    }
-
-    // Find user by email
-    const user = await User.findOne({ email: email.toLowerCase() });
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        valid: false,
-        error: "User not found",
-      });
-    }
-
-    // Verify reset token
-    const isValid = user.verifyPasswordResetToken(resetToken);
-
-    return res.status(200).json({
-      success: true,
-      valid: isValid,
-      message: isValid
-        ? "Reset token is valid"
-        : "Reset token is invalid or expired",
-    });
-  } catch (error) {
-    logger.error({
-      action: "VERIFY_RESET_TOKEN_ERROR",
-      error: error.message,
-      timestamp: new Date().toISOString(),
-    });
-    return res.status(500).json({
-      success: false,
-      error: "Failed to verify reset token",
-    });
-  }
-});
-
-/**
- * POST /api/auth/2fa/setup
- * Setup two-factor authentication for a user (admin only)
- * Requires JWT token in Authorization header
- *
- * Request body:
- * (empty - just needs to be authenticated)
- *
- * Response:
- * {
- *   success: boolean,
- *   message: string,
- *   data: {
- *     secret: string,      // Secret key for TOTP
- *     qrCode: string       // QR code URL (data:image/png;base64,...)
- *   }
- * }
- */
-router.post("/2fa/setup", async (req, res) => {
-  try {
-    // Check if user is authenticated
-    const authHeader = req.headers["authorization"];
-    const token = authHeader && authHeader.split(" ")[1];
-
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        error: "Authentication required",
-      });
-    }
-
-    // Verify JWT token
-    let decoded;
-    try {
-      decoded = jwt.verify(token, process.env.JWT_SECRET || "your-secret-key");
-    } catch (error) {
-      return res.status(401).json({
-        success: false,
-        error: "Invalid or expired token",
-      });
-    }
-
-    // Get user
-    const user = await User.findOne({ id: decoded.userId });
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: "User not found",
-      });
-    }
-
-    // Only allow admins to enable 2FA
-    if (user.role !== "admin") {
-      return res.status(403).json({
-        success: false,
-        error: "Only admins can enable 2FA",
-      });
-    }
-
-    // Generate TOTP secret
-    const secret = speakeasy.generateSecret({
-      name: `Projeto SASS (${user.email})`,
-      issuer: "Projeto SASS",
-      length: 32,
-    });
-
-    // Generate QR code
-    const qrCode = await QRCode.toDataURL(secret.otpauth_url);
-
-    // Store the secret temporarily (not yet enabled)
-    user.twoFactorSecret = secret.base32;
-
-    // Generate backup codes
-    const backupCodes = [];
-    for (let i = 0; i < 10; i++) {
-      backupCodes.push({
-        code: crypto.randomBytes(4).toString("hex").toUpperCase(),
-        used: false,
-      });
-    }
-    user.backupCodes = backupCodes;
-    await user.save();
-
-    logger.info({
-      action: "2FA_SETUP_INITIATED",
-      userId: user.id,
-      email: user.email,
-      timestamp: new Date().toISOString(),
-    });
-
-    return res.status(200).json({
-      success: true,
-      message:
-        "2FA setup initiated. Please verify with your authenticator app.",
-      data: {
-        secret: secret.base32,
-        qrCode,
-        backupCodes: backupCodes.map((b) => b.code),
-      },
-    });
-  } catch (error) {
-    logger.error({
-      action: "2FA_SETUP_ERROR",
-      error: error.message,
-      timestamp: new Date().toISOString(),
-    });
-    return res.status(500).json({
-      success: false,
-      error: "Failed to setup 2FA",
-    });
-  }
-});
-
-/**
- * POST /api/auth/2fa/verify
- * Verify 2FA code and enable 2FA for account
- *
- * Request body:
- * {
- *   code: string  // 6-digit TOTP code
- * }
- *
- * Response:
- * {
- *   success: boolean,
- *   message: string,
- *   data: {
- *     backupCodes: string[]
- *   }
- * }
- */
-router.post("/2fa/verify", async (req, res) => {
-  try {
-    const authHeader = req.headers["authorization"];
-    const token = authHeader && authHeader.split(" ")[1];
-    const { code } = req.body;
-
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        error: "Authentication required",
-      });
-    }
-
-    if (!code) {
-      return res.status(400).json({
-        success: false,
-        error: "Verification code is required",
-      });
-    }
-
-    // Verify JWT token
-    let decoded;
-    try {
-      decoded = jwt.verify(token, process.env.JWT_SECRET || "your-secret-key");
-    } catch (error) {
-      return res.status(401).json({
-        success: false,
-        error: "Invalid or expired token",
-      });
-    }
-
-    // Get user
-    const user = await User.findOne({ id: decoded.userId }).select(
-      "+twoFactorSecret",
-    );
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: "User not found",
-      });
-    }
-
-    // Check if user has a pending 2FA setup
-    if (!user.twoFactorSecret) {
-      return res.status(400).json({
-        success: false,
-        error: "No pending 2FA setup found. Start setup first.",
-      });
-    }
-
-    // Verify the TOTP code
-    const verified = speakeasy.totp.verify({
-      secret: user.twoFactorSecret,
-      encoding: "base32",
-      token: code,
-      window: 2,
-    });
-
-    if (!verified) {
-      logger.warn({
-        action: "2FA_VERIFY_FAILED",
-        userId: user.id,
-        email: user.email,
-        timestamp: new Date().toISOString(),
-      });
-      return res.status(400).json({
-        success: false,
-        error: "Invalid verification code",
-      });
-    }
-
-    // Enable 2FA
-    user.twoFactorEnabled = true;
-    await user.save();
-
-    logger.info({
-      action: "2FA_ENABLED",
-      userId: user.id,
-      email: user.email,
-      timestamp: new Date().toISOString(),
-    });
-
-    return res.status(200).json({
-      success: true,
-      message: "2FA enabled successfully",
-      data: {
-        backupCodes: user.backupCodes.map((b) => b.code),
-      },
-    });
-  } catch (error) {
-    logger.error({
-      action: "2FA_VERIFY_ERROR",
-      error: error.message,
-      timestamp: new Date().toISOString(),
-    });
-    return res.status(500).json({
-      success: false,
-      error: "Failed to verify 2FA code",
-    });
-  }
-});
-
-/**
- * POST /api/auth/2fa/login
- * Complete login with 2FA code for users with 2FA enabled
- *
- * Request body:
- * {
- *   code: string  // 6-digit TOTP code or backup code
- * }
- *
- * Response:
- * {
- *   success: boolean,
- *   message: string,
- *   data: {
- *     token: string  // JWT token
- *   }
- * }
- */
-router.post("/2fa/login", async (req, res) => {
-  try {
-    const { code } = req.body;
-    const userId = req.query.userId; // Should be passed from initial login
-
-    if (!code || !userId) {
-      return res.status(400).json({
-        success: false,
-        error: "Code and userId are required",
-      });
-    }
-
-    // Get user
-    const user = await User.findOne({ id: userId }).select("+twoFactorSecret");
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: "User not found",
-      });
-    }
-
-    // Check if 2FA is enabled
-    if (!user.twoFactorEnabled) {
-      return res.status(400).json({
-        success: false,
-        error: "2FA is not enabled for this account",
-      });
-    }
-
-    // Try to verify TOTP code first
-    let verified = speakeasy.totp.verify({
-      secret: user.twoFactorSecret,
-      encoding: "base32",
-      token: code,
-      window: 2,
-    });
-
-    // If TOTP fails, try backup codes
-    if (!verified) {
-      const backupCodeIndex = user.backupCodes.findIndex(
-        (b) => b.code === code && !b.used,
-      );
-      if (backupCodeIndex !== -1) {
-        verified = true;
-        user.backupCodes[backupCodeIndex].used = true;
-        user.backupCodes[backupCodeIndex].usedAt = new Date();
-      }
-    }
-
-    if (!verified) {
-      logger.warn({
-        action: "2FA_LOGIN_FAILED",
-        userId: user.id,
-        email: user.email,
-        timestamp: new Date().toISOString(),
-      });
-      return res.status(400).json({
-        success: false,
-        error: "Invalid 2FA code",
-      });
-    }
-
-    // Save backup code usage if applicable
-    if (user.isModified("backupCodes")) {
-      await user.save();
-    }
-
-    // Generate JWT token
-    const token = jwt.sign(
-      { userId: user.id, email: user.email, role: user.role },
-      process.env.JWT_SECRET || "your-secret-key",
-      { expiresIn: "7d" },
-    );
-
-    logger.info({
-      action: "2FA_LOGIN_SUCCESS",
-      userId: user.id,
-      email: user.email,
-      timestamp: new Date().toISOString(),
-    });
-
-    return res.status(200).json({
-      success: true,
-      message: "2FA verification successful",
-      data: {
-        token,
-      },
-    });
-  } catch (error) {
-    logger.error({
-      action: "2FA_LOGIN_ERROR",
-      error: error.message,
-      timestamp: new Date().toISOString(),
-    });
-    return res.status(500).json({
-      success: false,
-      error: "Failed to verify 2FA code",
-    });
-  }
-});
-
-/**
- * POST /api/auth/2fa/disable
- * Disable 2FA for a user
- *
- * Request body:
- * {
- *   password: string  // User's password for confirmation
- * }
- */
-router.post("/2fa/disable", async (req, res) => {
-  try {
-    const authHeader = req.headers["authorization"];
-    const token = authHeader && authHeader.split(" ")[1];
-    const { password } = req.body;
-
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        error: "Authentication required",
-      });
-    }
-
-    if (!password) {
-      return res.status(400).json({
-        success: false,
-        error: "Password is required for disabling 2FA",
-      });
-    }
-
-    // Verify JWT token
-    let decoded;
-    try {
-      decoded = jwt.verify(token, process.env.JWT_SECRET || "your-secret-key");
-    } catch (error) {
-      return res.status(401).json({
-        success: false,
-        error: "Invalid or expired token",
-      });
-    }
-
-    // Get user
-    const user = await User.findOne({ id: decoded.userId }).select(
-      "+password +twoFactorSecret",
-    );
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: "User not found",
-      });
-    }
-
-    // Verify password
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
-      return res.status(401).json({
-        success: false,
-        error: "Invalid password",
-      });
-    }
-
-    // Disable 2FA
-    user.twoFactorEnabled = false;
-    user.twoFactorSecret = null;
-    user.backupCodes = [];
-    await user.save();
-
-    logger.info({
-      action: "2FA_DISABLED",
-      userId: user.id,
-      email: user.email,
-      timestamp: new Date().toISOString(),
-    });
-
-    return res.status(200).json({
-      success: true,
-      message: "2FA disabled successfully",
-    });
-  } catch (error) {
-    logger.error({
-      action: "2FA_DISABLE_ERROR",
-      error: error.message,
-      timestamp: new Date().toISOString(),
-    });
-    return res.status(500).json({
-      success: false,
-      error: "Failed to disable 2FA",
-    });
-  }
-});
-
-/**
- * GET /api/auth/2fa/status
- * Get 2FA status for current user
- */
-router.get("/2fa/status", async (req, res) => {
-  try {
-    const authHeader = req.headers["authorization"];
-    const token = authHeader && authHeader.split(" ")[1];
-
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        error: "Authentication required",
-      });
-    }
-
-    // Verify JWT token
-    let decoded;
-    try {
-      decoded = jwt.verify(token, process.env.JWT_SECRET || "your-secret-key");
-    } catch (error) {
-      return res.status(401).json({
-        success: false,
-        error: "Invalid or expired token",
-      });
-    }
-
-    // Get user
-    const user = await User.findOne({ id: decoded.userId });
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: "User not found",
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      data: {
-        twoFactorEnabled: user.twoFactorEnabled,
-        backupCodesRemaining: user.backupCodes.filter((b) => !b.used).length,
-      },
-    });
-  } catch (error) {
-    logger.error({
-      action: "2FA_STATUS_ERROR",
-      error: error.message,
-      timestamp: new Date().toISOString(),
-    });
-    return res.status(500).json({
-      success: false,
-      error: "Failed to get 2FA status",
-    });
-  }
-});
-
-/**
- * POST /api/auth/refresh-token
- * Refresh JWT token to extend session
- *
- * Request body:
- * {
- *   token: string  // Current JWT token (or send in Authorization header)
- * }
- *
- * Response:
- * {
- *   success: boolean,
- *   data: {
- *     token: string  // New JWT token
- *     expiresIn: string  // Token expiration time
- *   }
- * }
- */
-router.post("/refresh-token", async (req, res) => {
-  try {
-    // Get token from Authorization header or request body
-    let token = req.body.token;
-    if (!token) {
-      const authHeader = req.headers["authorization"];
-      token = authHeader && authHeader.split(" ")[1];
-    }
-
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        error: "Token is required",
-      });
-    }
-
-    // Verify the token (even if expired, we need to extract the payload)
-    let decoded;
-    try {
-      decoded = jwt.verify(token, process.env.JWT_SECRET || "your-secret-key");
-    } catch (error) {
-      // If token is expired, we can still try to decode it without verification
-      try {
-        decoded = jwt.decode(token);
-        if (!decoded) {
-          throw new Error("Invalid token");
-        }
-      } catch (decodeError) {
-        return res.status(401).json({
-          success: false,
-          error: "Invalid or malformed token",
-        });
-      }
-    }
-
-    // Get user to validate they still exist and are active
-    const user = await User.findOne({ id: decoded.userId });
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: "User not found",
-      });
-    }
-
-    // Check if user is still active
-    if (user.status !== "active") {
-      return res.status(403).json({
-        success: false,
-        error: "User account is not active",
-      });
-    }
-
-    // Generate new JWT token with extended expiration
-    const newToken = jwt.sign(
-      {
-        userId: user.id,
-        email: user.email,
-        role: user.role,
-      },
-      process.env.JWT_SECRET || "your-secret-key",
-      { expiresIn: "7d" }, // Extend token validity to 7 days
-    );
-
-    logger.info({
-      action: "TOKEN_REFRESH_SUCCESS",
-      userId: user.id,
-      email: user.email,
-      timestamp: new Date().toISOString(),
-    });
-
-    return res.status(200).json({
-      success: true,
-      message: "Token refreshed successfully",
-      data: {
-        token: newToken,
-        expiresIn: "7 days",
-      },
-    });
-  } catch (error) {
-    logger.error({
-      action: "REFRESH_TOKEN_ERROR",
-      error: error.message,
-      timestamp: new Date().toISOString(),
-    });
-    return res.status(500).json({
-      success: false,
-      error: "Failed to refresh token",
-    });
-  }
-});
-
-/**
- * GET /api/auth/me
- * Get current authenticated user profile
- * Requires JWT token in Authorization header
- */
-router.get("/me", async (req, res) => {
-  try {
-    const authHeader = req.headers["authorization"];
-    const token = authHeader && authHeader.split(" ")[1];
-
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        error: "Authentication required",
-      });
-    }
-
-    // Verify JWT token
-    let decoded;
-    try {
-      decoded = jwt.verify(token, process.env.JWT_SECRET || "your-secret-key");
-    } catch (error) {
-      return res.status(401).json({
-        success: false,
-        error: "Invalid or expired token",
-      });
-    }
-
-    // Get user
-    const user = await User.findOne({ id: decoded.userId });
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: "User not found",
-      });
-    }
-
-    // Return user profile
-    return res.status(200).json({
-      success: true,
-      data: {
-        user: user.getProfile(),
-      },
-    });
-  } catch (error) {
-    logger.error({
-      action: "GET_USER_PROFILE_ERROR",
-      error: error.message,
-      timestamp: new Date().toISOString(),
-    });
-    return res.status(500).json({
-      success: false,
-      error: "Failed to get user profile",
-    });
-  }
-});
-
-/**
- * POST /api/auth/logout
- * Logout user (invalidate session)
- * Requires JWT token in Authorization header
- */
-router.post("/logout", async (req, res) => {
-  try {
-    const authHeader = req.headers["authorization"];
-    const token = authHeader && authHeader.split(" ")[1];
-
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        error: "Authentication required",
-      });
-    }
-
-    // Verify JWT token
-    let decoded;
-    try {
-      decoded = jwt.verify(token, process.env.JWT_SECRET || "your-secret-key");
-    } catch (error) {
-      return res.status(401).json({
-        success: false,
-        error: "Invalid or expired token",
-      });
-    }
-
-    // Get user and remove session if using session management
-    const user = await User.findOne({ id: decoded.userId });
-    if (user) {
-      // Optional: You can implement session revocation here
-      // For now, we'll just log the logout
-
-      logger.info({
-        action: "USER_LOGOUT",
-        userId: user.id,
-        email: user.email,
-        timestamp: new Date().toISOString(),
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: "Logged out successfully",
-    });
-  } catch (error) {
-    logger.error({
-      action: "LOGOUT_ERROR",
-      error: error.message,
-      timestamp: new Date().toISOString(),
-    });
-    return res.status(500).json({
-      success: false,
-      error: "Failed to logout",
-    });
-  }
-});
-
-/**
- * POST /api/auth/change-password
- * Change user password
- * Requires JWT token in Authorization header
- *
- * Request body:
- * {
- *   currentPassword: string,
- *   newPassword: string
- * }
- */
-router.post("/change-password", async (req, res) => {
-  try {
-    const authHeader = req.headers["authorization"];
-    const token = authHeader && authHeader.split(" ")[1];
-    const { currentPassword, newPassword } = req.body;
-
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        error: "Authentication required",
-      });
-    }
-
-    if (!currentPassword || !newPassword) {
-      return res.status(400).json({
-        success: false,
-        error: "Current password and new password are required",
-      });
-    }
-
-    if (newPassword.length < 8) {
-      return res.status(400).json({
-        success: false,
-        error: "New password must be at least 8 characters",
-      });
-    }
-
-    // Verify JWT token
-    let decoded;
-    try {
-      decoded = jwt.verify(token, process.env.JWT_SECRET || "your-secret-key");
-    } catch (error) {
-      return res.status(401).json({
-        success: false,
-        error: "Invalid or expired token",
-      });
-    }
-
-    // Get user with password
-    const user = await User.findOne({ id: decoded.userId }).select("+password");
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: "User not found",
-      });
-    }
-
-    // Verify current password
-    const isPasswordValid = await bcrypt.compare(
-      currentPassword,
-      user.password,
-    );
-    if (!isPasswordValid) {
-      return res.status(401).json({
-        success: false,
-        error: "Current password is incorrect",
-      });
-    }
-
-    // Update password
-    user.password = newPassword;
-    await user.save();
-
-    logger.info({
-      action: "PASSWORD_CHANGED",
-      userId: user.id,
-      email: user.email,
-      timestamp: new Date().toISOString(),
-    });
-
-    return res.status(200).json({
-      success: true,
-      message: "Password changed successfully",
-    });
-  } catch (error) {
-    logger.error({
-      action: "CHANGE_PASSWORD_ERROR",
-      error: error.message,
-      timestamp: new Date().toISOString(),
-    });
-    return res.status(500).json({
-      success: false,
-      error: "Failed to change password",
-    });
-  }
-});
 
 module.exports = router;
