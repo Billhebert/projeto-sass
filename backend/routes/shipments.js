@@ -24,9 +24,55 @@ const MLAccount = require("../db/models/MLAccount");
 
 const router = express.Router();
 
+// ============================================
+// UNIFIED HELPER FUNCTIONS (CORE)
+// ============================================
+
 /**
- * Helper function to parse multiple status values
- * Converts "pending,shipped,delivered" to ["pending", "shipped", "delivered"]
+ * Send success response with consistent format
+ * @param {Object} res - Express response object
+ * @param {any} data - Response data
+ * @param {string} message - Success message
+ * @param {number} statusCode - HTTP status code (default 200)
+ */
+function sendSuccess(res, data, message = null, statusCode = 200) {
+  const response = { success: true };
+  if (message) response.message = message;
+  
+  if (data !== null && data !== undefined) {
+    Object.assign(response, data);
+  }
+  
+  return res.status(statusCode).json(response);
+}
+
+/**
+ * Send error response with consistent format
+ * @param {Object} res - Express response object
+ * @param {number} statusCode - HTTP status code
+ * @param {string} message - Error message
+ * @param {Error} error - Error object
+ * @param {string} action - Action context for logging
+ * @param {Object} context - Additional context for logging
+ */
+function handleError(res, statusCode, message, error, action, context = {}) {
+  logger.error({
+    action,
+    error: error.message || error,
+    ...context,
+  });
+
+  return res.status(statusCode).json({
+    success: false,
+    message,
+    error: error.message || error,
+  });
+}
+
+/**
+ * Parse multiple status values separated by comma
+ * @param {string} statusParam - Comma-separated status values
+ * @returns {string|Object|null} Parsed status filter
  */
 function parseMultipleStatus(statusParam) {
   if (!statusParam) return null;
@@ -39,648 +85,233 @@ function parseMultipleStatus(statusParam) {
 }
 
 /**
- * GET /api/shipments
- * List all shipments for the authenticated user
+ * Verify account belongs to user
+ * @param {string} accountId - Account ID to verify
+ * @param {string} userId - User ID
+ * @returns {Promise<Object|null>} Account object or null if not found
  */
-router.get("/", authenticateToken, async (req, res) => {
-  try {
-    const {
-      limit = 100,
-      offset = 0,
-      status,
-      sort = "-dateCreated",
-    } = req.query;
+async function verifyAccount(accountId, userId) {
+  return await MLAccount.findOne({
+    id: accountId,
+    userId,
+  });
+}
 
-    const query = { userId: req.user.userId };
+/**
+ * Find shipment by ID (supports both internal and ML IDs)
+ * @param {string} shipmentId - Shipment ID
+ * @param {string} accountId - Account ID
+ * @param {string} userId - User ID
+ * @returns {Promise<Object|null>} Shipment object or null
+ */
+async function findShipment(shipmentId, accountId, userId) {
+  return await Shipment.findOne({
+    $or: [{ id: shipmentId }, { mlShipmentId: shipmentId }],
+    accountId,
+    userId,
+  });
+}
 
-    // Parse multiple status values (supports "pending,shipped,delivered")
-    if (status) {
-      const parsedStatus = parseMultipleStatus(status);
-      if (parsedStatus) {
-        query.status = parsedStatus;
-      }
+/**
+ * Build shipment query with filters
+ * @param {Object} params - Query parameters
+ * @returns {Object} MongoDB query object
+ */
+function buildShipmentQuery(params) {
+  const query = {};
+  
+  if (params.accountId) query.accountId = params.accountId;
+  if (params.userId) query.userId = params.userId;
+  
+  if (params.status) {
+    const parsedStatus = parseMultipleStatus(params.status);
+    if (parsedStatus) query.status = parsedStatus;
+  }
+  
+  if (params.dateFrom || params.dateTo) {
+    query.dateCreated = {};
+    if (params.dateFrom) {
+      query.dateCreated.$gte = new Date(params.dateFrom);
     }
+    if (params.dateTo) {
+      query.dateCreated.$lte = new Date(params.dateTo);
+    }
+  }
+  
+  return query;
+}
 
-    const shipments = await Shipment.find(query)
-      .sort(sort)
-      .limit(parseInt(limit))
-      .skip(parseInt(offset));
+/**
+ * Calculate shipment statistics for account
+ * @param {string} accountId - Account ID
+ * @param {string} userId - User ID
+ * @returns {Promise<Object>} Statistics object
+ */
+async function calculateShipmentStats(accountId, userId) {
+  const baseQuery = { accountId, userId };
+  const stats = await Shipment.getStats(accountId);
+  
+  const totalShipments = await Shipment.countDocuments(baseQuery);
+  const pendingShipments = await Shipment.countDocuments({
+    ...baseQuery,
+    status: { $in: ["pending", "handling", "ready_to_ship"] },
+  });
+  const shippedShipments = await Shipment.countDocuments({
+    ...baseQuery,
+    status: { $in: ["shipped", "in_transit"] },
+  });
+  const deliveredShipments = await Shipment.countDocuments({
+    ...baseQuery,
+    status: "delivered",
+  });
+  
+  return {
+    accountId,
+    shipments: {
+      total: totalShipments,
+      pending: pendingShipments,
+      shipped: shippedShipments,
+      delivered: deliveredShipments,
+    },
+    statusBreakdown: stats,
+  };
+}
 
-    const total = await Shipment.countDocuments(query);
+/**
+ * Fetch shipment tracking information
+ * @param {string} accountId - Account ID
+ * @param {Object} shipment - Shipment object
+ * @returns {Promise<Object|null>} Tracking response or null
+ */
+async function fetchTracking(accountId, shipment) {
+  try {
+    return await sdkManager.execute(accountId, async (sdk) => {
+      return await sdk.shipments.getShipmentHistory(shipment.mlShipmentId);
+    });
+  } catch (error) {
+    logger.warn({
+      action: "FETCH_TRACKING_ERROR",
+      shipmentId: shipment.mlShipmentId,
+      error: error.message,
+    });
+    return null;
+  }
+}
 
-    res.json({
-      success: true,
-      data: {
-        shipments: shipments.map((s) => s.getSummary()),
-        total,
-        limit: parseInt(limit),
-        offset: parseInt(offset),
-      },
+/**
+ * Fetch shipping label
+ * @param {string} accountId - Account ID
+ * @param {Object} shipment - Shipment object
+ * @param {string} format - Label format (pdf, zpl, etc.)
+ * @returns {Promise<Object|null>} Label response or null
+ */
+async function fetchLabel(accountId, shipment, format) {
+  try {
+    return await sdkManager.execute(accountId, async (sdk) => {
+      return await sdk.shipments.getShipmentLabels({
+        shipment_ids: shipment.mlShipmentId,
+        response_type: format,
+      });
     });
   } catch (error) {
     logger.error({
-      action: "GET_SHIPMENTS_ERROR",
-      userId: req.user.userId,
+      action: "FETCH_LABEL_ERROR",
+      shipmentId: shipment.mlShipmentId,
       error: error.message,
     });
-
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch shipments",
-      error: error.message,
-    });
+    return null;
   }
-});
+}
 
 /**
- * GET /api/shipments/:accountId/stats
- * Get shipment statistics for an account
+ * Fetch shipment returns information
+ * @param {string} accountId - Account ID
+ * @param {Object} shipment - Shipment object
+ * @returns {Promise<Object|null>} Returns response or null
  */
-router.get("/:accountId/stats", authenticateToken, async (req, res) => {
+async function fetchReturns(accountId, shipment) {
   try {
-    const { accountId } = req.params;
-
-    // Verify account exists
-    const account = await MLAccount.findOne({
-      id: accountId,
-      userId: req.user.userId,
-    });
-
-    if (!account) {
-      return res.status(404).json({
-        success: false,
-        message: "Account not found",
-      });
-    }
-
-    const stats = await Shipment.getStats(accountId);
-
-    const totalShipments = await Shipment.countDocuments({
-      accountId,
-      userId: req.user.userId,
-    });
-
-    const pendingShipments = await Shipment.countDocuments({
-      accountId,
-      userId: req.user.userId,
-      status: { $in: ["pending", "handling", "ready_to_ship"] },
-    });
-
-    const shippedShipments = await Shipment.countDocuments({
-      accountId,
-      userId: req.user.userId,
-      status: { $in: ["shipped", "in_transit"] },
-    });
-
-    const deliveredShipments = await Shipment.countDocuments({
-      accountId,
-      userId: req.user.userId,
-      status: "delivered",
-    });
-
-    res.json({
-      success: true,
-      data: {
-        accountId,
-        shipments: {
-          total: totalShipments,
-          pending: pendingShipments,
-          shipped: shippedShipments,
-          delivered: deliveredShipments,
-        },
-        statusBreakdown: stats,
-      },
+    return await sdkManager.execute(accountId, async (sdk) => {
+      return await sdk.shipments.getShipmentReturns(shipment.mlShipmentId);
     });
   } catch (error) {
-    logger.error({
-      action: "GET_SHIPMENT_STATS_ERROR",
-      accountId: req.params.accountId,
-      userId: req.user.userId,
+    logger.warn({
+      action: "FETCH_RETURNS_ERROR",
+      shipmentId: shipment.mlShipmentId,
       error: error.message,
     });
-
-    res.status(500).json({
-      success: false,
-      message: "Failed to get shipment statistics",
-      error: error.message,
-    });
+    return null;
   }
-});
+}
 
 /**
- * GET /api/shipments/:accountId/pending
- * List pending shipments for specific account
+ * Get orders with shipments in batches
+ * @param {string} accountId - Account ID
+ * @param {string} userId - User ID
+ * @param {boolean} fetchAll - Fetch all or limit to 50
+ * @returns {Promise<Array>} Array of shipment IDs
  */
-router.get("/:accountId/pending", authenticateToken, async (req, res) => {
-  try {
-    const { accountId } = req.params;
-    const { limit = 100 } = req.query;
+async function getShipmentIdsFromOrders(accountId, userId, fetchAll = false) {
+  const query = {
+    accountId,
+    userId,
+    "shipping.id": { $exists: true, $ne: null },
+  };
 
-    // Verify account belongs to user
-    const account = await MLAccount.findOne({
-      id: accountId,
-      userId: req.user.userId,
-    });
+  const orders = fetchAll
+    ? await Order.find(query)
+    : await Order.find(query).limit(50);
 
-    if (!account) {
-      return res.status(404).json({
-        success: false,
-        message: "Account not found",
-      });
-    }
-
-    const shipments = await Shipment.findPending(accountId);
-
-    res.json({
-      success: true,
-      account: {
-        id: account.id,
-        nickname: account.nickname,
-      },
-      shipments: shipments.map((s) => s.getSummary()),
-      total: shipments.length,
-    });
-  } catch (error) {
-    logger.error({
-      action: "GET_PENDING_SHIPMENTS_ERROR",
-      accountId: req.params.accountId,
-      userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch pending shipments",
-      error: error.message,
-    });
-  }
-});
+  return orders.map((o) => o.shipping?.id).filter((id) => id);
+}
 
 /**
- * GET /api/shipments/:accountId
- * List shipments for specific account
- * Query params:
- *   - limit: number of results (default 20)
- *   - offset: pagination offset (default 0)
- *   - status: shipment status filter (comma-separated for multiple: pending,shipped,delivered)
- *   - date_created.from: RFC 3339 format (2024-01-31T18:03:35.000-04:00)
- *   - date_created.to: RFC 3339 format
- *   - sort: sort field (default -dateCreated)
+ * Fetch shipments in batches from SDK
+ * @param {string} accountId - Account ID
+ * @param {Array} shipmentIds - Array of shipment IDs
+ * @param {boolean} fetchAll - Fetch all in batches or all at once
+ * @returns {Promise<Array>} Array of shipment objects
  */
-router.get("/:accountId", authenticateToken, async (req, res) => {
-  try {
-    const { accountId } = req.params;
-    const {
-      all,
-      limit: queryLimit,
-      offset = 0,
-      status,
-      sort = "-dateCreated",
-      "date_created.from": dateFrom,
-      "date_created.to": dateTo,
-    } = req.query;
+async function fetchShipmentsInBatches(accountId, shipmentIds, fetchAll = false) {
+  const mlShipments = [];
 
-    // If all=true, fetch everything. Otherwise use limit (default 100)
-    const limit = all === "true" ? 999999 : queryLimit || 100;
-
-    // Verify account belongs to user
-    const account = await MLAccount.findOne({
-      id: accountId,
-      userId: req.user.userId,
-    });
-
-    if (!account) {
-      return res.status(404).json({
-        success: false,
-        message: "Account not found",
-      });
+  if (fetchAll && shipmentIds.length > 20) {
+    // Process in batches for unlimited mode
+    for (let i = 0; i < shipmentIds.length; i += 20) {
+      const batch = shipmentIds.slice(i, i + 20);
+      const batchShipments = await Promise.all(
+        batch.map((id) =>
+          sdkManager.getShipment(accountId, id).catch((error) => {
+            logger.warn({
+              action: "FETCH_SHIPMENT_DETAILS_ERROR",
+              shipmentId: id,
+              error: error.message,
+            });
+            return null;
+          }),
+        ),
+      );
+      mlShipments.push(...batchShipments.filter((s) => s !== null));
     }
-
-    const query = { accountId, userId: req.user.userId };
-
-    // Parse multiple status values (supports "pending,shipped,delivered")
-    if (status) {
-      const parsedStatus = parseMultipleStatus(status);
-      if (parsedStatus) {
-        query.status = parsedStatus;
-      }
-    }
-
-    // Add date range filters
-    if (dateFrom || dateTo) {
-      query.dateCreated = {};
-      if (dateFrom) {
-        query.dateCreated.$gte = new Date(dateFrom);
-      }
-      if (dateTo) {
-        query.dateCreated.$lte = new Date(dateTo);
-      }
-    }
-
-    const shipments = await Shipment.find(query)
-      .sort(sort)
-      .limit(parseInt(limit))
-      .skip(parseInt(offset));
-
-    const total = await Shipment.countDocuments(query);
-
-    res.json({
-      success: true,
-      account: {
-        id: account.id,
-        nickname: account.nickname,
-      },
-      shipments: shipments.map((s) => s.getSummary()),
-      total,
-      limit: parseInt(limit),
-      offset: parseInt(offset),
-    });
-  } catch (error) {
-    logger.error({
-      action: "GET_ACCOUNT_SHIPMENTS_ERROR",
-      accountId: req.params.accountId,
-      userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch shipments",
-      error: error.message,
-    });
-  }
-});
-
-/**
- * GET /api/shipments/:accountId/:shipmentId
- * Get detailed shipment information
- */
-router.get("/:accountId/:shipmentId", authenticateToken, async (req, res) => {
-  try {
-    const { accountId, shipmentId } = req.params;
-
-    const shipment = await Shipment.findOne({
-      $or: [{ id: shipmentId }, { mlShipmentId: shipmentId }],
-      accountId,
-      userId: req.user.userId,
-    });
-
-    if (!shipment) {
-      return res.status(404).json({
-        success: false,
-        message: "Shipment not found",
-      });
-    }
-
-    res.json({
-      success: true,
-      data: shipment.getDetails(),
-    });
-  } catch (error) {
-    logger.error({
-      action: "GET_SHIPMENT_ERROR",
-      shipmentId: req.params.shipmentId,
-      userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch shipment",
-      error: error.message,
-    });
-  }
-});
-
-/**
- * GET /api/shipments/:accountId/:shipmentId/tracking
- * Get tracking information from ML API
- */
-router.get(
-  "/:accountId/:shipmentId/tracking",
-  authenticateToken,
-  validateMLToken("accountId"),
-  async (req, res) => {
-    try {
-      const { accountId, shipmentId } = req.params;
-      const account = req.mlAccount;
-
-      const shipment = await Shipment.findOne({
-        $or: [{ id: shipmentId }, { mlShipmentId: shipmentId }],
-        accountId,
-        userId: req.user.userId,
-      });
-
-      if (!shipment) {
-        return res.status(404).json({
-          success: false,
-          message: "Shipment not found",
-        });
-      }
-
-      // Fetch tracking using SDK Manager
-      const trackingResponse = await sdkManager
-        .execute(accountId, async (sdk) => {
-          return await sdk.shipments.getShipmentHistory(shipment.mlShipmentId);
-        })
-        .catch((err) => {
+  } else {
+    // Normal mode - fetch all at once
+    const shipmentsData = await Promise.all(
+      shipmentIds.map((id) =>
+        sdkManager.getShipment(accountId, id).catch((error) => {
           logger.warn({
-            action: "FETCH_TRACKING_ERROR",
-            shipmentId: shipment.mlShipmentId,
-            error: err.message,
+            action: "FETCH_SHIPMENT_DETAILS_ERROR",
+            shipmentId: id,
+            error: error.message,
           });
           return null;
-        });
+        }),
+      ),
+    );
+    mlShipments.push(...shipmentsData.filter((s) => s !== null));
+  }
 
-      res.json({
-        success: true,
-        data: {
-          shipment: shipment.getSummary(),
-          tracking: trackingResponse || shipment.trackingEvents || [],
-          trackingNumber: shipment.trackingNumber,
-          carrier: shipment.carrier,
-        },
-      });
-    } catch (error) {
-      logger.error({
-        action: "GET_TRACKING_ERROR",
-        shipmentId: req.params.shipmentId,
-        userId: req.user.userId,
-        error: error.message,
-      });
-
-      res.status(500).json({
-        success: false,
-        message: "Failed to fetch tracking information",
-        error: error.message,
-      });
-    }
-  },
-);
-
-/**
- * GET /api/shipments/:accountId/:shipmentId/label
- * Get shipping label URL
- */
-router.get(
-  "/:accountId/:shipmentId/label",
-  authenticateToken,
-  validateMLToken("accountId"),
-  async (req, res) => {
-    try {
-      const { accountId, shipmentId } = req.params;
-      const { format = "pdf" } = req.query;
-      const account = req.mlAccount;
-
-      const shipment = await Shipment.findOne({
-        $or: [{ id: shipmentId }, { mlShipmentId: shipmentId }],
-        accountId,
-        userId: req.user.userId,
-      });
-
-      if (!shipment) {
-        return res.status(404).json({
-          success: false,
-          message: "Shipment not found",
-        });
-      }
-
-      // Get label URL using SDK Manager
-      const labelResponse = await sdkManager.execute(accountId, async (sdk) => {
-        return await sdk.shipments.getShipmentLabels({
-          shipment_ids: shipment.mlShipmentId,
-          response_type: format,
-        });
-      });
-
-      res.json({
-        success: true,
-        data: {
-          shipmentId: shipment.mlShipmentId,
-          labelUrl: labelResponse?.url || labelResponse,
-          format,
-        },
-      });
-    } catch (error) {
-      logger.error({
-        action: "GET_LABEL_ERROR",
-        shipmentId: req.params.shipmentId,
-        userId: req.user.userId,
-        error: error.message,
-      });
-
-      res.status(500).json({
-        success: false,
-        message: "Failed to get shipping label",
-        error: error.message,
-      });
-    }
-  },
-);
-
-/**
- * PUT /api/shipments/:accountId/:shipmentId
- * Update shipment status on ML
- */
-router.put(
-  "/:accountId/:shipmentId",
-  authenticateToken,
-  validateMLToken("accountId"),
-  async (req, res) => {
-    try {
-      const { accountId, shipmentId } = req.params;
-      const { status, trackingNumber, serviceId } = req.body;
-      const account = req.mlAccount;
-
-      const shipment = await Shipment.findOne({
-        $or: [{ id: shipmentId }, { mlShipmentId: shipmentId }],
-        accountId,
-        userId: req.user.userId,
-      });
-
-      if (!shipment) {
-        return res.status(404).json({
-          success: false,
-          message: "Shipment not found",
-        });
-      }
-
-      // Update shipment using SDK Manager
-      const updateData = {};
-      if (status) updateData.status = status;
-      if (trackingNumber) updateData.tracking_number = trackingNumber;
-      if (serviceId) updateData.service_id = serviceId;
-
-      await sdkManager.execute(accountId, async (sdk) => {
-        return await sdk.shipments.updateShipment(
-          shipment.mlShipmentId,
-          updateData,
-        );
-      });
-
-      // Update local DB
-      if (status) {
-        shipment.status = status;
-        shipment.statusHistory.push({
-          status,
-          date: new Date(),
-        });
-      }
-      if (trackingNumber) shipment.trackingNumber = trackingNumber;
-      shipment.lastSyncedAt = new Date();
-      await shipment.save();
-
-      logger.info({
-        action: "SHIPMENT_UPDATED",
-        shipmentId: shipment.mlShipmentId,
-        accountId,
-        userId: req.user.userId,
-        status,
-      });
-
-      res.json({
-        success: true,
-        message: "Shipment updated successfully",
-        data: shipment.getDetails(),
-      });
-    } catch (error) {
-      logger.error({
-        action: "UPDATE_SHIPMENT_ERROR",
-        shipmentId: req.params.shipmentId,
-        userId: req.user.userId,
-        error: error.message,
-      });
-
-      res.status(500).json({
-        success: false,
-        message: "Failed to update shipment",
-        error: error.message,
-      });
-    }
-  },
-);
-
-/**
- * POST /api/shipments/:accountId/sync
- * Sync shipments from Mercado Livre (based on orders)
- * Body params:
- *   - all: If true, sync shipments for ALL orders (default false, limits to 50 orders)
- */
-router.post(
-  "/:accountId/sync",
-  authenticateToken,
-  validateMLToken("accountId"),
-  async (req, res) => {
-    try {
-      const { accountId } = req.params;
-      const { all = false } = req.body;
-      const account = req.mlAccount;
-
-      logger.info({
-        action: "SHIPMENTS_SYNC_STARTED",
-        accountId,
-        userId: req.user.userId,
-        all,
-        timestamp: new Date().toISOString(),
-      });
-
-      // Get orders with shipments
-      const query = {
-        accountId,
-        userId: req.user.userId,
-        "shipping.id": { $exists: true, $ne: null },
-      };
-
-      const orders = all
-        ? await Order.find(query) // Get ALL orders
-        : await Order.find(query).limit(50); // Limit to 50
-
-      const shipmentIds = orders.map((o) => o.shipping?.id).filter((id) => id);
-
-      // Fetch shipment details using SDK Manager in batches
-      const mlShipments = [];
-
-      if (all && shipmentIds.length > 20) {
-        // Process in batches for unlimited mode
-        for (let i = 0; i < shipmentIds.length; i += 20) {
-          const batch = shipmentIds.slice(i, i + 20);
-          const batchShipments = await Promise.all(
-            batch.map((id) =>
-              sdkManager.getShipment(accountId, id).catch((error) => {
-                logger.warn({
-                  action: "FETCH_SHIPMENT_DETAILS_ERROR",
-                  shipmentId: id,
-                  error: error.message,
-                });
-                return null;
-              }),
-            ),
-          );
-          mlShipments.push(...batchShipments.filter((s) => s !== null));
-        }
-      } else {
-        // Normal mode - fetch all at once
-        const shipmentsData = await Promise.all(
-          shipmentIds.map((id) =>
-            sdkManager.getShipment(accountId, id).catch((error) => {
-              logger.warn({
-                action: "FETCH_SHIPMENT_DETAILS_ERROR",
-                shipmentId: id,
-                error: error.message,
-              });
-              return null;
-            }),
-          ),
-        );
-        mlShipments.push(...shipmentsData.filter((s) => s !== null));
-      }
-
-      // Save shipments
-      const savedShipments = await saveShipments(
-        accountId,
-        req.user.userId,
-        mlShipments,
-      );
-
-      logger.info({
-        action: "SHIPMENTS_SYNC_COMPLETED",
-        accountId,
-        userId: req.user.userId,
-        shipmentsCount: savedShipments.length,
-        timestamp: new Date().toISOString(),
-      });
-
-      res.json({
-        success: true,
-        message: `Synchronized ${savedShipments.length} shipments`,
-        data: {
-          accountId,
-          shipmentsCount: savedShipments.length,
-          shipments: savedShipments.map((s) => s.getSummary()),
-          syncedAt: new Date().toISOString(),
-        },
-      });
-    } catch (error) {
-      logger.error({
-        action: "SHIPMENTS_SYNC_ERROR",
-        accountId: req.params.accountId,
-        userId: req.user.userId,
-        error: error.message,
-        timestamp: new Date().toISOString(),
-      });
-
-      res.status(500).json({
-        success: false,
-        message: "Failed to sync shipments",
-        error: error.message,
-      });
-    }
-  },
-);
-
-// ============================================
-// HELPER FUNCTIONS
-// ============================================
+  return mlShipments;
+}
 
 /**
  * Save or update shipments in database
@@ -754,7 +385,6 @@ async function saveShipments(accountId, userId, mlShipments) {
         lastSyncedAt: new Date(),
       };
 
-      // Find or create shipment
       let shipment = await Shipment.findOne({
         accountId,
         mlShipmentId: mlShipment.id.toString(),
@@ -782,6 +412,300 @@ async function saveShipments(accountId, userId, mlShipments) {
   return savedShipments;
 }
 
+// ============================================
+// PUBLIC SHIPMENT ENDPOINTS
+// ============================================
+
+/**
+ * GET /api/shipments
+ * List all shipments for the authenticated user
+ */
+router.get("/", authenticateToken, async (req, res) => {
+  try {
+    const {
+      limit = 100,
+      offset = 0,
+      status,
+      sort = "-dateCreated",
+    } = req.query;
+
+    const query = buildShipmentQuery({
+      userId: req.user.userId,
+      status,
+    });
+
+    const shipments = await Shipment.find(query)
+      .sort(sort)
+      .limit(parseInt(limit))
+      .skip(parseInt(offset));
+
+    const total = await Shipment.countDocuments(query);
+
+    return sendSuccess(res, {
+      shipments: shipments.map((s) => s.getSummary()),
+      total,
+      limit: parseInt(limit),
+      offset: parseInt(offset),
+    });
+  } catch (error) {
+    return handleError(
+      res,
+      500,
+      "Failed to fetch shipments",
+      error,
+      "GET_SHIPMENTS_ERROR",
+      { userId: req.user.userId }
+    );
+  }
+});
+
+// ============================================
+// ACCOUNT-SPECIFIC SHIPMENT ENDPOINTS
+// ============================================
+
+/**
+ * GET /api/shipments/:accountId
+ * List shipments for specific account
+ */
+router.get("/:accountId", authenticateToken, async (req, res) => {
+  try {
+    const { accountId } = req.params;
+    const {
+      all,
+      limit: queryLimit,
+      offset = 0,
+      status,
+      sort = "-dateCreated",
+      "date_created.from": dateFrom,
+      "date_created.to": dateTo,
+    } = req.query;
+
+    const limit = all === "true" ? 999999 : queryLimit || 100;
+
+    const account = await verifyAccount(accountId, req.user.userId);
+    if (!account) {
+      return sendSuccess(res, null, "Account not found", 404);
+    }
+
+    const query = buildShipmentQuery({
+      accountId,
+      userId: req.user.userId,
+      status,
+      dateFrom,
+      dateTo,
+    });
+
+    const shipments = await Shipment.find(query)
+      .sort(sort)
+      .limit(parseInt(limit))
+      .skip(parseInt(offset));
+
+    const total = await Shipment.countDocuments(query);
+
+    return sendSuccess(res, {
+      account: {
+        id: account.id,
+        nickname: account.nickname,
+      },
+      shipments: shipments.map((s) => s.getSummary()),
+      total,
+      limit: parseInt(limit),
+      offset: parseInt(offset),
+    });
+  } catch (error) {
+    return handleError(
+      res,
+      500,
+      "Failed to fetch shipments",
+      error,
+      "GET_ACCOUNT_SHIPMENTS_ERROR",
+      { accountId: req.params.accountId, userId: req.user.userId }
+    );
+  }
+});
+
+/**
+ * GET /api/shipments/:accountId/pending
+ * List pending shipments for specific account
+ */
+router.get("/:accountId/pending", authenticateToken, async (req, res) => {
+  try {
+    const { accountId } = req.params;
+
+    const account = await verifyAccount(accountId, req.user.userId);
+    if (!account) {
+      return sendSuccess(res, null, "Account not found", 404);
+    }
+
+    const shipments = await Shipment.findPending(accountId);
+
+    return sendSuccess(res, {
+      account: {
+        id: account.id,
+        nickname: account.nickname,
+      },
+      shipments: shipments.map((s) => s.getSummary()),
+      total: shipments.length,
+    });
+  } catch (error) {
+    return handleError(
+      res,
+      500,
+      "Failed to fetch pending shipments",
+      error,
+      "GET_PENDING_SHIPMENTS_ERROR",
+      { accountId: req.params.accountId, userId: req.user.userId }
+    );
+  }
+});
+
+/**
+ * GET /api/shipments/:accountId/stats
+ * Get shipment statistics for an account
+ */
+router.get("/:accountId/stats", authenticateToken, async (req, res) => {
+  try {
+    const { accountId } = req.params;
+
+    const account = await verifyAccount(accountId, req.user.userId);
+    if (!account) {
+      return sendSuccess(res, null, "Account not found", 404);
+    }
+
+    const stats = await calculateShipmentStats(accountId, req.user.userId);
+
+    return sendSuccess(res, { data: stats });
+  } catch (error) {
+    logger.warn({
+      action: "GET_SHIPMENT_STATS_ERROR",
+      accountId: req.params.accountId,
+      userId: req.user.userId,
+      error: error.message,
+    });
+
+    // Return fallback stats
+    return sendSuccess(res, {
+      data: {
+        accountId: req.params.accountId,
+        shipments: { total: 0, pending: 0, shipped: 0, delivered: 0 },
+        statusBreakdown: {},
+      },
+    });
+  }
+});
+
+/**
+ * GET /api/shipments/:accountId/:shipmentId
+ * Get detailed shipment information
+ */
+router.get("/:accountId/:shipmentId", authenticateToken, async (req, res) => {
+  try {
+    const { accountId, shipmentId } = req.params;
+
+    const shipment = await findShipment(shipmentId, accountId, req.user.userId);
+    if (!shipment) {
+      return sendSuccess(res, null, "Shipment not found", 404);
+    }
+
+    return sendSuccess(res, { data: shipment.getDetails() });
+  } catch (error) {
+    return handleError(
+      res,
+      500,
+      "Failed to fetch shipment",
+      error,
+      "GET_SHIPMENT_ERROR",
+      { shipmentId: req.params.shipmentId, userId: req.user.userId }
+    );
+  }
+});
+
+/**
+ * GET /api/shipments/:accountId/:shipmentId/tracking
+ * Get tracking information from ML API
+ */
+router.get(
+  "/:accountId/:shipmentId/tracking",
+  authenticateToken,
+  validateMLToken("accountId"),
+  async (req, res) => {
+    try {
+      const { accountId, shipmentId } = req.params;
+
+      const shipment = await findShipment(shipmentId, accountId, req.user.userId);
+      if (!shipment) {
+        return sendSuccess(res, null, "Shipment not found", 404);
+      }
+
+      const tracking = await fetchTracking(accountId, shipment);
+
+      return sendSuccess(res, {
+        shipment: shipment.getSummary(),
+        tracking: tracking || shipment.trackingEvents || [],
+        trackingNumber: shipment.trackingNumber,
+        carrier: shipment.carrier,
+      });
+    } catch (error) {
+      return handleError(
+        res,
+        500,
+        "Failed to fetch tracking information",
+        error,
+        "GET_TRACKING_ERROR",
+        { shipmentId: req.params.shipmentId, userId: req.user.userId }
+      );
+    }
+  },
+);
+
+/**
+ * GET /api/shipments/:accountId/:shipmentId/label
+ * Get shipping label URL
+ */
+router.get(
+  "/:accountId/:shipmentId/label",
+  authenticateToken,
+  validateMLToken("accountId"),
+  async (req, res) => {
+    try {
+      const { accountId, shipmentId } = req.params;
+      const { format = "pdf" } = req.query;
+
+      const shipment = await findShipment(shipmentId, accountId, req.user.userId);
+      if (!shipment) {
+        return sendSuccess(res, null, "Shipment not found", 404);
+      }
+
+      const labelResponse = await fetchLabel(accountId, shipment, format);
+      if (!labelResponse) {
+        return handleError(
+          res,
+          500,
+          "Failed to get shipping label",
+          new Error("Label not available"),
+          "GET_LABEL_ERROR",
+          { shipmentId: req.params.shipmentId, userId: req.user.userId }
+        );
+      }
+
+      return sendSuccess(res, {
+        shipmentId: shipment.mlShipmentId,
+        labelUrl: labelResponse?.url || labelResponse,
+        format,
+      });
+    } catch (error) {
+      return handleError(
+        res,
+        500,
+        "Failed to get shipping label",
+        error,
+        "GET_LABEL_ERROR",
+        { shipmentId: req.params.shipmentId, userId: req.user.userId }
+      );
+    }
+  },
+);
+
 /**
  * GET /api/shipments/:accountId/:shipmentId/returns
  * Get return information for a shipment
@@ -793,59 +717,164 @@ router.get(
   async (req, res) => {
     try {
       const { accountId, shipmentId } = req.params;
-      const account = req.mlAccount;
 
-      // Find shipment in DB
-      const shipment = await Shipment.findOne({
-        $or: [{ id: shipmentId }, { mlShipmentId: shipmentId }],
-        accountId,
-        userId: req.user.userId,
-      });
-
+      const shipment = await findShipment(shipmentId, accountId, req.user.userId);
       if (!shipment) {
-        return res.status(404).json({
-          success: false,
-          message: "Shipment not found",
-        });
+        return sendSuccess(res, null, "Shipment not found", 404);
       }
 
-      // Fetch returns using SDK Manager
-      const returnsResponse = await sdkManager
-        .execute(accountId, async (sdk) => {
-          return await sdk.shipments.getShipmentReturns(shipment.mlShipmentId);
-        })
-        .catch((err) => {
-          logger.warn({
-            action: "FETCH_RETURNS_ERROR",
-            shipmentId: shipment.mlShipmentId,
-            error: err.message,
-          });
-          return null;
-        });
+      const returnsResponse = await fetchReturns(accountId, shipment);
 
-      res.json({
-        success: true,
-        data: {
-          shipmentId: shipment.id,
-          mlShipmentId: shipment.mlShipmentId,
-          orderId: shipment.orderId,
-          returns: returnsResponse || [],
-        },
+      return sendSuccess(res, {
+        shipmentId: shipment.id,
+        mlShipmentId: shipment.mlShipmentId,
+        orderId: shipment.orderId,
+        returns: returnsResponse || [],
       });
     } catch (error) {
-      logger.error({
-        action: "GET_SHIPMENT_RETURNS_ERROR",
-        accountId: req.params.accountId,
-        shipmentId: req.params.shipmentId,
-        userId: req.user.userId,
-        error: error.message,
+      return handleError(
+        res,
+        500,
+        "Failed to fetch shipment returns",
+        error,
+        "GET_SHIPMENT_RETURNS_ERROR",
+        { accountId: req.params.accountId, shipmentId: req.params.shipmentId, userId: req.user.userId }
+      );
+    }
+  },
+);
+
+/**
+ * PUT /api/shipments/:accountId/:shipmentId
+ * Update shipment status on ML
+ */
+router.put(
+  "/:accountId/:shipmentId",
+  authenticateToken,
+  validateMLToken("accountId"),
+  async (req, res) => {
+    try {
+      const { accountId, shipmentId } = req.params;
+      const { status, trackingNumber, serviceId } = req.body;
+
+      const shipment = await findShipment(shipmentId, accountId, req.user.userId);
+      if (!shipment) {
+        return sendSuccess(res, null, "Shipment not found", 404);
+      }
+
+      const updateData = {};
+      if (status) updateData.status = status;
+      if (trackingNumber) updateData.tracking_number = trackingNumber;
+      if (serviceId) updateData.service_id = serviceId;
+
+      await sdkManager.execute(accountId, async (sdk) => {
+        return await sdk.shipments.updateShipment(
+          shipment.mlShipmentId,
+          updateData,
+        );
       });
 
-      res.status(500).json({
-        success: false,
-        message: "Failed to fetch shipment returns",
-        error: error.message,
+      // Update local DB
+      if (status) {
+        shipment.status = status;
+        shipment.statusHistory.push({
+          status,
+          date: new Date(),
+        });
+      }
+      if (trackingNumber) shipment.trackingNumber = trackingNumber;
+      shipment.lastSyncedAt = new Date();
+      await shipment.save();
+
+      logger.info({
+        action: "SHIPMENT_UPDATED",
+        shipmentId: shipment.mlShipmentId,
+        accountId,
+        userId: req.user.userId,
+        status,
       });
+
+      return sendSuccess(res, {
+        data: shipment.getDetails(),
+      }, "Shipment updated successfully");
+    } catch (error) {
+      return handleError(
+        res,
+        500,
+        "Failed to update shipment",
+        error,
+        "UPDATE_SHIPMENT_ERROR",
+        { shipmentId: req.params.shipmentId, userId: req.user.userId }
+      );
+    }
+  },
+);
+
+/**
+ * POST /api/shipments/:accountId/sync
+ * Sync shipments from Mercado Livre
+ */
+router.post(
+  "/:accountId/sync",
+  authenticateToken,
+  validateMLToken("accountId"),
+  async (req, res) => {
+    try {
+      const { accountId } = req.params;
+      const { all = false } = req.body;
+
+      logger.info({
+        action: "SHIPMENTS_SYNC_STARTED",
+        accountId,
+        userId: req.user.userId,
+        all,
+        timestamp: new Date().toISOString(),
+      });
+
+      // Get shipment IDs from orders
+      const shipmentIds = await getShipmentIdsFromOrders(
+        accountId,
+        req.user.userId,
+        all === true
+      );
+
+      // Fetch shipments in batches
+      const mlShipments = await fetchShipmentsInBatches(
+        accountId,
+        shipmentIds,
+        all === true
+      );
+
+      // Save shipments
+      const savedShipments = await saveShipments(
+        accountId,
+        req.user.userId,
+        mlShipments,
+      );
+
+      logger.info({
+        action: "SHIPMENTS_SYNC_COMPLETED",
+        accountId,
+        userId: req.user.userId,
+        shipmentsCount: savedShipments.length,
+        timestamp: new Date().toISOString(),
+      });
+
+      return sendSuccess(res, {
+        accountId,
+        shipmentsCount: savedShipments.length,
+        shipments: savedShipments.map((s) => s.getSummary()),
+        syncedAt: new Date().toISOString(),
+      }, `Synchronized ${savedShipments.length} shipments`);
+    } catch (error) {
+      return handleError(
+        res,
+        500,
+        "Failed to sync shipments",
+        error,
+        "SHIPMENTS_SYNC_ERROR",
+        { accountId: req.params.accountId, userId: req.user.userId, timestamp: new Date().toISOString() }
+      );
     }
   },
 );
@@ -862,30 +891,16 @@ router.post(
     try {
       const { accountId, shipmentId } = req.params;
       const { reason, description } = req.body;
-      const account = req.mlAccount;
 
       if (!reason) {
-        return res.status(400).json({
-          success: false,
-          message: "Return reason is required",
-        });
+        return sendSuccess(res, null, "Return reason is required", 400);
       }
 
-      // Find shipment in DB
-      const shipment = await Shipment.findOne({
-        $or: [{ id: shipmentId }, { mlShipmentId: shipmentId }],
-        accountId,
-        userId: req.user.userId,
-      });
-
+      const shipment = await findShipment(shipmentId, accountId, req.user.userId);
       if (!shipment) {
-        return res.status(404).json({
-          success: false,
-          message: "Shipment not found",
-        });
+        return sendSuccess(res, null, "Shipment not found", 404);
       }
 
-      // Request return using SDK Manager
       const returnPayload = {
         reason,
         description: description || `Return requested via dashboard`,
@@ -911,19 +926,15 @@ router.post(
           mlReturnId: mlResponse?.id,
         });
 
-        res.json({
-          success: true,
-          message: "Return requested successfully",
-          data: {
-            shipmentId: shipment.id,
-            mlShipmentId: shipment.mlShipmentId,
-            returnId: mlResponse?.id,
-            status: "return_requested",
-            reason,
-            requestedAt: new Date(),
-            mlResponse: mlResponse,
-          },
-        });
+        return sendSuccess(res, {
+          shipmentId: shipment.id,
+          mlShipmentId: shipment.mlShipmentId,
+          returnId: mlResponse?.id,
+          status: "return_requested",
+          reason,
+          requestedAt: new Date(),
+          mlResponse,
+        }, "Return requested successfully");
       } catch (mlError) {
         logger.error({
           action: "REQUEST_SHIPMENT_RETURN_ML_ERROR",
@@ -932,26 +943,24 @@ router.post(
           mlError: mlError.message,
         });
 
-        res.status(400).json({
-          success: false,
-          message: "Failed to request return from Mercado Livre",
-          error: mlError.message,
-        });
+        return handleError(
+          res,
+          400,
+          "Failed to request return from Mercado Livre",
+          mlError,
+          "REQUEST_SHIPMENT_RETURN_ML_ERROR",
+          { accountId, shipmentId: shipment.mlShipmentId }
+        );
       }
     } catch (error) {
-      logger.error({
-        action: "REQUEST_SHIPMENT_RETURN_ERROR",
-        accountId: req.params.accountId,
-        shipmentId: req.params.shipmentId,
-        userId: req.user.userId,
-        error: error.message,
-      });
-
-      res.status(500).json({
-        success: false,
-        message: "Failed to request return",
-        error: error.message,
-      });
+      return handleError(
+        res,
+        500,
+        "Failed to request return",
+        error,
+        "REQUEST_SHIPMENT_RETURN_ERROR",
+        { accountId: req.params.accountId, shipmentId: req.params.shipmentId, userId: req.user.userId }
+      );
     }
   },
 );
