@@ -25,705 +25,205 @@ const MLAccount = require('../db/models/MLAccount');
 
 const router = express.Router();
 
-const ML_API_BASE = 'https://api.mercadolibre.com';
+const ML_API_BASE = 'https://api.mercadolivre.com';
+
+// ============================================
+// HELPER FUNCTIONS - Core error & response handling
+// ============================================
 
 /**
- * GET /api/promotions
- * List all promotions for the authenticated user
+ * Unified error handler for API responses
  */
-router.get('/', authenticateToken, async (req, res) => {
-  try {
-    const { limit = 100, offset = 0, status, type, sort = '-startDate' } = req.query;
+function handleError(res, statusCode, message, error, context = {}) {
+  const logData = {
+    action: context.action || 'UNKNOWN_ERROR',
+    ...context,
+    error: error.response?.data || error.message,
+  };
 
-    const query = { userId: req.user.userId };
-    if (status) query.status = status;
-    if (type) query.type = type;
+  logger.error(logData);
 
-    const promotions = await Promotion.find(query)
+  return res.status(statusCode).json({
+    success: false,
+    message,
+    error: error.response?.data?.message || error.message,
+  });
+}
+
+/**
+ * Unified success response handler
+ */
+function sendSuccess(res, data, message = null, statusCode = 200) {
+  const response = {
+    success: true,
+    ...data,
+  };
+
+  if (message) {
+    response.message = message;
+  }
+
+  return res.status(statusCode).json(response);
+}
+
+/**
+ * Build MongoDB query for promotions with filters
+ */
+function buildPromotionQuery(userId, accountId = null, filters = {}) {
+  const query = { userId };
+  if (accountId) query.accountId = accountId;
+  if (filters.status) query.status = filters.status;
+  if (filters.type) query.type = filters.type;
+  return query;
+}
+
+/**
+ * Paginate Promotion queries with consistent formatting
+ */
+async function paginate(query, options = {}) {
+  const {
+    limit = 100,
+    offset = 0,
+    sort = '-startDate',
+  } = options;
+
+  const limitNum = parseInt(limit);
+  const offsetNum = parseInt(offset);
+
+  const [data, total] = await Promise.all([
+    Promotion.find(query)
       .sort(sort)
-      .limit(parseInt(limit))
-      .skip(parseInt(offset));
+      .limit(limitNum)
+      .skip(offsetNum),
+    Promotion.countDocuments(query),
+  ]);
 
-    const total = await Promotion.countDocuments(query);
-
-    res.json({
-      success: true,
-      data: {
-        promotions: promotions.map(p => p.getSummary()),
-        total,
-        limit: parseInt(limit),
-        offset: parseInt(offset),
-      },
-    });
-  } catch (error) {
-    logger.error({
-      action: 'GET_PROMOTIONS_ERROR',
-      userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch promotions',
-      error: error.message,
-    });
-  }
-});
+  return {
+    data,
+    total,
+    limit: limitNum,
+    offset: offsetNum,
+  };
+}
 
 /**
- * GET /api/promotions/:accountId/deals
- * Get deals (DOD, Lightning offers) for an account
+ * Fetch account with validation
  */
-router.get('/:accountId/deals', authenticateToken, validateMLToken('accountId'), async (req, res) => {
-  try {
-    const { accountId } = req.params;
-    const account = req.mlAccount;
+async function fetchAccount(accountId, userId) {
+  const account = await MLAccount.findOne({
+    id: accountId,
+    userId,
+  });
 
-    const headers = {
-      'Authorization': `Bearer ${account.accessToken}`,
-      'Content-Type': 'application/json',
+  if (!account) {
+    return null;
+  }
+
+  return account;
+}
+
+/**
+ * Make ML API request with error handling
+ */
+async function makeMLRequest(method, endpoint, data = null, headers = {}, params = {}) {
+  try {
+    const config = {
+      headers,
+      params,
     };
 
-    // Get deals from ML API
-    let deals = [];
-    
-    try {
-      // Try to get seller deals/offers
-      const dealsResponse = await axios.get(
-        `${ML_API_BASE}/users/${account.mlUserId}/deals/search`,
-        { headers }
-      );
-      deals = dealsResponse.data.results || [];
-    } catch (err) {
-      logger.warn({
-        action: 'FETCH_DEALS_ERROR',
-        accountId,
-        error: err.response?.data || err.message,
-      });
+    let response;
+    switch (method.toLowerCase()) {
+      case 'get':
+        response = await axios.get(`${ML_API_BASE}${endpoint}`, config);
+        break;
+      case 'post':
+        response = await axios.post(`${ML_API_BASE}${endpoint}`, data, config);
+        break;
+      case 'put':
+        response = await axios.put(`${ML_API_BASE}${endpoint}`, data, config);
+        break;
+      case 'delete':
+        response = await axios.delete(`${ML_API_BASE}${endpoint}`, config);
+        break;
+      default:
+        throw new Error(`Unsupported method: ${method}`);
     }
 
-    // Also try to get lightning deals
-    try {
-      const lightningResponse = await axios.get(
-        `${ML_API_BASE}/seller-promotions/users/${account.mlUserId}`,
-        { 
-          headers,
-          params: { 
-            app_version: 'v2',
-            promotion_type: 'LIGHTNING'
-          }
-        }
-      );
-      
-      if (lightningResponse.data?.results) {
-        const lightningDeals = lightningResponse.data.results.map(deal => ({
-          ...deal,
-          type: 'lightning'
-        }));
-        deals = [...deals, ...lightningDeals];
-      }
-    } catch (err) {
-      // Lightning deals might not be available for all accounts
-      logger.debug('Lightning deals not available:', err.message);
-    }
-
-    res.json({
-      success: true,
-      data: {
-        deals,
-        total: deals.length,
-      },
-    });
+    return { success: true, data: response.data };
   } catch (error) {
-    logger.error({
-      action: 'GET_DEALS_ERROR',
-      accountId: req.params.accountId,
-      userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch deals',
-      error: error.message,
-    });
-  }
-});
-
-/**
- * GET /api/promotions/:accountId/stats
- * Get promotion statistics for an account
- */
-router.get('/:accountId/stats', authenticateToken, async (req, res) => {
-  try {
-    const { accountId } = req.params;
-
-    // Verify account exists
-    const account = await MLAccount.findOne({
-      id: accountId,
-      userId: req.user.userId,
-    });
-
-    if (!account) {
-      return res.status(404).json({
-        success: false,
-        message: 'Account not found',
-      });
-    }
-
-    const { stats, activeCount } = await Promotion.getStats(accountId);
-
-    const totalPromotions = await Promotion.countDocuments({
-      accountId,
-      userId: req.user.userId,
-    });
-
-    res.json({
-      success: true,
-      data: {
-        accountId,
-        promotions: {
-          total: totalPromotions,
-          active: activeCount,
-        },
-        statusBreakdown: stats,
-      },
-    });
-  } catch (error) {
-    logger.error({
-      action: 'GET_PROMOTION_STATS_ERROR',
-      accountId: req.params.accountId,
-      userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get promotion statistics',
-      error: error.message,
-    });
-  }
-});
-
-/**
- * GET /api/promotions/:accountId/active
- * List active promotions for specific account
- */
-router.get('/:accountId/active', authenticateToken, async (req, res) => {
-  try {
-    const { accountId } = req.params;
-
-    // Verify account belongs to user
-    const account = await MLAccount.findOne({
-      id: accountId,
-      userId: req.user.userId,
-    });
-
-    if (!account) {
-      return res.status(404).json({
-        success: false,
-        message: 'Account not found',
-      });
-    }
-
-    const promotions = await Promotion.findActive(accountId);
-
-    res.json({
-      success: true,
-      data: {
-        account: {
-          id: account.id,
-          nickname: account.nickname,
-        },
-        promotions: promotions.map(p => p.getSummary()),
-        total: promotions.length,
-      },
-    });
-  } catch (error) {
-    logger.error({
-      action: 'GET_ACTIVE_PROMOTIONS_ERROR',
-      accountId: req.params.accountId,
-      userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch active promotions',
-      error: error.message,
-    });
-  }
-});
-
-/**
- * GET /api/promotions/:accountId/campaigns
- * List available campaigns from ML
- */
-router.get('/:accountId/campaigns', authenticateToken, validateMLToken('accountId'), async (req, res) => {
-  try {
-    const { accountId } = req.params;
-    const account = req.mlAccount;
-
-    const headers = {
-      'Authorization': `Bearer ${account.accessToken}`,
-      'Content-Type': 'application/json',
-    };
-
-    // Get available deals/campaigns
-    const dealsResponse = await axios.get(
-      `${ML_API_BASE}/users/${account.mlUserId}/deals/search`,
-      { headers }
-    ).catch(err => {
-      logger.warn({
-        action: 'FETCH_DEALS_ERROR',
-        accountId,
-        error: err.response?.data || err.message,
-      });
-      return { data: { results: [] } };
-    });
-
-    res.json({
-      success: true,
-      data: {
-        campaigns: dealsResponse.data.results || [],
-        paging: dealsResponse.data.paging || { total: 0 },
-      },
-    });
-  } catch (error) {
-    logger.error({
-      action: 'GET_CAMPAIGNS_ERROR',
-      accountId: req.params.accountId,
-      userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch campaigns',
-      error: error.message,
-    });
-  }
-});
-
-/**
- * GET /api/promotions/:accountId
- * List promotions for specific account
- */
-router.get('/:accountId', authenticateToken, async (req, res) => {
-  try {
-    const { accountId } = req.params;
-    const { limit = 100, offset = 0, status, type, sort = '-startDate' } = req.query;
-
-    // Verify account belongs to user
-    const account = await MLAccount.findOne({
-      id: accountId,
-      userId: req.user.userId,
-    });
-
-    if (!account) {
-      return res.status(404).json({
-        success: false,
-        message: 'Account not found',
-      });
-    }
-
-    const query = { accountId, userId: req.user.userId };
-    if (status) query.status = status;
-    if (type) query.type = type;
-
-    const promotions = await Promotion.find(query)
-      .sort(sort)
-      .limit(parseInt(limit))
-      .skip(parseInt(offset));
-
-    const total = await Promotion.countDocuments(query);
-
-    res.json({
-      success: true,
-      data: {
-        account: {
-          id: account.id,
-          nickname: account.nickname,
-        },
-        promotions: promotions.map(p => p.getSummary()),
-        total,
-        limit: parseInt(limit),
-        offset: parseInt(offset),
-      },
-    });
-  } catch (error) {
-    logger.error({
-      action: 'GET_ACCOUNT_PROMOTIONS_ERROR',
-      accountId: req.params.accountId,
-      userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch promotions',
-      error: error.message,
-    });
-  }
-});
-
-/**
- * GET /api/promotions/:accountId/:promotionId
- * Get detailed promotion information
- */
-router.get('/:accountId/:promotionId', authenticateToken, async (req, res) => {
-  try {
-    const { accountId, promotionId } = req.params;
-
-    const promotion = await Promotion.findOne({
-      $or: [{ id: promotionId }, { mlPromotionId: promotionId }],
-      accountId,
-      userId: req.user.userId,
-    });
-
-    if (!promotion) {
-      return res.status(404).json({
-        success: false,
-        message: 'Promotion not found',
-      });
-    }
-
-    res.json({
-      success: true,
-      data: promotion.getDetails(),
-    });
-  } catch (error) {
-    logger.error({
-      action: 'GET_PROMOTION_ERROR',
-      promotionId: req.params.promotionId,
-      userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch promotion',
-      error: error.message,
-    });
-  }
-});
-
-/**
- * POST /api/promotions/:accountId
- * Create a new promotion
- */
-router.post('/:accountId', authenticateToken, validateMLToken('accountId'), async (req, res) => {
-  try {
-    const { accountId } = req.params;
-    const { type, itemId, discountPercentage, startDate, finishDate, dealPrice } = req.body;
-    const account = req.mlAccount;
-
-    if (!type || !itemId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Type and itemId are required',
-      });
-    }
-
-    const headers = {
-      'Authorization': `Bearer ${account.accessToken}`,
-      'Content-Type': 'application/json',
-    };
-
-    // Create promotion on ML
-    const promotionData = {
-      type,
-      deal_price: dealPrice,
-      start_date: startDate,
-      finish_date: finishDate,
-    };
-
-    const response = await axios.post(
-      `${ML_API_BASE}/seller-promotions/items/${itemId}`,
-      promotionData,
-      { headers }
-    );
-
-    // Save to local DB
-    const promotion = new Promotion({
-      accountId,
-      userId: req.user.userId,
-      mlPromotionId: response.data.id || `local_${Date.now()}`,
-      type,
-      status: response.data.status || 'pending',
-      startDate: new Date(startDate),
-      finishDate: new Date(finishDate),
-      items: [{
-        itemId,
-        promotionPrice: dealPrice,
-        discountPercentage,
-      }],
-      discount: {
-        type: 'percentage',
-        value: discountPercentage,
-      },
-    });
-    await promotion.save();
-
-    logger.info({
-      action: 'PROMOTION_CREATED',
-      promotionId: promotion.mlPromotionId,
-      accountId,
-      userId: req.user.userId,
-    });
-
-    res.json({
-      success: true,
-      message: 'Promotion created successfully',
-      data: promotion.getDetails(),
-    });
-  } catch (error) {
-    logger.error({
-      action: 'CREATE_PROMOTION_ERROR',
-      accountId: req.params.accountId,
-      userId: req.user.userId,
+    logger.warn({
+      action: 'ML_API_ERROR',
+      method,
+      endpoint,
       error: error.response?.data || error.message,
     });
 
-    res.status(error.response?.status || 500).json({
+    return {
       success: false,
-      message: 'Failed to create promotion',
-      error: error.response?.data?.message || error.message,
-    });
+      error,
+      data: error.response?.data,
+    };
   }
-});
+}
 
 /**
- * PUT /api/promotions/:accountId/:promotionId
- * Update a promotion
+ * Get ML headers for authenticated requests
  */
-router.put('/:accountId/:promotionId', authenticateToken, validateMLToken('accountId'), async (req, res) => {
-  try {
-    const { accountId, promotionId } = req.params;
-    const { status, finishDate } = req.body;
-    const account = req.mlAccount;
+function getMLHeaders(accessToken) {
+  return {
+    'Authorization': `Bearer ${accessToken}`,
+    'Content-Type': 'application/json',
+  };
+}
 
-    const promotion = await Promotion.findOne({
-      $or: [{ id: promotionId }, { mlPromotionId: promotionId }],
-      accountId,
-      userId: req.user.userId,
-    });
+/**
+ * Aggregate promotions by type and status
+ */
+function aggregatePromotions(promotions) {
+  const byType = {};
+  const byStatus = {};
 
-    if (!promotion) {
-      return res.status(404).json({
-        success: false,
-        message: 'Promotion not found',
-      });
+  promotions.forEach(p => {
+    // Count by type
+    if (!byType[p.type]) {
+      byType[p.type] = { count: 0, promotions: [] };
     }
-
-    const headers = {
-      'Authorization': `Bearer ${account.accessToken}`,
-      'Content-Type': 'application/json',
-    };
-
-    const updateData = {};
-    if (status) updateData.status = status;
-    if (finishDate) updateData.finish_date = finishDate;
-
-    // Update on ML
-    await axios.put(
-      `${ML_API_BASE}/seller-promotions/${promotion.mlPromotionId}`,
-      updateData,
-      { headers }
-    ).catch(err => {
-      logger.warn({
-        action: 'UPDATE_PROMOTION_ML_ERROR',
-        promotionId: promotion.mlPromotionId,
-        error: err.response?.data || err.message,
-      });
+    byType[p.type].count++;
+    byType[p.type].promotions.push({
+      id: p.id,
+      name: p.name,
+      status: p.status,
+      startDate: p.start_date,
+      finishDate: p.finish_date,
     });
 
-    // Update local
-    if (status) promotion.status = status;
-    if (finishDate) promotion.finishDate = new Date(finishDate);
-    promotion.lastSyncedAt = new Date();
-    await promotion.save();
-
-    logger.info({
-      action: 'PROMOTION_UPDATED',
-      promotionId: promotion.mlPromotionId,
-      accountId,
-      userId: req.user.userId,
-    });
-
-    res.json({
-      success: true,
-      message: 'Promotion updated successfully',
-      data: promotion.getDetails(),
-    });
-  } catch (error) {
-    logger.error({
-      action: 'UPDATE_PROMOTION_ERROR',
-      promotionId: req.params.promotionId,
-      userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update promotion',
-      error: error.message,
-    });
-  }
-});
-
-/**
- * DELETE /api/promotions/:accountId/:promotionId
- * Cancel/delete a promotion
- */
-router.delete('/:accountId/:promotionId', authenticateToken, validateMLToken('accountId'), async (req, res) => {
-  try {
-    const { accountId, promotionId } = req.params;
-    const account = req.mlAccount;
-
-    const promotion = await Promotion.findOne({
-      $or: [{ id: promotionId }, { mlPromotionId: promotionId }],
-      accountId,
-      userId: req.user.userId,
-    });
-
-    if (!promotion) {
-      return res.status(404).json({
-        success: false,
-        message: 'Promotion not found',
-      });
+    // Count by status
+    if (!byStatus[p.status]) {
+      byStatus[p.status] = 0;
     }
+    byStatus[p.status]++;
+  });
 
-    const headers = {
-      'Authorization': `Bearer ${account.accessToken}`,
-      'Content-Type': 'application/json',
-    };
-
-    // Cancel on ML
-    await axios.delete(
-      `${ML_API_BASE}/seller-promotions/${promotion.mlPromotionId}`,
-      { headers }
-    ).catch(err => {
-      logger.warn({
-        action: 'DELETE_PROMOTION_ML_ERROR',
-        promotionId: promotion.mlPromotionId,
-        error: err.response?.data || err.message,
-      });
-    });
-
-    // Update local
-    promotion.status = 'cancelled';
-    await promotion.save();
-
-    logger.info({
-      action: 'PROMOTION_CANCELLED',
-      promotionId: promotion.mlPromotionId,
-      accountId,
-      userId: req.user.userId,
-    });
-
-    res.json({
-      success: true,
-      message: 'Promotion cancelled successfully',
-    });
-  } catch (error) {
-    logger.error({
-      action: 'DELETE_PROMOTION_ERROR',
-      promotionId: req.params.promotionId,
-      userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to cancel promotion',
-      error: error.message,
-    });
-  }
-});
+  return { byType, byStatus };
+}
 
 /**
- * POST /api/promotions/:accountId/sync
- * Sync promotions from Mercado Livre
+ * Find active and upcoming promotions from list
  */
-router.post('/:accountId/sync', authenticateToken, validateMLToken('accountId'), async (req, res) => {
-  try {
-    const { accountId } = req.params;
-    const account = req.mlAccount;
+function filterActiveAndUpcoming(promotions) {
+  const now = new Date();
+  const activePromotions = promotions.filter(p =>
+    p.status === 'started' ||
+    (new Date(p.start_date) <= now && new Date(p.finish_date) >= now)
+  );
+  const upcomingPromotions = promotions.filter(p =>
+    p.status === 'pending' ||
+    new Date(p.start_date) > now
+  );
 
-    logger.info({
-      action: 'PROMOTIONS_SYNC_STARTED',
-      accountId,
-      userId: req.user.userId,
-      timestamp: new Date().toISOString(),
-    });
-
-    const headers = {
-      'Authorization': `Bearer ${account.accessToken}`,
-      'Content-Type': 'application/json',
-    };
-
-    // Get seller promotions
-    const promotionsResponse = await axios.get(
-      `${ML_API_BASE}/seller-promotions/search`,
-      {
-        headers,
-        params: {
-          seller_id: account.mlUserId,
-        },
-      }
-    ).catch(err => {
-      logger.warn({
-        action: 'FETCH_PROMOTIONS_ERROR',
-        accountId,
-        error: err.response?.data || err.message,
-      });
-      return { data: { results: [] } };
-    });
-
-    const mlPromotions = promotionsResponse.data.results || [];
-
-    // Save promotions
-    const savedPromotions = await savePromotions(accountId, req.user.userId, mlPromotions);
-
-    logger.info({
-      action: 'PROMOTIONS_SYNC_COMPLETED',
-      accountId,
-      userId: req.user.userId,
-      promotionsCount: savedPromotions.length,
-      timestamp: new Date().toISOString(),
-    });
-
-    res.json({
-      success: true,
-      message: `Synchronized ${savedPromotions.length} promotions`,
-      data: {
-        accountId,
-        promotionsCount: savedPromotions.length,
-        promotions: savedPromotions.map(p => p.getSummary()),
-        syncedAt: new Date().toISOString(),
-      },
-    });
-  } catch (error) {
-    logger.error({
-      action: 'PROMOTIONS_SYNC_ERROR',
-      accountId: req.params.accountId,
-      userId: req.user.userId,
-      error: error.message,
-      timestamp: new Date().toISOString(),
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to sync promotions',
-      error: error.message,
-    });
-  }
-});
-
-// ============================================
-// HELPER FUNCTIONS
-// ============================================
+  return { activePromotions, upcomingPromotions };
+}
 
 /**
  * Save or update promotions in database
@@ -792,7 +292,525 @@ async function savePromotions(accountId, userId, mlPromotions) {
 }
 
 // ============================================
-// SELLER PROMOTIONS - ADVANCED ENDPOINTS (API v2)
+// ROUTES - User promotions (local database)
+// ============================================
+
+/**
+ * GET /api/promotions
+ * List all promotions for the authenticated user
+ */
+router.get('/', authenticateToken, async (req, res) => {
+  try {
+    const { limit = 100, offset = 0, status, type, sort = '-startDate' } = req.query;
+
+    const query = buildPromotionQuery(req.user.userId, null, { status, type });
+    const result = await paginate(query, { limit, offset, sort });
+
+    sendSuccess(res, {
+      data: {
+        promotions: result.data.map(p => p.getSummary()),
+        total: result.total,
+        limit: result.limit,
+        offset: result.offset,
+      },
+    });
+  } catch (error) {
+    handleError(res, 500, 'Failed to fetch promotions', error, {
+      action: 'GET_PROMOTIONS_ERROR',
+      userId: req.user.userId,
+    });
+  }
+});
+
+/**
+ * GET /api/promotions/:accountId
+ * List promotions for specific account
+ */
+router.get('/:accountId', authenticateToken, async (req, res) => {
+  try {
+    const { accountId } = req.params;
+    const { limit = 100, offset = 0, status, type, sort = '-startDate' } = req.query;
+
+    // Verify account belongs to user
+    const account = await fetchAccount(accountId, req.user.userId);
+    if (!account) {
+      return res.status(404).json({
+        success: false,
+        message: 'Account not found',
+      });
+    }
+
+    const query = buildPromotionQuery(req.user.userId, accountId, { status, type });
+    const result = await paginate(query, { limit, offset, sort });
+
+    sendSuccess(res, {
+      data: {
+        account: {
+          id: account.id,
+          nickname: account.nickname,
+        },
+        promotions: result.data.map(p => p.getSummary()),
+        total: result.total,
+        limit: result.limit,
+        offset: result.offset,
+      },
+    });
+  } catch (error) {
+    handleError(res, 500, 'Failed to fetch promotions', error, {
+      action: 'GET_ACCOUNT_PROMOTIONS_ERROR',
+      accountId: req.params.accountId,
+      userId: req.user.userId,
+    });
+  }
+});
+
+/**
+ * GET /api/promotions/:accountId/active
+ * List active promotions for specific account
+ */
+router.get('/:accountId/active', authenticateToken, async (req, res) => {
+  try {
+    const { accountId } = req.params;
+
+    // Verify account belongs to user
+    const account = await fetchAccount(accountId, req.user.userId);
+    if (!account) {
+      return res.status(404).json({
+        success: false,
+        message: 'Account not found',
+      });
+    }
+
+    const promotions = await Promotion.findActive(accountId);
+
+    sendSuccess(res, {
+      data: {
+        account: {
+          id: account.id,
+          nickname: account.nickname,
+        },
+        promotions: promotions.map(p => p.getSummary()),
+        total: promotions.length,
+      },
+    });
+  } catch (error) {
+    handleError(res, 500, 'Failed to fetch active promotions', error, {
+      action: 'GET_ACTIVE_PROMOTIONS_ERROR',
+      accountId: req.params.accountId,
+      userId: req.user.userId,
+    });
+  }
+});
+
+/**
+ * GET /api/promotions/:accountId/stats
+ * Get promotion statistics for an account
+ */
+router.get('/:accountId/stats', authenticateToken, async (req, res) => {
+  try {
+    const { accountId } = req.params;
+
+    // Verify account exists
+    const account = await fetchAccount(accountId, req.user.userId);
+    if (!account) {
+      return res.status(404).json({
+        success: false,
+        message: 'Account not found',
+      });
+    }
+
+    const { stats, activeCount } = await Promotion.getStats(accountId);
+
+    const totalPromotions = await Promotion.countDocuments({
+      accountId,
+      userId: req.user.userId,
+    });
+
+    sendSuccess(res, {
+      data: {
+        accountId,
+        promotions: {
+          total: totalPromotions,
+          active: activeCount,
+        },
+        statusBreakdown: stats,
+      },
+    });
+  } catch (error) {
+    handleError(res, 500, 'Failed to get promotion statistics', error, {
+      action: 'GET_PROMOTION_STATS_ERROR',
+      accountId: req.params.accountId,
+      userId: req.user.userId,
+    });
+  }
+});
+
+/**
+ * GET /api/promotions/:accountId/:promotionId
+ * Get detailed promotion information
+ */
+router.get('/:accountId/:promotionId', authenticateToken, async (req, res) => {
+  try {
+    const { accountId, promotionId } = req.params;
+
+    const promotion = await Promotion.findOne({
+      $or: [{ id: promotionId }, { mlPromotionId: promotionId }],
+      accountId,
+      userId: req.user.userId,
+    });
+
+    if (!promotion) {
+      return res.status(404).json({
+        success: false,
+        message: 'Promotion not found',
+      });
+    }
+
+    sendSuccess(res, { data: promotion.getDetails() });
+  } catch (error) {
+    handleError(res, 500, 'Failed to fetch promotion', error, {
+      action: 'GET_PROMOTION_ERROR',
+      promotionId: req.params.promotionId,
+      userId: req.user.userId,
+    });
+  }
+});
+
+/**
+ * POST /api/promotions/:accountId
+ * Create a new promotion
+ */
+router.post('/:accountId', authenticateToken, validateMLToken('accountId'), async (req, res) => {
+  try {
+    const { accountId } = req.params;
+    const { type, itemId, discountPercentage, startDate, finishDate, dealPrice } = req.body;
+    const account = req.mlAccount;
+
+    if (!type || !itemId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Type and itemId are required',
+      });
+    }
+
+    const headers = getMLHeaders(account.accessToken);
+
+    const promotionData = {
+      type,
+      deal_price: dealPrice,
+      start_date: startDate,
+      finish_date: finishDate,
+    };
+
+    const response = await axios.post(
+      `${ML_API_BASE}/seller-promotions/items/${itemId}`,
+      promotionData,
+      { headers }
+    );
+
+    // Save to local DB
+    const promotion = new Promotion({
+      accountId,
+      userId: req.user.userId,
+      mlPromotionId: response.data.id || `local_${Date.now()}`,
+      type,
+      status: response.data.status || 'pending',
+      startDate: new Date(startDate),
+      finishDate: new Date(finishDate),
+      items: [{
+        itemId,
+        promotionPrice: dealPrice,
+        discountPercentage,
+      }],
+      discount: {
+        type: 'percentage',
+        value: discountPercentage,
+      },
+    });
+    await promotion.save();
+
+    logger.info({
+      action: 'PROMOTION_CREATED',
+      promotionId: promotion.mlPromotionId,
+      accountId,
+      userId: req.user.userId,
+    });
+
+    sendSuccess(res, {
+      data: promotion.getDetails(),
+      message: 'Promotion created successfully',
+    }, null, 201);
+  } catch (error) {
+    handleError(res, error.response?.status || 500, 'Failed to create promotion', error, {
+      action: 'CREATE_PROMOTION_ERROR',
+      accountId: req.params.accountId,
+      userId: req.user.userId,
+    });
+  }
+});
+
+/**
+ * PUT /api/promotions/:accountId/:promotionId
+ * Update a promotion
+ */
+router.put('/:accountId/:promotionId', authenticateToken, validateMLToken('accountId'), async (req, res) => {
+  try {
+    const { accountId, promotionId } = req.params;
+    const { status, finishDate } = req.body;
+    const account = req.mlAccount;
+
+    const promotion = await Promotion.findOne({
+      $or: [{ id: promotionId }, { mlPromotionId: promotionId }],
+      accountId,
+      userId: req.user.userId,
+    });
+
+    if (!promotion) {
+      return res.status(404).json({
+        success: false,
+        message: 'Promotion not found',
+      });
+    }
+
+    const headers = getMLHeaders(account.accessToken);
+
+    const updateData = {};
+    if (status) updateData.status = status;
+    if (finishDate) updateData.finish_date = finishDate;
+
+    // Update on ML (non-critical)
+    await makeMLRequest('put', `/seller-promotions/${promotion.mlPromotionId}`, updateData, headers);
+
+    // Update local
+    if (status) promotion.status = status;
+    if (finishDate) promotion.finishDate = new Date(finishDate);
+    promotion.lastSyncedAt = new Date();
+    await promotion.save();
+
+    logger.info({
+      action: 'PROMOTION_UPDATED',
+      promotionId: promotion.mlPromotionId,
+      accountId,
+      userId: req.user.userId,
+    });
+
+    sendSuccess(res, {
+      data: promotion.getDetails(),
+      message: 'Promotion updated successfully',
+    });
+  } catch (error) {
+    handleError(res, 500, 'Failed to update promotion', error, {
+      action: 'UPDATE_PROMOTION_ERROR',
+      promotionId: req.params.promotionId,
+      userId: req.user.userId,
+    });
+  }
+});
+
+/**
+ * DELETE /api/promotions/:accountId/:promotionId
+ * Cancel/delete a promotion
+ */
+router.delete('/:accountId/:promotionId', authenticateToken, validateMLToken('accountId'), async (req, res) => {
+  try {
+    const { accountId, promotionId } = req.params;
+    const account = req.mlAccount;
+
+    const promotion = await Promotion.findOne({
+      $or: [{ id: promotionId }, { mlPromotionId: promotionId }],
+      accountId,
+      userId: req.user.userId,
+    });
+
+    if (!promotion) {
+      return res.status(404).json({
+        success: false,
+        message: 'Promotion not found',
+      });
+    }
+
+    const headers = getMLHeaders(account.accessToken);
+
+    // Cancel on ML (non-critical)
+    await makeMLRequest('delete', `/seller-promotions/${promotion.mlPromotionId}`, null, headers);
+
+    // Update local
+    promotion.status = 'cancelled';
+    await promotion.save();
+
+    logger.info({
+      action: 'PROMOTION_CANCELLED',
+      promotionId: promotion.mlPromotionId,
+      accountId,
+      userId: req.user.userId,
+    });
+
+    sendSuccess(res, { message: 'Promotion cancelled successfully' });
+  } catch (error) {
+    handleError(res, 500, 'Failed to cancel promotion', error, {
+      action: 'DELETE_PROMOTION_ERROR',
+      promotionId: req.params.promotionId,
+      userId: req.user.userId,
+    });
+  }
+});
+
+/**
+ * POST /api/promotions/:accountId/sync
+ * Sync promotions from Mercado Livre
+ */
+router.post('/:accountId/sync', authenticateToken, validateMLToken('accountId'), async (req, res) => {
+  try {
+    const { accountId } = req.params;
+    const account = req.mlAccount;
+
+    logger.info({
+      action: 'PROMOTIONS_SYNC_STARTED',
+      accountId,
+      userId: req.user.userId,
+      timestamp: new Date().toISOString(),
+    });
+
+    const headers = getMLHeaders(account.accessToken);
+
+    // Get seller promotions
+    const { success, data } = await makeMLRequest('get', '/seller-promotions/search', null, headers, {
+      seller_id: account.mlUserId,
+    });
+
+    const mlPromotions = data?.results || [];
+
+    // Save promotions
+    const savedPromotions = await savePromotions(accountId, req.user.userId, mlPromotions);
+
+    logger.info({
+      action: 'PROMOTIONS_SYNC_COMPLETED',
+      accountId,
+      userId: req.user.userId,
+      promotionsCount: savedPromotions.length,
+      timestamp: new Date().toISOString(),
+    });
+
+    sendSuccess(res, {
+      data: {
+        accountId,
+        promotionsCount: savedPromotions.length,
+        promotions: savedPromotions.map(p => p.getSummary()),
+        syncedAt: new Date().toISOString(),
+      },
+      message: `Synchronized ${savedPromotions.length} promotions`,
+    });
+  } catch (error) {
+    handleError(res, 500, 'Failed to sync promotions', error, {
+      action: 'PROMOTIONS_SYNC_ERROR',
+      accountId: req.params.accountId,
+      userId: req.user.userId,
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+// ============================================
+// ROUTES - Deals (lightweight wrapper)
+// ============================================
+
+/**
+ * GET /api/promotions/:accountId/deals
+ * Get deals (DOD, Lightning offers) for an account
+ */
+router.get('/:accountId/deals', authenticateToken, validateMLToken('accountId'), async (req, res) => {
+  try {
+    const { accountId } = req.params;
+    const account = req.mlAccount;
+
+    const headers = getMLHeaders(account.accessToken);
+
+    // Get deals from ML API
+    let deals = [];
+
+    // Try to get seller deals/offers
+    const { success: dealsSuccess, data: dealsData } = await makeMLRequest(
+      'get',
+      `/users/${account.mlUserId}/deals/search`,
+      null,
+      headers
+    );
+
+    if (dealsSuccess) {
+      deals = dealsData.results || [];
+    }
+
+    // Also try to get lightning deals
+    const { success: lightningSuccess, data: lightningData } = await makeMLRequest(
+      'get',
+      `/seller-promotions/users/${account.mlUserId}`,
+      null,
+      headers,
+      { app_version: 'v2', promotion_type: 'LIGHTNING' }
+    );
+
+    if (lightningSuccess && lightningData?.results) {
+      const lightningDeals = lightningData.results.map(deal => ({
+        ...deal,
+        type: 'lightning'
+      }));
+      deals = [...deals, ...lightningDeals];
+    }
+
+    sendSuccess(res, {
+      data: {
+        deals,
+        total: deals.length,
+      },
+    });
+  } catch (error) {
+    handleError(res, 500, 'Failed to fetch deals', error, {
+      action: 'GET_DEALS_ERROR',
+      accountId: req.params.accountId,
+      userId: req.user.userId,
+    });
+  }
+});
+
+/**
+ * GET /api/promotions/:accountId/campaigns
+ * List available campaigns from ML
+ */
+router.get('/:accountId/campaigns', authenticateToken, validateMLToken('accountId'), async (req, res) => {
+  try {
+    const { accountId } = req.params;
+    const account = req.mlAccount;
+
+    const headers = getMLHeaders(account.accessToken);
+
+    // Get available deals/campaigns
+    const { success, data } = await makeMLRequest(
+      'get',
+      `/users/${account.mlUserId}/deals/search`,
+      null,
+      headers
+    );
+
+    const campaigns = data?.results || [];
+    const paging = data?.paging || { total: 0 };
+
+    sendSuccess(res, {
+      data: {
+        campaigns,
+        paging,
+      },
+    });
+  } catch (error) {
+    handleError(res, 500, 'Failed to fetch campaigns', error, {
+      action: 'GET_CAMPAIGNS_ERROR',
+      accountId: req.params.accountId,
+      userId: req.user.userId,
+    });
+  }
+});
+
+// ============================================
+// ROUTES - Seller Promotions (ML API v2)
 // ============================================
 
 /**
@@ -803,27 +821,26 @@ router.get('/:accountId/seller-promotions', authenticateToken, validateMLToken('
   try {
     const account = req.mlAccount;
 
-    const response = await axios.get(
-      `${ML_API_BASE}/seller-promotions/users/${account.mlUserId}`,
-      {
-        headers: { Authorization: `Bearer ${account.accessToken}` },
-        params: { app_version: 'v2' },
-      }
+    const { success, data, error } = await makeMLRequest(
+      'get',
+      `/seller-promotions/users/${account.mlUserId}`,
+      null,
+      getMLHeaders(account.accessToken),
+      { app_version: 'v2' }
     );
 
-    res.json({
-      success: true,
-      data: response.data,
-    });
-  } catch (error) {
-    logger.error('Error fetching seller promotions:', {
-      error: error.message,
-      response: error.response?.data,
-    });
+    if (!success) {
+      return handleError(res, error.response?.status || 500, 'Failed to fetch seller promotions', error, {
+        action: 'GET_SELLER_PROMOTIONS_ERROR',
+        accountId: req.params.accountId,
+      });
+    }
 
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
+    sendSuccess(res, { data });
+  } catch (error) {
+    handleError(res, 500, 'Failed to fetch seller promotions', error, {
+      action: 'GET_SELLER_PROMOTIONS_ERROR',
+      accountId: req.params.accountId,
     });
   }
 });
@@ -838,30 +855,26 @@ router.get('/:accountId/seller-promotions/:promotionId', authenticateToken, vali
     const { promotion_type = 'DEAL' } = req.query;
     const account = req.mlAccount;
 
-    const response = await axios.get(
-      `${ML_API_BASE}/seller-promotions/promotions/${promotionId}`,
-      {
-        headers: { Authorization: `Bearer ${account.accessToken}` },
-        params: { 
-          promotion_type,
-          app_version: 'v2',
-        },
-      }
+    const { success, data, error } = await makeMLRequest(
+      'get',
+      `/seller-promotions/promotions/${promotionId}`,
+      null,
+      getMLHeaders(account.accessToken),
+      { promotion_type, app_version: 'v2' }
     );
 
-    res.json({
-      success: true,
-      data: response.data,
-    });
-  } catch (error) {
-    logger.error('Error fetching promotion details:', {
-      error: error.message,
-      promotionId: req.params.promotionId,
-    });
+    if (!success) {
+      return handleError(res, error.response?.status || 500, 'Failed to fetch promotion details', error, {
+        action: 'GET_PROMOTION_DETAILS_ERROR',
+        promotionId,
+      });
+    }
 
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
+    sendSuccess(res, { data });
+  } catch (error) {
+    handleError(res, 500, 'Failed to fetch promotion details', error, {
+      action: 'GET_PROMOTION_DETAILS_ERROR',
+      promotionId: req.params.promotionId,
     });
   }
 });
@@ -873,8 +886,8 @@ router.get('/:accountId/seller-promotions/:promotionId', authenticateToken, vali
 router.get('/:accountId/seller-promotions/:promotionId/items', authenticateToken, validateMLToken('accountId'), async (req, res) => {
   try {
     const { promotionId } = req.params;
-    const { 
-      promotion_type = 'DEAL', 
+    const {
+      promotion_type = 'DEAL',
       status,
       status_item,
       item_id,
@@ -894,27 +907,26 @@ router.get('/:accountId/seller-promotions/:promotionId/items', authenticateToken
     if (item_id) params.item_id = item_id;
     if (search_after) params.search_after = search_after;
 
-    const response = await axios.get(
-      `${ML_API_BASE}/seller-promotions/promotions/${promotionId}/items`,
-      {
-        headers: { Authorization: `Bearer ${account.accessToken}` },
-        params,
-      }
+    const { success, data, error } = await makeMLRequest(
+      'get',
+      `/seller-promotions/promotions/${promotionId}/items`,
+      null,
+      getMLHeaders(account.accessToken),
+      params
     );
 
-    res.json({
-      success: true,
-      data: response.data,
-    });
-  } catch (error) {
-    logger.error('Error fetching promotion items:', {
-      error: error.message,
-      promotionId: req.params.promotionId,
-    });
+    if (!success) {
+      return handleError(res, error.response?.status || 500, 'Failed to fetch promotion items', error, {
+        action: 'GET_PROMOTION_ITEMS_ERROR',
+        promotionId,
+      });
+    }
 
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
+    sendSuccess(res, { data });
+  } catch (error) {
+    handleError(res, 500, 'Failed to fetch promotion items', error, {
+      action: 'GET_PROMOTION_ITEMS_ERROR',
+      promotionId: req.params.promotionId,
     });
   }
 });
@@ -928,35 +940,33 @@ router.get('/:accountId/items/:itemId/promotions', authenticateToken, validateML
     const { itemId } = req.params;
     const account = req.mlAccount;
 
-    const response = await axios.get(
-      `${ML_API_BASE}/seller-promotions/items/${itemId}`,
-      {
-        headers: { Authorization: `Bearer ${account.accessToken}` },
-        params: { app_version: 'v2' },
-      }
+    const { success, data, error } = await makeMLRequest(
+      'get',
+      `/seller-promotions/items/${itemId}`,
+      null,
+      getMLHeaders(account.accessToken),
+      { app_version: 'v2' }
     );
 
-    res.json({
-      success: true,
-      data: response.data,
-    });
-  } catch (error) {
-    logger.error('Error fetching item promotions:', {
-      error: error.message,
-      itemId: req.params.itemId,
-    });
+    if (!success) {
+      if (error.response?.status === 404) {
+        return sendSuccess(res, {
+          data: [],
+          message: 'No promotions found for this item',
+        });
+      }
 
-    if (error.response?.status === 404) {
-      return res.json({
-        success: true,
-        data: [],
-        message: 'No promotions found for this item',
+      return handleError(res, error.response?.status || 500, 'Failed to fetch item promotions', error, {
+        action: 'GET_ITEM_PROMOTIONS_ERROR',
+        itemId,
       });
     }
 
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
+    sendSuccess(res, { data });
+  } catch (error) {
+    handleError(res, 500, 'Failed to fetch item promotions', error, {
+      action: 'GET_ITEM_PROMOTIONS_ERROR',
+      itemId: req.params.itemId,
     });
   }
 });
@@ -978,41 +988,36 @@ router.post('/:accountId/seller-promotions/:promotionId/items', authenticateToke
       });
     }
 
-    const response = await axios.post(
-      `${ML_API_BASE}/seller-promotions/promotions/${promotionId}/items`,
+    const { success, data, error } = await makeMLRequest(
+      'post',
+      `/seller-promotions/promotions/${promotionId}/items`,
       items,
-      {
-        headers: { 
-          Authorization: `Bearer ${account.accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        params: { 
-          promotion_type,
-          app_version: 'v2',
-        },
-      }
+      getMLHeaders(account.accessToken),
+      { promotion_type, app_version: 'v2' }
     );
 
-    logger.info('Items added to promotion:', {
+    if (!success) {
+      return handleError(res, error.response?.status || 500, 'Failed to add items to promotion', error, {
+        action: 'ADD_ITEMS_TO_PROMOTION_ERROR',
+        promotionId,
+      });
+    }
+
+    logger.info({
+      action: 'ITEMS_ADDED_TO_PROMOTION',
       promotionId,
       itemsCount: items.length,
       accountId: req.params.accountId,
     });
 
-    res.json({
-      success: true,
-      data: response.data,
+    sendSuccess(res, {
+      data,
       message: 'Items added to promotion successfully',
     });
   } catch (error) {
-    logger.error('Error adding items to promotion:', {
-      error: error.message,
-      response: error.response?.data,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
+    handleError(res, 500, 'Failed to add items to promotion', error, {
+      action: 'ADD_ITEMS_TO_PROMOTION_ERROR',
+      promotionId: req.params.promotionId,
     });
   }
 });
@@ -1026,36 +1031,42 @@ router.delete('/:accountId/items/:itemId/all', authenticateToken, validateMLToke
     const { itemId } = req.params;
     const account = req.mlAccount;
 
-    const response = await axios.delete(
-      `${ML_API_BASE}/seller-promotions/items/${itemId}`,
-      {
-        headers: { Authorization: `Bearer ${account.accessToken}` },
-        params: { app_version: 'v2' },
-      }
+    const { success, data, error } = await makeMLRequest(
+      'delete',
+      `/seller-promotions/items/${itemId}`,
+      null,
+      getMLHeaders(account.accessToken),
+      { app_version: 'v2' }
     );
 
-    logger.info('All promotions removed from item:', {
+    if (!success) {
+      return handleError(res, error.response?.status || 500, 'Failed to remove promotions from item', error, {
+        action: 'REMOVE_PROMOTIONS_FROM_ITEM_ERROR',
+        itemId,
+      });
+    }
+
+    logger.info({
+      action: 'PROMOTIONS_REMOVED_FROM_ITEM',
       itemId,
       accountId: req.params.accountId,
     });
 
-    res.json({
-      success: true,
-      data: response.data,
+    sendSuccess(res, {
+      data,
       message: 'Promotions removed successfully',
     });
   } catch (error) {
-    logger.error('Error removing promotions from item:', {
-      error: error.message,
+    handleError(res, 500, 'Failed to remove promotions from item', error, {
+      action: 'REMOVE_PROMOTIONS_FROM_ITEM_ERROR',
       itemId: req.params.itemId,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
     });
   }
 });
+
+// ============================================
+// ROUTES - Advanced Endpoints (Candidates, Offers, Exclusions)
+// ============================================
 
 /**
  * GET /api/promotions/:accountId/candidates/:candidateId
@@ -1066,27 +1077,26 @@ router.get('/:accountId/candidates/:candidateId', authenticateToken, validateMLT
     const { candidateId } = req.params;
     const account = req.mlAccount;
 
-    const response = await axios.get(
-      `${ML_API_BASE}/seller-promotions/candidates/${candidateId}`,
-      {
-        headers: { Authorization: `Bearer ${account.accessToken}` },
-        params: { app_version: 'v2' },
-      }
+    const { success, data, error } = await makeMLRequest(
+      'get',
+      `/seller-promotions/candidates/${candidateId}`,
+      null,
+      getMLHeaders(account.accessToken),
+      { app_version: 'v2' }
     );
 
-    res.json({
-      success: true,
-      data: response.data,
-    });
-  } catch (error) {
-    logger.error('Error fetching candidate details:', {
-      error: error.message,
-      candidateId: req.params.candidateId,
-    });
+    if (!success) {
+      return handleError(res, error.response?.status || 500, 'Failed to fetch candidate details', error, {
+        action: 'GET_CANDIDATE_ERROR',
+        candidateId,
+      });
+    }
 
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
+    sendSuccess(res, { data });
+  } catch (error) {
+    handleError(res, 500, 'Failed to fetch candidate details', error, {
+      action: 'GET_CANDIDATE_ERROR',
+      candidateId: req.params.candidateId,
     });
   }
 });
@@ -1100,27 +1110,26 @@ router.get('/:accountId/offers/:offerId', authenticateToken, validateMLToken('ac
     const { offerId } = req.params;
     const account = req.mlAccount;
 
-    const response = await axios.get(
-      `${ML_API_BASE}/seller-promotions/offers/${offerId}`,
-      {
-        headers: { Authorization: `Bearer ${account.accessToken}` },
-        params: { app_version: 'v2' },
-      }
+    const { success, data, error } = await makeMLRequest(
+      'get',
+      `/seller-promotions/offers/${offerId}`,
+      null,
+      getMLHeaders(account.accessToken),
+      { app_version: 'v2' }
     );
 
-    res.json({
-      success: true,
-      data: response.data,
-    });
-  } catch (error) {
-    logger.error('Error fetching offer details:', {
-      error: error.message,
-      offerId: req.params.offerId,
-    });
+    if (!success) {
+      return handleError(res, error.response?.status || 500, 'Failed to fetch offer details', error, {
+        action: 'GET_OFFER_ERROR',
+        offerId,
+      });
+    }
 
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
+    sendSuccess(res, { data });
+  } catch (error) {
+    handleError(res, 500, 'Failed to fetch offer details', error, {
+      action: 'GET_OFFER_ERROR',
+      offerId: req.params.offerId,
     });
   }
 });
@@ -1133,26 +1142,26 @@ router.get('/:accountId/exclusion-list/seller', authenticateToken, validateMLTok
   try {
     const account = req.mlAccount;
 
-    const response = await axios.get(
-      `${ML_API_BASE}/seller-promotions/exclusion-list/seller`,
-      {
-        headers: { Authorization: `Bearer ${account.accessToken}` },
-        params: { app_version: 'v2' },
-      }
+    const { success, data, error } = await makeMLRequest(
+      'get',
+      '/seller-promotions/exclusion-list/seller',
+      null,
+      getMLHeaders(account.accessToken),
+      { app_version: 'v2' }
     );
 
-    res.json({
-      success: true,
-      data: response.data,
-    });
-  } catch (error) {
-    logger.error('Error checking seller exclusion:', {
-      error: error.message,
-    });
+    if (!success) {
+      return handleError(res, error.response?.status || 500, 'Failed to check seller exclusion', error, {
+        action: 'GET_SELLER_EXCLUSION_ERROR',
+        accountId: req.params.accountId,
+      });
+    }
 
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
+    sendSuccess(res, { data });
+  } catch (error) {
+    handleError(res, 500, 'Failed to check seller exclusion', error, {
+      action: 'GET_SELLER_EXCLUSION_ERROR',
+      accountId: req.params.accountId,
     });
   }
 });
@@ -1173,36 +1182,35 @@ router.post('/:accountId/exclusion-list/seller', authenticateToken, validateMLTo
       });
     }
 
-    const response = await axios.post(
-      `${ML_API_BASE}/seller-promotions/exclusion-list/seller`,
+    const { success, data, error } = await makeMLRequest(
+      'post',
+      '/seller-promotions/exclusion-list/seller',
       { exclusion_status: String(exclusion_status) },
-      {
-        headers: { 
-          Authorization: `Bearer ${account.accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        params: { app_version: 'v2' },
-      }
+      getMLHeaders(account.accessToken),
+      { app_version: 'v2' }
     );
 
-    logger.info('Seller exclusion status updated:', {
+    if (!success) {
+      return handleError(res, error.response?.status || 500, 'Failed to update seller exclusion', error, {
+        action: 'UPDATE_SELLER_EXCLUSION_ERROR',
+        accountId: req.params.accountId,
+      });
+    }
+
+    logger.info({
+      action: 'SELLER_EXCLUSION_STATUS_UPDATED',
       accountId: req.params.accountId,
       exclusionStatus: exclusion_status,
     });
 
-    res.json({
-      success: true,
-      data: response.data,
+    sendSuccess(res, {
+      data,
       message: `Seller ${exclusion_status === 'true' || exclusion_status === true ? 'excluded from' : 'included in'} automatic promotions`,
     });
   } catch (error) {
-    logger.error('Error updating seller exclusion:', {
-      error: error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
+    handleError(res, 500, 'Failed to update seller exclusion', error, {
+      action: 'UPDATE_SELLER_EXCLUSION_ERROR',
+      accountId: req.params.accountId,
     });
   }
 });
@@ -1216,27 +1224,26 @@ router.get('/:accountId/exclusion-list/item/:itemId', authenticateToken, validat
     const { itemId } = req.params;
     const account = req.mlAccount;
 
-    const response = await axios.get(
-      `${ML_API_BASE}/seller-promotions/exclusion-list/seller/${itemId}`,
-      {
-        headers: { Authorization: `Bearer ${account.accessToken}` },
-        params: { app_version: 'v2' },
-      }
+    const { success, data, error } = await makeMLRequest(
+      'get',
+      `/seller-promotions/exclusion-list/seller/${itemId}`,
+      null,
+      getMLHeaders(account.accessToken),
+      { app_version: 'v2' }
     );
 
-    res.json({
-      success: true,
-      data: response.data,
-    });
-  } catch (error) {
-    logger.error('Error checking item exclusion:', {
-      error: error.message,
-      itemId: req.params.itemId,
-    });
+    if (!success) {
+      return handleError(res, error.response?.status || 500, 'Failed to check item exclusion', error, {
+        action: 'GET_ITEM_EXCLUSION_ERROR',
+        itemId,
+      });
+    }
 
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
+    sendSuccess(res, { data });
+  } catch (error) {
+    handleError(res, 500, 'Failed to check item exclusion', error, {
+      action: 'GET_ITEM_EXCLUSION_ERROR',
+      itemId: req.params.itemId,
     });
   }
 });
@@ -1264,39 +1271,38 @@ router.post('/:accountId/exclusion-list/item', authenticateToken, validateMLToke
       });
     }
 
-    const response = await axios.post(
-      `${ML_API_BASE}/seller-promotions/exclusion-list/item`,
-      { 
+    const { success, data, error } = await makeMLRequest(
+      'post',
+      '/seller-promotions/exclusion-list/item',
+      {
         item_id,
         exclusion_status: String(exclusion_status),
       },
-      {
-        headers: { 
-          Authorization: `Bearer ${account.accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        params: { app_version: 'v2' },
-      }
+      getMLHeaders(account.accessToken),
+      { app_version: 'v2' }
     );
 
-    logger.info('Item exclusion status updated:', {
+    if (!success) {
+      return handleError(res, error.response?.status || 500, 'Failed to update item exclusion', error, {
+        action: 'UPDATE_ITEM_EXCLUSION_ERROR',
+        itemId: item_id,
+      });
+    }
+
+    logger.info({
+      action: 'ITEM_EXCLUSION_STATUS_UPDATED',
       itemId: item_id,
       exclusionStatus: exclusion_status,
     });
 
-    res.json({
-      success: true,
-      data: response.data,
+    sendSuccess(res, {
+      data,
       message: `Item ${exclusion_status === 'true' || exclusion_status === true ? 'excluded from' : 'included in'} automatic promotions`,
     });
   } catch (error) {
-    logger.error('Error updating item exclusion:', {
-      error: error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
+    handleError(res, 500, 'Failed to update item exclusion', error, {
+      action: 'UPDATE_ITEM_EXCLUSION_ERROR',
+      itemId: req.body.item_id,
     });
   }
 });
@@ -1310,54 +1316,28 @@ router.get('/:accountId/summary', authenticateToken, validateMLToken('accountId'
     const account = req.mlAccount;
 
     // Get all seller promotions
-    const promotionsResponse = await axios.get(
-      `${ML_API_BASE}/seller-promotions/users/${account.mlUserId}`,
-      {
-        headers: { Authorization: `Bearer ${account.accessToken}` },
-        params: { app_version: 'v2' },
-      }
+    const { success, data, error } = await makeMLRequest(
+      'get',
+      `/seller-promotions/users/${account.mlUserId}`,
+      null,
+      getMLHeaders(account.accessToken),
+      { app_version: 'v2' }
     );
 
-    const promotions = promotionsResponse.data?.results || [];
-
-    // Aggregate by type
-    const byType = {};
-    const byStatus = {};
-
-    promotions.forEach(p => {
-      // Count by type
-      if (!byType[p.type]) {
-        byType[p.type] = { count: 0, promotions: [] };
-      }
-      byType[p.type].count++;
-      byType[p.type].promotions.push({
-        id: p.id,
-        name: p.name,
-        status: p.status,
-        startDate: p.start_date,
-        finishDate: p.finish_date,
+    if (!success) {
+      return handleError(res, error.response?.status || 500, 'Failed to fetch promotions summary', error, {
+        action: 'GET_PROMOTIONS_SUMMARY_ERROR',
+        accountId: req.params.accountId,
       });
+    }
 
-      // Count by status
-      if (!byStatus[p.status]) {
-        byStatus[p.status] = 0;
-      }
-      byStatus[p.status]++;
-    });
+    const promotions = data?.results || [];
 
-    // Find active and upcoming promotions
-    const now = new Date();
-    const activePromotions = promotions.filter(p => 
-      p.status === 'started' || 
-      (new Date(p.start_date) <= now && new Date(p.finish_date) >= now)
-    );
-    const upcomingPromotions = promotions.filter(p => 
-      p.status === 'pending' || 
-      new Date(p.start_date) > now
-    );
+    // Aggregate data
+    const { byType, byStatus } = aggregatePromotions(promotions);
+    const { activePromotions, upcomingPromotions } = filterActiveAndUpcoming(promotions);
 
-    res.json({
-      success: true,
+    sendSuccess(res, {
       data: {
         overview: {
           total: promotions.length,
@@ -1388,20 +1368,16 @@ router.get('/:accountId/summary', authenticateToken, validateMLToken('accountId'
       },
     });
   } catch (error) {
-    logger.error('Error fetching promotions summary:', {
-      error: error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
+    handleError(res, 500, 'Failed to fetch promotions summary', error, {
+      action: 'GET_PROMOTIONS_SUMMARY_ERROR',
+      accountId: req.params.accountId,
     });
   }
 });
 
 /**
  * Promotion Types Reference:
- * 
+ *
  * - DEAL: Traditional campaigns - seller defines price
  * - MARKETPLACE_CAMPAIGN: Co-financed campaigns with ML participation
  * - VOLUME: Volume discount campaigns (buy 3 pay 2)
