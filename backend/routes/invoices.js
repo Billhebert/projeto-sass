@@ -19,6 +19,37 @@ const MLAccount = require('../db/models/MLAccount');
 
 const router = express.Router();
 
+// ============================================================================
+// CORE HELPERS
+// ============================================================================
+
+/**
+ * Handle and log errors with consistent response format
+ */
+const handleError = (res, statusCode = 500, message, error = null, context = {}) => {
+  logger.error({
+    action: context.action || 'UNKNOWN_ERROR',
+    error: error?.message || message,
+    statusCode,
+    ...context,
+  });
+
+  const response = { success: false, message };
+  if (error?.message) response.error = error.message;
+  res.status(statusCode).json(response);
+};
+
+/**
+ * Send success response with consistent format
+ */
+const sendSuccess = (res, data, message = null, statusCode = 200) => {
+  const response = { success: true, data };
+  if (message) response.message = message;
+  res.status(statusCode).json(response);
+};
+
+
+
 const ML_API_BASE = 'https://api.mercadolibre.com';
 
 /**
@@ -254,5 +285,6 @@ router.post('/:accountId/order/:orderId', authenticateToken, validateMLToken('ac
     });
   }
 });
+
 
 module.exports = router;
