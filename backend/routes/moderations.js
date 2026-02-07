@@ -23,60 +23,11 @@ const logger = require('../logger');
 const sdkManager = require("../services/sdk-manager");
 const { authenticateToken } = require('../middleware/auth');
 const { validateMLToken } = require('../middleware/ml-token-validation');
+const { handleError, sendSuccess } = require('../middleware/response-helpers');
 
 const router = express.Router();
 
 const ML_API_BASE = 'https://api.mercadolibre.com';
-
-// ============================================
-// HELPER FUNCTIONS
-// ============================================
-
-/**
- * Unified error handler for all routes
- * Logs errors consistently and sends standardized error responses
- * @param {Object} res - Express response object
- * @param {number} statusCode - HTTP status code (default 500)
- * @param {string} message - User-facing error message
- * @param {Error} error - Error object (optional)
- * @param {Object} context - Additional logging context (optional)
- */
-const handleError = (res, statusCode = 500, message, error = null, context = {}) => {
-  logger.error({
-    action: context.action || 'UNKNOWN_ERROR',
-    error: error?.message || message,
-    statusCode,
-    ...context,
-  });
-
-  const response = {
-    success: false,
-    message,
-  };
-  if (error?.response?.data?.message || error?.message) {
-    response.error = error.response?.data?.message || error.message;
-  }
-  res.status(statusCode).json(response);
-};
-
-/**
- * Unified success response handler
- * Sends standardized success responses with optional data and status code
- * @param {Object} res - Express response object
- * @param {any} data - Response data payload
- * @param {string} message - Success message (optional)
- * @param {number} statusCode - HTTP status code (default 200)
- */
-const sendSuccess = (res, data, message = null, statusCode = 200) => {
-  const response = {
-    success: true,
-    data,
-  };
-  if (message) {
-    response.message = message;
-  }
-  res.status(statusCode).json(response);
-};
 
 /**
  * Build ML API headers with authorization
