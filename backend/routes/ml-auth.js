@@ -18,6 +18,70 @@ const router = express.Router();
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "https://vendata.com.br";
 
+// ============================================================================
+// HELPER FUNCTIONS - Reduce duplication in error handling and redirects
+// ============================================================================
+
+/**
+ * Send redirect with status parameters
+ * @param {Response} res - Express response object
+ * @param {string} status - "success" or "error"
+ * @param {string} message - Message to display
+ * @param {object} data - Additional query parameters (accountId, isNew, etc)
+ */
+const redirectWithStatus = (res, status, message, data = {}) => {
+  const params = new URLSearchParams({
+    status,
+    message,
+    ...data,
+  });
+  res.redirect(`${FRONTEND_URL}/ml-auth?${params.toString()}`);
+};
+
+/**
+ * Send JSON error response
+ * @param {Response} res - Express response object
+ * @param {number} statusCode - HTTP status code
+ * @param {string} message - Error message
+ * @param {string} errorMessage - Detailed error message (optional)
+ */
+const sendJsonError = (res, statusCode, message, errorMessage = null) => {
+  const response = {
+    success: false,
+    message,
+  };
+  if (errorMessage) {
+    response.error = errorMessage;
+  }
+  res.status(statusCode).json(response);
+};
+
+/**
+ * Log error with consistent format
+ * @param {string} action - Action identifier
+ * @param {object} data - Additional data to log
+ */
+const logError = (action, data = {}) => {
+  logger.error({
+    action,
+    timestamp: new Date().toISOString(),
+    ...data,
+  });
+};
+
+/**
+ * Log info with consistent format
+ * @param {string} action - Action identifier
+ * @param {object} data - Additional data to log
+ */
+const logInfo = (action, data = {}) => {
+  logger.info({
+    action,
+    timestamp: new Date().toISOString(),
+    ...data,
+  });
+};
+
 /**
  * GET /api/ml-auth/url
  * Retorna a URL de autorização do Mercado Livre
@@ -26,20 +90,13 @@ const FRONTEND_URL = process.env.FRONTEND_URL || "https://vendata.com.br";
  */
 router.get("/url", async (req, res) => {
   try {
-    // Get userId from authenticated user or from query param for OAuth flow
     const userId = req.user?.userId || req.query.userId || "anonymous";
-
-    logger.info({
-      action: "ML_AUTH_URL_REQUEST",
-      userId,
-      timestamp: new Date().toISOString(),
-    });
+    logInfo("ML_AUTH_URL_REQUEST", { userId });
 
     const state = oauthService.generateState();
     const authUrl = oauthService.getAuthorizationUrl(userId, state);
 
-    logger.info({
-      action: "ML_AUTH_URL_GENERATED",
+    logInfo("ML_AUTH_URL_GENERATED", {
       userId,
       authUrl: authUrl.substring(0, 100) + "...",
     });
@@ -53,18 +110,11 @@ router.get("/url", async (req, res) => {
       },
     });
   } catch (error) {
-    logger.error({
-      action: "ML_AUTH_URL_ERROR",
+    logError("ML_AUTH_URL_ERROR", {
       userId: req.user?.userId,
       error: error.message,
-      stack: error.stack,
     });
-
-    res.status(500).json({
-      success: false,
-      message: "Failed to generate authorization URL",
-      error: error.message,
-    });
+    sendJsonError(res, 500, "Failed to generate authorization URL", error.message);
   }
 });
 
@@ -79,65 +129,40 @@ router.get("/callback", async (req, res) => {
   try {
     const { code, state, error, error_description } = req.query;
 
-    logger.info({
-      action: "ML_AUTH_CALLBACK_RECEIVED",
-      hasCode: !!code,
-      hasError: !!error,
-      timestamp: new Date().toISOString(),
-    });
+    logInfo("ML_AUTH_CALLBACK_RECEIVED", { hasCode: !!code, hasError: !!error });
 
     if (error) {
-      logger.warn({
-        action: "ML_AUTH_CALLBACK_ERROR",
-        error,
-        errorDescription: error_description,
-      });
-
-      return res.redirect(
-        `${FRONTEND_URL}/ml-auth?status=error&message=${encodeURIComponent(error_description || error)}`,
-      );
+      logInfo("ML_AUTH_CALLBACK_ERROR", { error, errorDescription: error_description });
+      return redirectWithStatus(res, "error", error_description || error);
     }
 
     if (!code || !state) {
-      return res.redirect(
-        `${FRONTEND_URL}/ml-auth?status=error&message=${encodeURIComponent("Código de autorização não recebido")}`,
-      );
+      return redirectWithStatus(res, "error", "Código de autorização não recebido");
     }
 
     const result = await oauthService.completeOAuthConnection(code, state);
 
     if (!result.success) {
-      logger.error({
-        action: "ML_AUTH_CALLBACK_FAILED",
+      logError("ML_AUTH_CALLBACK_FAILED", {
         code: result.code,
         error: result.error,
       });
-
-      return res.redirect(
-        `${FRONTEND_URL}/ml-auth?status=error&message=${encodeURIComponent(result.error)}`,
-      );
+      return redirectWithStatus(res, "error", result.error);
     }
 
-    logger.info({
-      action: "ML_AUTH_CALLBACK_SUCCESS",
+    logInfo("ML_AUTH_CALLBACK_SUCCESS", {
       userId: result.user?.mlUserId,
       accountId: result.accountId,
       isNewAccount: result.isNewAccount,
     });
 
-    res.redirect(
-      `${FRONTEND_URL}/ml-auth?status=success&accountId=${result.accountId}&isNew=${result.isNewAccount}`,
-    );
-  } catch (error) {
-    logger.error({
-      action: "ML_AUTH_CALLBACK_UNEXPECTED_ERROR",
-      error: error.message,
-      stack: error.stack,
+    redirectWithStatus(res, "success", "Conectado com sucesso!", {
+      accountId: result.accountId,
+      isNew: result.isNewAccount,
     });
-
-    res.redirect(
-      `${FRONTEND_URL}/ml-auth?status=error&message=${encodeURIComponent("Erro inesperado durante conexão")}`,
-    );
+  } catch (error) {
+    logError("ML_AUTH_CALLBACK_UNEXPECTED_ERROR", { error: error.message });
+    redirectWithStatus(res, "error", "Erro inesperado durante conexão");
   }
 });
 
@@ -148,16 +173,11 @@ router.get("/callback", async (req, res) => {
  */
 router.get("/status", async (req, res) => {
   try {
-    // Tenta pegar userId do usuário autenticado, senão retorna status anônimo
     const userId = req.user?.userId;
 
-    logger.info({
-      action: "ML_AUTH_STATUS_REQUEST",
-      userId: userId || "anonymous",
-    });
+    logInfo("ML_AUTH_STATUS_REQUEST", { userId: userId || "anonymous" });
 
     if (!userId) {
-      // Retorna status padrão para usuário anônimo
       return res.json({
         success: true,
         connected: false,
@@ -171,11 +191,7 @@ router.get("/status", async (req, res) => {
     const result = await oauthService.getAccountStatus(userId);
 
     if (!result.success) {
-      return res.status(500).json({
-        success: false,
-        message: result.error,
-        connected: false,
-      });
+      return sendJsonError(res, 500, result.error);
     }
 
     res.json({
@@ -186,17 +202,11 @@ router.get("/status", async (req, res) => {
       tokenValid: result.tokenValid !== false,
     });
   } catch (error) {
-    logger.error({
-      action: "ML_AUTH_STATUS_ERROR",
+    logError("ML_AUTH_STATUS_ERROR", {
       userId: req.user?.userId,
       error: error.message,
     });
-
-    res.status(500).json({
-      success: false,
-      message: error.message,
-      connected: false,
-    });
+    sendJsonError(res, 500, error.message);
   }
 });
 
@@ -209,39 +219,25 @@ router.delete("/disconnect", authenticateToken, async (req, res) => {
     const userId = req.user.userId;
     const { accountId } = req.body;
 
-    logger.info({
-      action: "ML_AUTH_DISCONNECT_REQUEST",
-      userId,
-      accountId,
-    });
+    logInfo("ML_AUTH_DISCONNECT_REQUEST", { userId, accountId });
 
     if (!accountId) {
-      return res.status(400).json({
-        success: false,
-        message: "accountId é obrigatório",
-      });
+      return sendJsonError(res, 400, "accountId é obrigatório");
     }
 
     const result = await oauthService.disconnectAccount(userId, accountId);
 
     if (!result.success) {
-      logger.error({
-        action: "ML_AUTH_DISCONNECT_FAILED",
+      logError("ML_AUTH_DISCONNECT_FAILED", {
         userId,
         accountId,
         code: result.code,
         error: result.error,
       });
-
-      return res.status(400).json({
-        success: false,
-        message: result.error,
-        code: result.code,
-      });
+      return sendJsonError(res, 400, result.error);
     }
 
-    logger.info({
-      action: "ML_AUTH_DISCONNECT_SUCCESS",
+    logInfo("ML_AUTH_DISCONNECT_SUCCESS", {
       userId,
       accountId: result.accountId,
       mlUserId: result.mlUserId,
@@ -256,17 +252,11 @@ router.delete("/disconnect", authenticateToken, async (req, res) => {
       },
     });
   } catch (error) {
-    logger.error({
-      action: "ML_AUTH_DISCONNECT_ERROR",
+    logError("ML_AUTH_DISCONNECT_ERROR", {
       userId: req.user.userId,
       error: error.message,
-      stack: error.stack,
     });
-
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    sendJsonError(res, 500, error.message);
   }
 });
 
@@ -280,37 +270,27 @@ router.post("/complete", authenticateToken, async (req, res) => {
   try {
     const { code, state } = req.body;
 
-    logger.info({
-      action: "ML_AUTH_COMPLETE_REQUEST",
+    logInfo("ML_AUTH_COMPLETE_REQUEST", {
       userId: req.user.userId,
       hasCode: !!code,
       hasState: !!state,
     });
 
     if (!code || !state) {
-      return res.status(400).json({
-        success: false,
-        message: "Code and state are required",
-      });
+      return sendJsonError(res, 400, "Code and state are required");
     }
 
     const result = await oauthService.completeOAuthConnection(code, state);
 
     if (!result.success) {
-      logger.error({
-        action: "ML_AUTH_COMPLETE_FAILED",
+      logError("ML_AUTH_COMPLETE_FAILED", {
         code: result.code,
         error: result.error,
       });
-
-      return res.status(400).json({
-        success: false,
-        message: result.error || "Failed to complete OAuth connection",
-      });
+      return sendJsonError(res, 400, result.error || "Failed to complete OAuth connection");
     }
 
-    logger.info({
-      action: "ML_AUTH_COMPLETE_SUCCESS",
+    logInfo("ML_AUTH_COMPLETE_SUCCESS", {
       userId: req.user.userId,
       accountId: result.accountId,
       isNewAccount: result.isNewAccount,
@@ -328,17 +308,11 @@ router.post("/complete", authenticateToken, async (req, res) => {
       },
     });
   } catch (error) {
-    logger.error({
-      action: "ML_AUTH_COMPLETE_ERROR",
+    logError("ML_AUTH_COMPLETE_ERROR", {
       userId: req.user.userId,
       error: error.message,
-      stack: error.stack,
     });
-
-    res.status(500).json({
-      success: false,
-      message: "Erro ao completar conexão",
-    });
+    sendJsonError(res, 500, "Erro ao completar conexão");
   }
 });
 
@@ -351,19 +325,14 @@ router.post("/complete", authenticateToken, async (req, res) => {
  */
 router.post("/url-custom", async (req, res) => {
   try {
-    // userId é opcional - pode ser fornecido ou deixado vazio para novos usuários
     const userId = req.user?.userId || req.body.userId || "anonymous";
     const { clientId, clientSecret, redirectUri } = req.body;
 
     if (!clientId || !clientSecret) {
-      return res.status(400).json({
-        success: false,
-        message: "Client ID e Client Secret são obrigatórios",
-      });
+      return sendJsonError(res, 400, "Client ID e Client Secret são obrigatórios");
     }
 
-    logger.info({
-      action: "ML_AUTH_URL_CUSTOM_REQUEST",
+    logInfo("ML_AUTH_URL_CUSTOM_REQUEST", {
       userId,
       hasClientId: !!clientId,
     });
@@ -381,8 +350,7 @@ router.post("/url-custom", async (req, res) => {
       state,
     );
 
-    logger.info({
-      action: "ML_AUTH_URL_CUSTOM_GENERATED",
+    logInfo("ML_AUTH_URL_CUSTOM_GENERATED", {
       userId,
       authUrl: authUrl.substring(0, 100) + "...",
     });
@@ -395,17 +363,11 @@ router.post("/url-custom", async (req, res) => {
       },
     });
   } catch (error) {
-    logger.error({
-      action: "ML_AUTH_URL_CUSTOM_ERROR",
+    logError("ML_AUTH_URL_CUSTOM_ERROR", {
       userId: req.user?.userId,
       error: error.message,
     });
-
-    res.status(500).json({
-      success: false,
-      message: "Failed to generate authorization URL",
-      error: error.message,
-    });
+    sendJsonError(res, 500, "Failed to generate authorization URL", error.message);
   }
 });
 
