@@ -19,28 +19,66 @@ const { authenticateToken } = require('../middleware/auth');
 
 const ML_API_BASE = 'https://api.mercadolibre.com';
 
+// ============================================================================
+// CORE HELPER FUNCTIONS
+// ============================================================================
+
+/**
+ * Send successful response
+ */
+function sendSuccess(res, data, message = '', statusCode = 200) {
+  const response = { success: true };
+  if (message) response.message = message;
+  if (data !== undefined) response.data = data;
+  return res.status(statusCode).json(response);
+}
+
+/**
+ * Send error response
+ */
+function sendError(res, statusCode, error, message = '', action = '', context = {}) {
+  logger.error({
+    action,
+    ...context,
+    error: error.message || error,
+  });
+  return res.status(statusCode).json({
+    success: false,
+    error: error.response?.data?.message || message || error.message || error,
+  });
+}
+
+/**
+ * Build authorization headers
+ */
+function buildHeaders(accessToken) {
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    'Content-Type': 'application/json',
+  };
+}
+
+/**
+ * Get and validate ML account
+ */
+async function getAndValidateAccount(accountId, userId) {
+  const account = await MLAccount.findOne({ id: accountId, userId });
+  if (!account) return { error: 'ML account not found', statusCode: 404 };
+  if (account.isTokenExpired()) return { error: 'Token expired. Please refresh.', statusCode: 401 };
+  return account;
+}
+
 // Middleware to get ML account
 async function getMLAccount(req, res, next) {
   try {
     const { accountId } = req.params;
-    const userId = req.user.userId;
-
-    const account = await MLAccount.findOne({ id: accountId, userId });
-    if (!account) {
-      return res.status(404).json({
-        success: false,
-        error: 'ML account not found',
-      });
+    const result = await getAndValidateAccount(accountId, req.user.userId);
+    
+    if (result.error) {
+      return res.status(result.statusCode).json({ success: false, error: result.error });
     }
 
-    if (account.isTokenExpired()) {
-      return res.status(401).json({
-        success: false,
-        error: 'Token expired. Please refresh.',
-      });
-    }
-
-    req.mlAccount = account;
+    req.mlAccount = result;
     next();
   } catch (error) {
     logger.error('Error getting ML account:', { error: error.message });
@@ -48,83 +86,86 @@ async function getMLAccount(req, res, next) {
   }
 }
 
+// ============================================================================
+// RETURNS-SPECIFIC HELPER FUNCTIONS
+// ============================================================================
+
+/**
+ * Filter returns from claims
+ */
+function filterReturns(claims) {
+  return (claims || []).filter(claim => 
+    claim.type === 'return' || 
+    claim.reason?.includes('return') ||
+    claim.reason?.includes('devolu')
+  );
+}
+
+/**
+ * Build return params for claims search
+ */
+function buildReturnParams(query, mlUserId) {
+  const params = {
+    seller_id: mlUserId,
+    offset: parseInt(query.offset || 0),
+    limit: parseInt(query.limit || 50),
+    resource_type: 'order',
+  };
+  if (query.status) params.status = query.status;
+  return params;
+}
+
+/**
+ * Add account info to return
+ */
+function addAccountInfo(returns, accountId, nickname) {
+  return returns.map(r => ({
+    ...r,
+    accountId,
+    accountNickname: nickname
+  }));
+}
+
 /**
  * GET /api/returns
- * List all returns for the authenticated user (all accounts)
- * Query params: offset, limit, status
+ * List all returns for the authenticated user
  */
 router.get('/', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     const { offset = 0, limit = 50, status } = req.query;
 
-    // Get all ML accounts for this user
     const accounts = await MLAccount.find({ userId });
-    
     if (!accounts || accounts.length === 0) {
-      return res.json({
-        success: true,
-        data: [],
-        pagination: {
-          total: 0,
-          limit: parseInt(limit),
-          offset: parseInt(offset)
-        }
-      });
+      return sendSuccess(res, [], '', 200);
     }
 
-    // Fetch returns from all accounts
     const allReturns = [];
-    
     for (const account of accounts) {
       if (account.isTokenExpired()) continue;
-      
       try {
-        const params = {
-          seller_id: account.mlUserId,
-          offset: 0,
-          limit: 100,
-          resource_type: 'order',
-        };
+        const headers = buildHeaders(account.accessToken);
+        const params = buildReturnParams({ offset: 0, limit: 100, status }, account.mlUserId);
 
-        if (status) {
-          params.status = status;
-        }
+        const response = await axios.get(`${ML_API_BASE}/claims/search`, {
+          headers,
+          params,
+          timeout: 10000
+        });
 
-        const response = await axios.get(
-          `${ML_API_BASE}/claims/search`,
-          {
-            headers: { Authorization: `Bearer ${account.accessToken}` },
-            params,
-            timeout: 10000
-          }
-        );
-
-        // Filter for return-related claims
-        const returns = (response.data.data || []).filter(claim => 
-          claim.type === 'return' || 
-          claim.reason?.includes('return') ||
-          claim.reason?.includes('devolu')
-        ).map(r => ({
-          ...r,
-          accountId: account.id,
-          accountNickname: account.nickname
-        }));
-
-        allReturns.push(...returns);
+        const returns = filterReturns(response.data.data);
+        allReturns.push(...addAccountInfo(returns, account.id, account.nickname));
       } catch (err) {
         logger.warn(`Failed to fetch returns for account ${account.id}: ${err.message}`);
       }
     }
 
-    // Apply pagination
     const paginatedReturns = allReturns.slice(
       parseInt(offset), 
       parseInt(offset) + parseInt(limit)
     );
 
-    res.json({
-      success: true,
+    return sendSuccess(res, {
       data: paginatedReturns,
       pagination: {
         total: allReturns.length,
@@ -133,15 +174,7 @@ router.get('/', authenticateToken, async (req, res) => {
       }
     });
   } catch (error) {
-    logger.error('Error fetching returns:', {
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch returns',
-      details: error.message
-    });
+    return sendError(res, 500, error, 'Failed to fetch returns', 'GET_ALL_RETURNS_ERROR', { userId: req.user.userId });
   }
 });
 
@@ -152,53 +185,21 @@ router.get('/', authenticateToken, async (req, res) => {
 router.get('/:accountId', authenticateToken, getMLAccount, async (req, res) => {
   try {
     const { accessToken, mlUserId } = req.mlAccount;
-    const { offset = 0, limit = 50, status } = req.query;
+    const params = buildReturnParams(req.query, mlUserId);
 
-    const params = {
-      seller_id: mlUserId,
-      offset,
-      limit,
-    };
+    const response = await axios.get(`${ML_API_BASE}/claims/search`, {
+      headers: buildHeaders(accessToken),
+      params: { ...params, resource_type: 'order' },
+    });
 
-    if (status) {
-      params.status = status;
-    }
+    const returns = filterReturns(response.data.data);
 
-    // Get claims that are returns
-    const response = await axios.get(
-      `${ML_API_BASE}/claims/search`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-        params: {
-          ...params,
-          resource_type: 'order',
-        },
-      }
-    );
-
-    // Filter for return-related claims
-    const returns = (response.data.data || []).filter(claim => 
-      claim.type === 'return' || 
-      claim.reason?.includes('return') ||
-      claim.reason?.includes('devolu')
-    );
-
-    res.json({
-      success: true,
-      data: {
-        returns,
-        paging: response.data.paging,
-      },
+    return sendSuccess(res, {
+      returns,
+      paging: response.data.paging,
     });
   } catch (error) {
-    logger.error('Error fetching returns:', {
-      error: error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
-    });
+    return sendError(res, error.response?.status || 500, error, '', 'GET_RETURNS_ERROR', { accountId: req.params.accountId });
   }
 });
 
@@ -211,27 +212,13 @@ router.get('/:accountId/:claimId', authenticateToken, getMLAccount, async (req, 
     const { claimId } = req.params;
     const { accessToken } = req.mlAccount;
 
-    const response = await axios.get(
-      `${ML_API_BASE}/claims/${claimId}`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      }
-    );
-
-    res.json({
-      success: true,
-      data: response.data,
+    const response = await axios.get(`${ML_API_BASE}/claims/${claimId}`, {
+      headers: buildHeaders(accessToken),
     });
+
+    return sendSuccess(res, response.data);
   } catch (error) {
-    logger.error('Error fetching return details:', {
-      error: error.message,
-      claimId: req.params.claimId,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
-    });
+    return sendError(res, error.response?.status || 500, error, '', 'GET_RETURN_DETAILS_ERROR', { claimId: req.params.claimId });
   }
 });
 
@@ -244,35 +231,16 @@ router.get('/:accountId/order/:orderId', authenticateToken, getMLAccount, async 
     const { orderId } = req.params;
     const { accessToken } = req.mlAccount;
 
-    const response = await axios.get(
-      `${ML_API_BASE}/orders/${orderId}/returns`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      }
-    );
-
-    res.json({
-      success: true,
-      data: response.data,
+    const response = await axios.get(`${ML_API_BASE}/orders/${orderId}/returns`, {
+      headers: buildHeaders(accessToken),
     });
+
+    return sendSuccess(res, response.data);
   } catch (error) {
-    logger.error('Error fetching order returns:', {
-      error: error.message,
-      orderId: req.params.orderId,
-    });
-
     if (error.response?.status === 404) {
-      return res.json({
-        success: true,
-        data: [],
-        message: 'No returns for this order',
-      });
+      return sendSuccess(res, [], 'No returns for this order', 200);
     }
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
-    });
+    return sendError(res, error.response?.status || 500, error, '', 'GET_ORDER_RETURNS_ERROR', { orderId: req.params.orderId });
   }
 });
 
@@ -293,15 +261,9 @@ router.post('/:accountId/:claimId/messages', authenticateToken, getMLAccount, as
       });
     }
 
-    const response = await axios.post(
-      `${ML_API_BASE}/claims/${claimId}/messages`,
+    const response = await axios.post(`${ML_API_BASE}/claims/${claimId}/messages`,
       { message: message.trim() },
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      }
+      { headers: buildHeaders(accessToken) }
     );
 
     logger.info('Return message sent:', {
@@ -309,20 +271,9 @@ router.post('/:accountId/:claimId/messages', authenticateToken, getMLAccount, as
       accountId: req.mlAccount.id,
     });
 
-    res.json({
-      success: true,
-      data: response.data,
-      message: 'Message sent successfully',
-    });
+    return sendSuccess(res, response.data, 'Message sent successfully', 201);
   } catch (error) {
-    logger.error('Error sending return message:', {
-      error: error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
-    });
+    return sendError(res, error.response?.status || 500, error, '', 'SEND_RETURN_MESSAGE_ERROR', { claimId: req.params.claimId });
   }
 });
 
@@ -335,13 +286,9 @@ router.get('/:accountId/:claimId/shipping-label', authenticateToken, getMLAccoun
     const { claimId } = req.params;
     const { accessToken } = req.mlAccount;
 
-    // Get claim to find shipment
-    const claimResponse = await axios.get(
-      `${ML_API_BASE}/claims/${claimId}`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      }
-    );
+    const claimResponse = await axios.get(`${ML_API_BASE}/claims/${claimId}`, {
+      headers: buildHeaders(accessToken),
+    });
 
     const shipmentId = claimResponse.data.return_shipment_id;
 
@@ -352,34 +299,23 @@ router.get('/:accountId/:claimId/shipping-label', authenticateToken, getMLAccoun
       });
     }
 
-    // Get shipping label
-    const labelResponse = await axios.get(
-      `${ML_API_BASE}/shipment_labels`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-        params: {
-          shipment_ids: shipmentId,
-          response_type: 'pdf',
-        },
-        responseType: 'arraybuffer',
-      }
-    );
+    const labelResponse = await axios.get(`${ML_API_BASE}/shipment_labels`, {
+      headers: buildHeaders(accessToken),
+      params: {
+        shipment_ids: shipmentId,
+        response_type: 'pdf',
+      },
+      responseType: 'arraybuffer',
+    });
 
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `attachment; filename="return-label-${claimId}.pdf"`,
     });
 
-    res.send(labelResponse.data);
+    return res.send(labelResponse.data);
   } catch (error) {
-    logger.error('Error fetching return label:', {
-      error: error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
-    });
+    return sendError(res, error.response?.status || 500, error, '', 'GET_SHIPPING_LABEL_ERROR', { claimId: req.params.claimId });
   }
 });
 
@@ -391,39 +327,21 @@ router.get('/:accountId/stats/summary', authenticateToken, getMLAccount, async (
   try {
     const { accessToken, mlUserId } = req.mlAccount;
 
-    // Get user reputation which includes return metrics
-    const response = await axios.get(
-      `${ML_API_BASE}/users/${mlUserId}`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      }
-    );
+    const response = await axios.get(`${ML_API_BASE}/users/${mlUserId}`, {
+      headers: buildHeaders(accessToken),
+    });
 
     const { seller_reputation } = response.data;
 
-    res.json({
-      success: true,
-      data: {
-        claims: seller_reputation?.metrics?.claims || {},
-        cancellations: seller_reputation?.metrics?.cancellations || {},
-        sales: seller_reputation?.metrics?.sales || {},
-      },
+    return sendSuccess(res, {
+      claims: seller_reputation?.metrics?.claims || {},
+      cancellations: seller_reputation?.metrics?.cancellations || {},
+      sales: seller_reputation?.metrics?.sales || {},
     });
   } catch (error) {
-    logger.error('Error fetching return stats:', {
-      error: error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
-    });
+    return sendError(res, error.response?.status || 500, error, '', 'GET_RETURN_STATS_ERROR', { accountId: req.params.accountId });
   }
 });
-
-// ============================================
-// POST-PURCHASE V2 API ENDPOINTS
-// ============================================
 
 /**
  * GET /api/returns/:accountId/post-purchase/:claimId
@@ -434,27 +352,13 @@ router.get('/:accountId/post-purchase/:claimId', authenticateToken, getMLAccount
     const { claimId } = req.params;
     const { accessToken } = req.mlAccount;
 
-    const response = await axios.get(
-      `${ML_API_BASE}/post-purchase/v2/claims/${claimId}/returns`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      }
-    );
-
-    res.json({
-      success: true,
-      data: response.data,
+    const response = await axios.get(`${ML_API_BASE}/post-purchase/v2/claims/${claimId}/returns`, {
+      headers: buildHeaders(accessToken),
     });
+
+    return sendSuccess(res, response.data);
   } catch (error) {
-    logger.error('Error fetching post-purchase return:', {
-      error: error.message,
-      claimId: req.params.claimId,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
-    });
+    return sendError(res, error.response?.status || 500, error, '', 'GET_POST_PURCHASE_RETURN_ERROR', { claimId: req.params.claimId });
   }
 });
 
@@ -468,7 +372,6 @@ router.post('/:accountId/post-purchase/:claimId/review', authenticateToken, getM
     const { action, reason } = req.body;
     const { accessToken } = req.mlAccount;
 
-    // Valid actions: 'approve', 'reject'
     if (!['approve', 'reject'].includes(action)) {
       return res.status(400).json({
         success: false,
@@ -481,15 +384,9 @@ router.post('/:accountId/post-purchase/:claimId/review', authenticateToken, getM
       payload.reason = reason;
     }
 
-    const response = await axios.post(
-      `${ML_API_BASE}/post-purchase/v2/claims/${claimId}/returns/review`,
+    const response = await axios.post(`${ML_API_BASE}/post-purchase/v2/claims/${claimId}/returns/review`,
       payload,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      }
+      { headers: buildHeaders(accessToken) }
     );
 
     logger.info('Return review submitted:', {
@@ -498,21 +395,9 @@ router.post('/:accountId/post-purchase/:claimId/review', authenticateToken, getM
       accountId: req.mlAccount.id,
     });
 
-    res.json({
-      success: true,
-      message: `Return ${action}d successfully`,
-      data: response.data,
-    });
+    return sendSuccess(res, response.data, `Return ${action}d successfully`, 201);
   } catch (error) {
-    logger.error('Error submitting return review:', {
-      error: error.message,
-      claimId: req.params.claimId,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
-    });
+    return sendError(res, error.response?.status || 500, error, '', 'SUBMIT_RETURN_REVIEW_ERROR', { claimId: req.params.claimId });
   }
 });
 
@@ -542,15 +427,9 @@ router.post('/:accountId/:claimId/evidence', authenticateToken, getMLAccount, as
       payload.files = files;
     }
 
-    const response = await axios.post(
-      `${ML_API_BASE}/claims/${claimId}/evidences`,
+    const response = await axios.post(`${ML_API_BASE}/claims/${claimId}/evidences`,
       payload,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      }
+      { headers: buildHeaders(accessToken) }
     );
 
     logger.info('Return evidence uploaded:', {
@@ -559,21 +438,9 @@ router.post('/:accountId/:claimId/evidence', authenticateToken, getMLAccount, as
       accountId: req.mlAccount.id,
     });
 
-    res.json({
-      success: true,
-      message: 'Evidence uploaded successfully',
-      data: response.data,
-    });
+    return sendSuccess(res, response.data, 'Evidence uploaded successfully', 201);
   } catch (error) {
-    logger.error('Error uploading return evidence:', {
-      error: error.message,
-      claimId: req.params.claimId,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
-    });
+    return sendError(res, error.response?.status || 500, error, '', 'UPLOAD_RETURN_EVIDENCE_ERROR', { claimId: req.params.claimId });
   }
 });
 
@@ -586,27 +453,13 @@ router.get('/:accountId/:claimId/evidences', authenticateToken, getMLAccount, as
     const { claimId } = req.params;
     const { accessToken } = req.mlAccount;
 
-    const response = await axios.get(
-      `${ML_API_BASE}/claims/${claimId}/evidences`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      }
-    );
-
-    res.json({
-      success: true,
-      data: response.data,
+    const response = await axios.get(`${ML_API_BASE}/claims/${claimId}/evidences`, {
+      headers: buildHeaders(accessToken),
     });
+
+    return sendSuccess(res, response.data);
   } catch (error) {
-    logger.error('Error fetching return evidences:', {
-      error: error.message,
-      claimId: req.params.claimId,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
-    });
+    return sendError(res, error.response?.status || 500, error, '', 'GET_RETURN_EVIDENCES_ERROR', { claimId: req.params.claimId });
   }
 });
 
@@ -619,36 +472,16 @@ router.get('/:accountId/:claimId/timeline', authenticateToken, getMLAccount, asy
     const { claimId } = req.params;
     const { accessToken } = req.mlAccount;
 
-    const response = await axios.get(
-      `${ML_API_BASE}/claims/${claimId}/timeline`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      }
-    );
-
-    res.json({
-      success: true,
-      data: response.data,
+    const response = await axios.get(`${ML_API_BASE}/claims/${claimId}/timeline`, {
+      headers: buildHeaders(accessToken),
     });
+
+    return sendSuccess(res, response.data);
   } catch (error) {
-    logger.error('Error fetching return timeline:', {
-      error: error.message,
-      claimId: req.params.claimId,
-    });
-
-    // Timeline may not exist for all claims
     if (error.response?.status === 404) {
-      return res.json({
-        success: true,
-        data: [],
-        message: 'No timeline available',
-      });
+      return sendSuccess(res, [], 'No timeline available', 200);
     }
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
-    });
+    return sendError(res, error.response?.status || 500, error, '', 'GET_RETURN_TIMELINE_ERROR', { claimId: req.params.claimId });
   }
 });
 
@@ -666,15 +499,9 @@ router.post('/:accountId/:claimId/refund', authenticateToken, getMLAccount, asyn
     if (amount) payload.amount = amount;
     if (reason) payload.reason = reason;
 
-    const response = await axios.post(
-      `${ML_API_BASE}/claims/${claimId}/refund`,
+    const response = await axios.post(`${ML_API_BASE}/claims/${claimId}/refund`,
       payload,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      }
+      { headers: buildHeaders(accessToken) }
     );
 
     logger.info('Return refund processed:', {
@@ -683,21 +510,9 @@ router.post('/:accountId/:claimId/refund', authenticateToken, getMLAccount, asyn
       accountId: req.mlAccount.id,
     });
 
-    res.json({
-      success: true,
-      message: 'Refund processed successfully',
-      data: response.data,
-    });
+    return sendSuccess(res, response.data, 'Refund processed successfully', 201);
   } catch (error) {
-    logger.error('Error processing return refund:', {
-      error: error.message,
-      claimId: req.params.claimId,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
-    });
+    return sendError(res, error.response?.status || 500, error, '', 'PROCESS_RETURN_REFUND_ERROR', { claimId: req.params.claimId });
   }
 });
 
@@ -710,57 +525,31 @@ router.get('/:accountId/:claimId/tracking', authenticateToken, getMLAccount, asy
     const { claimId } = req.params;
     const { accessToken } = req.mlAccount;
 
-    // First get claim to find return shipment
-    const claimResponse = await axios.get(
-      `${ML_API_BASE}/claims/${claimId}`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      }
-    );
+    const claimResponse = await axios.get(`${ML_API_BASE}/claims/${claimId}`, {
+      headers: buildHeaders(accessToken),
+    });
 
     const returnShipmentId = claimResponse.data.return_shipment_id;
 
     if (!returnShipmentId) {
-      return res.json({
-        success: true,
-        data: null,
-        message: 'No return shipment found',
-      });
+      return sendSuccess(res, null, 'No return shipment found', 200);
     }
 
-    // Get tracking info
-    const trackingResponse = await axios.get(
-      `${ML_API_BASE}/shipments/${returnShipmentId}`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      }
-    );
+    const [trackingResponse, historyResponse] = await Promise.all([
+      axios.get(`${ML_API_BASE}/shipments/${returnShipmentId}`, {
+        headers: buildHeaders(accessToken),
+      }),
+      axios.get(`${ML_API_BASE}/shipments/${returnShipmentId}/history`, {
+        headers: buildHeaders(accessToken),
+      }).catch(() => ({ data: null })),
+    ]);
 
-    // Get tracking history
-    const historyResponse = await axios.get(
-      `${ML_API_BASE}/shipments/${returnShipmentId}/history`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      }
-    ).catch(() => ({ data: null }));
-
-    res.json({
-      success: true,
-      data: {
-        shipment: trackingResponse.data,
-        history: historyResponse.data,
-      },
+    return sendSuccess(res, {
+      shipment: trackingResponse.data,
+      history: historyResponse.data,
     });
   } catch (error) {
-    logger.error('Error fetching return tracking:', {
-      error: error.message,
-      claimId: req.params.claimId,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
-    });
+    return sendError(res, error.response?.status || 500, error, '', 'GET_RETURN_TRACKING_ERROR', { claimId: req.params.claimId });
   }
 });
 
