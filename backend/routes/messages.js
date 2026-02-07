@@ -18,6 +18,7 @@ const logger = require("../logger");
 const sdkManager = require("../services/sdk-manager");
 const { authenticateToken } = require("../middleware/auth");
 const { validateMLToken } = require("../middleware/ml-token-validation");
+const { handleError, sendSuccess, getAndValidateAccount } = require("../middleware/response-helpers");
 const Message = require("../db/models/Message");
 const Order = require("../db/models/Order");
 const MLAccount = require("../db/models/MLAccount");
@@ -25,54 +26,8 @@ const MLAccount = require("../db/models/MLAccount");
 const router = express.Router();
 
 // ============================================================================
-// CORE HELPERS
+// DOMAIN-SPECIFIC HELPERS
 // ============================================================================
-
-/**
- * Handle and log errors with consistent response format
- * @param {Object} res - Express response object
- * @param {number} statusCode - HTTP status code (default: 500)
- * @param {string} message - Error message to send to client
- * @param {Error} error - Original error object
- * @param {Object} context - Additional logging context
- */
-const handleError = (res, statusCode = 500, message, error = null, context = {}) => {
-  logger.error({
-    action: context.action || "UNKNOWN_ERROR",
-    error: error?.message || message,
-    statusCode,
-    ...context,
-  });
-
-  const response = { success: false, message };
-  if (error?.message) response.error = error.message;
-  res.status(statusCode).json(response);
-};
-
-/**
- * Send success response with consistent format
- * @param {Object} res - Express response object
- * @param {*} data - Response data
- * @param {string} message - Optional success message
- * @param {number} statusCode - HTTP status code (default: 200)
- */
-const sendSuccess = (res, data, message = null, statusCode = 200) => {
-  const response = { success: true, data };
-  if (message) response.message = message;
-  res.status(statusCode).json(response);
-};
-
-/**
- * Validate and return ML account
- * @param {string} accountId - Account ID
- * @param {string} userId - User ID
- * @returns {Promise<Object>} Account object
- */
-const getAndValidateAccount = async (accountId, userId) => {
-  const account = await MLAccount.findOne({ id: accountId, userId });
-  if (!account) throw new Error("Account not found");
-  return account;
-};
 
 /**
  * Find message by ID or ML message ID
