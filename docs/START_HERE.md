@@ -20,6 +20,7 @@ No VS Code:
 ```
 No VS Code:
 - Abra pasta: projeto-sass
+- Navegue: guides/QUICK_TEST.http
 - Clique em: QUICK_TEST.http
 ```
 
@@ -52,14 +53,13 @@ Se vir:
 
 ## 📋 Arquivos Disponíveis
 
-| Arquivo | Uso | Endpoints | Tempo |
-|---------|-----|-----------|-------|
-| **QUICK_TEST.http** ⭐ | Teste rápido | 12 | 2-3 min |
-| **API_TESTING.http** | Teste completo | 65+ | 30 min |
-| **SCENARIOS_TEST.http** | Fluxos reais | 10 cenários | 5-20 min |
-| **HTTP_TESTING_GUIDE.md** | Documentação | N/A | 5 min |
+| Arquivo | Localização | Uso | Endpoints | Tempo |
+|---------|-------------|-----|-----------|-------|
+| **QUICK_TEST.http** ⭐ | guides/ | Teste rápido | 12 | 2-3 min |
+| **API_TESTING.http** | guides/ | Teste completo | 65+ | 30 min |
+| **HTTP_TESTING_GUIDE.md** | docs/ | Documentação | N/A | 5 min |
 
-**👉 Comece com QUICK_TEST.http**
+**👉 Comece com guides/QUICK_TEST.http**
 
 ---
 
@@ -106,7 +106,7 @@ E todos retornarem **200 OK** = ✅ **Sistema funcionando!**
 
 ### Teste 1: Verificar Autenticação
 ```
-1. Abra QUICK_TEST.http
+1. Abra guides/QUICK_TEST.http
 2. Clique em [AUTH-02]
 3. Ctrl+Alt+R
 4. Check: Status code 200
@@ -114,7 +114,7 @@ E todos retornarem **200 OK** = ✅ **Sistema funcionando!**
 
 ### Teste 2: Listar Contas
 ```
-1. Abra QUICK_TEST.http
+1. Abra guides/QUICK_TEST.http
 2. Clique em [ACCT-01]
 3. Ctrl+Alt+R
 4. Response mostra todas as contas
@@ -122,7 +122,7 @@ E todos retornarem **200 OK** = ✅ **Sistema funcionando!**
 
 ### Teste 3: Rodar Tudo em Sequência
 ```
-1. Abra QUICK_TEST.http
+1. Abra guides/QUICK_TEST.http
 2. Ctrl+Alt+N (Run All)
 3. Aguarde completar
 4. Veja todos os resultados
@@ -166,21 +166,14 @@ Ctrl+Alt+C  → Copiar cURL command
 
 ### Se Quer Testar Mais
 ```
-1. Abra API_TESTING.http
+1. Abra guides/API_TESTING.http
 2. Adicione mais variáveis (@itemId, @orderId, etc)
 3. Rode os testes de produto e pedidos
 ```
 
-### Se Quer Testar Fluxos Completos
-```
-1. Abra SCENARIOS_TEST.http
-2. Escolha um cenário (criar produto, vender, entregar)
-3. Siga os passos indicados
-```
-
 ### Se Quer Ler Documentação
 ```
-1. Abra HTTP_TESTING_GUIDE.md
+1. Abra docs/HTTP_TESTING_GUIDE.md
 2. Veja instruções detalhadas
 3. Troubleshooting e FAQs
 ```
@@ -244,9 +237,9 @@ Ctrl+Alt+C  → Copiar cURL command
 
 ## 📞 Precisa de Ajuda?
 
-1. **Leia HTTP_TESTING_GUIDE.md** - Documentação completa
+1. **Leia docs/HTTP_TESTING_GUIDE.md** - Documentação completa
 2. **Verifique logs do backend** - `npm run dev` mostra erros
-3. **Consulte PROGRESS_DASHBOARD.md** - Status do projeto
+3. **Consulte docs/PROGRESS_DASHBOARD.md** - Status do projeto
 4. **Abra uma issue no GitHub** - Se for bug real
 
 ---
@@ -254,7 +247,7 @@ Ctrl+Alt+C  → Copiar cURL command
 ## 🎉 Pronto Para Começar?
 
 ```
-1. Abra QUICK_TEST.http
+1. Abra guides/QUICK_TEST.http
 2. Edite @token e @accountId
 3. Clique em [AUTH-02]
 4. Ctrl+Alt+R
