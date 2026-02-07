@@ -31,6 +31,124 @@ const User = require('../db/models/User');
 
 const router = express.Router();
 
+// ============================================
+// HELPER FUNCTIONS
+// ============================================
+
+/**
+ * Unified error handler for all routes
+ * Logs errors consistently and sends standardized error responses
+ * @param {Object} res - Express response object
+ * @param {number} statusCode - HTTP status code (default 500)
+ * @param {string} message - User-facing error message
+ * @param {Error} error - Error object (optional)
+ * @param {Object} context - Additional logging context (optional)
+ */
+const handleError = (res, statusCode = 500, message, error = null, context = {}) => {
+  logger.error({
+    action: context.action || 'UNKNOWN_ERROR',
+    error: error?.message || message,
+    statusCode,
+    ...context,
+  });
+
+  const response = {
+    success: false,
+    message,
+  };
+  if (error?.message) {
+    response.error = error.message;
+  }
+  res.status(statusCode).json(response);
+};
+
+/**
+ * Unified success response handler
+ * Sends standardized success responses with optional data and status code
+ * @param {Object} res - Express response object
+ * @param {any} data - Response data payload
+ * @param {string} message - Success message (optional)
+ * @param {number} statusCode - HTTP status code (default 200)
+ */
+const sendSuccess = (res, data, message = null, statusCode = 200) => {
+  const response = {
+    success: true,
+    data,
+  };
+  if (message) {
+    response.message = message;
+  }
+  res.status(statusCode).json(response);
+};
+
+/**
+ * Validate account ownership
+ * @param {string} accountId - Account ID to validate
+ * @param {string} userId - User ID requesting account
+ * @returns {Promise<Object>} Account object if found
+ */
+const getAndValidateAccount = async (accountId, userId) => {
+  const account = await MLAccount.findOne({
+    id: accountId,
+    userId: userId,
+  });
+
+  if (!account) {
+    throw {
+      statusCode: 404,
+      message: 'Account not found',
+      code: 'ACCOUNT_NOT_FOUND',
+    };
+  }
+
+  return account;
+};
+
+/**
+ * Create ML SDK instance and get user info for token validation
+ * @param {string} accessToken - ML access token
+ * @param {string} refreshToken - ML refresh token (optional)
+ * @returns {Promise<Object>} User info from ML
+ */
+const getMlUserInfo = async (accessToken, refreshToken) => {
+  try {
+    const { MercadoLibreSDK } = require('../sdk/complete-sdk');
+    const tempSDK = new MercadoLibreSDK(accessToken, refreshToken);
+    return await tempSDK.users.getCurrentUser();
+  } catch (error) {
+    throw {
+      statusCode: 401,
+      message: 'Invalid access token. Could not retrieve user information from Mercado Livre.',
+      error: error,
+      action: 'GET_ML_USER_INFO_ERROR',
+    };
+  }
+};
+
+/**
+ * Check if account already exists for this user/ML user combo
+ * @param {string} userId - User ID
+ * @param {string} mlUserId - ML user ID
+ * @returns {Promise<Object|null>} Existing account or null
+ */
+const checkExistingAccount = async (userId, mlUserId) => {
+  return await MLAccount.findOne({
+    userId: userId,
+    mlUserId: mlUserId,
+  });
+};
+
+/**
+ * Create new ML account record
+ * @param {Object} accountData - Account data to create
+ * @returns {Promise<Object>} Created account
+ */
+const createNewAccount = async (accountData) => {
+  const newAccount = new MLAccount(accountData);
+  await newAccount.save();
+  return newAccount;
+};
+
 /**
  * GET /api/ml-accounts
  * Listar todas as contas ML do usuário
@@ -39,24 +157,14 @@ router.get('/', authenticateToken, async (req, res) => {
   try {
     const accounts = await MLAccount.findByUserId(req.user.userId);
 
-    res.json({
-      success: true,
-      data: {
-        accounts: accounts.map(acc => acc.getSummary()),
-        total: accounts.length,
-      },
+    sendSuccess(res, {
+      accounts: accounts.map(acc => acc.getSummary()),
+      total: accounts.length,
     });
   } catch (error) {
-    logger.error({
+    handleError(res, 500, 'Failed to fetch ML accounts', error, {
       action: 'GET_ML_ACCOUNTS_ERROR',
       userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch ML accounts',
-      error: error.message,
     });
   }
 });
@@ -68,26 +176,13 @@ router.get('/', authenticateToken, async (req, res) => {
  */
 router.get('/:accountId', authenticateToken, async (req, res) => {
   try {
-    const account = await MLAccount.findOne({
-      id: req.params.accountId,
-      userId: req.user.userId,
-    });
-
-    if (!account) {
-      return res.status(404).json({
-        success: false,
-        message: 'Account not found',
-      });
-    }
+    const account = await getAndValidateAccount(req.params.accountId, req.user.userId);
 
     // Validar token com SDK (sem fazer requisição desnecessária)
     try {
-      // SDK cache evita multiplas chamadas
       const sdk = await sdkManager.getSDK(req.params.accountId);
-      // Se chegou aqui, token é válido
       account.status = 'active';
     } catch (error) {
-      // Token inválido ou expirado
       account.status = 'error';
       logger.warn({
         action: 'ACCOUNT_TOKEN_INVALID',
@@ -96,22 +191,14 @@ router.get('/:accountId', authenticateToken, async (req, res) => {
       });
     }
 
-    res.json({
-      success: true,
-      data: account.getSummary(),
-    });
+    sendSuccess(res, account.getSummary());
   } catch (error) {
-    logger.error({
-      action: 'GET_ML_ACCOUNT_ERROR',
+    const statusCode = error.statusCode || 500;
+    const message = error.message || 'Failed to fetch account';
+    handleError(res, statusCode, message, error, {
+      action: error.action || 'GET_ML_ACCOUNT_ERROR',
       accountId: req.params.accountId,
       userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch account',
-      error: error.message,
     });
   }
 });
@@ -143,31 +230,10 @@ router.post('/', authenticateToken, async (req, res) => {
     }
 
     // Usar SDK para buscar informações do usuário (valida token automaticamente)
-    let mlUserInfo;
-    try {
-      // Criar instância temporária da SDK apenas para validar token
-      const { MercadoLibreSDK } = require('../sdk/complete-sdk');
-      const tempSDK = new MercadoLibreSDK(accessToken, refreshToken);
-      mlUserInfo = await tempSDK.users.getCurrentUser();
-    } catch (error) {
-      logger.error({
-        action: 'GET_ML_USER_INFO_ERROR',
-        error: error.message,
-      });
-
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid access token. Could not retrieve user information from Mercado Livre.',
-        error: error.message,
-      });
-    }
+    const mlUserInfo = await getMlUserInfo(accessToken, refreshToken);
 
     // Verificar se usuário já tem essa conta
-    const existingAccount = await MLAccount.findOne({
-      userId: req.user.userId,
-      mlUserId: mlUserInfo.id,
-    });
-
+    const existingAccount = await checkExistingAccount(req.user.userId, mlUserInfo.id);
     if (existingAccount) {
       return res.status(409).json({
         success: false,
@@ -180,7 +246,7 @@ router.post('/', authenticateToken, async (req, res) => {
     const isPrimary = userAccounts.length === 0;
 
     // Criar nova conta
-    const newAccount = new MLAccount({
+    const newAccount = await createNewAccount({
       userId: req.user.userId,
       mlUserId: mlUserInfo.id,
       nickname: mlUserInfo.nickname,
@@ -197,8 +263,6 @@ router.post('/', authenticateToken, async (req, res) => {
       status: 'active',
     });
 
-    await newAccount.save();
-
     // Invalidar cache para esta conta
     sdkManager.invalidateCache(newAccount.id);
 
@@ -209,22 +273,13 @@ router.post('/', authenticateToken, async (req, res) => {
       userId: req.user.userId,
     });
 
-    res.status(201).json({
-      success: true,
-      message: 'Account added successfully',
-      data: newAccount.getSummary(),
-    });
+    sendSuccess(res, newAccount.getSummary(), 'Account added successfully', 201);
   } catch (error) {
-    logger.error({
-      action: 'POST_ML_ACCOUNTS_ERROR',
+    const statusCode = error.statusCode || 500;
+    const message = error.message || 'Failed to add account';
+    handleError(res, statusCode, message, error, {
+      action: error.action || 'POST_ML_ACCOUNTS_ERROR',
       userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to add account',
-      error: error.message,
     });
   }
 });
@@ -235,17 +290,7 @@ router.post('/', authenticateToken, async (req, res) => {
  */
 router.put('/:accountId', authenticateToken, async (req, res) => {
   try {
-    const account = await MLAccount.findOne({
-      id: req.params.accountId,
-      userId: req.user.userId,
-    });
-
-    if (!account) {
-      return res.status(404).json({
-        success: false,
-        message: 'Account not found',
-      });
-    }
+    const account = await getAndValidateAccount(req.params.accountId, req.user.userId);
 
     // Permitir atualizar apenas certos campos
     const allowedFields = ['accountName', 'accountType', 'clientId', 'clientSecret', 'redirectUri'];
@@ -256,8 +301,6 @@ router.put('/:accountId', authenticateToken, async (req, res) => {
     });
 
     await account.save();
-
-    // Invalidar cache
     sdkManager.invalidateCache(account.id);
 
     logger.info({
@@ -266,22 +309,13 @@ router.put('/:accountId', authenticateToken, async (req, res) => {
       userId: req.user.userId,
     });
 
-    res.json({
-      success: true,
-      message: 'Account updated successfully',
-      data: account.getSummary(),
-    });
+    sendSuccess(res, account.getSummary(), 'Account updated successfully');
   } catch (error) {
-    logger.error({
-      action: 'UPDATE_ML_ACCOUNT_ERROR',
+    const statusCode = error.statusCode || 500;
+    const message = error.message || 'Failed to update account';
+    handleError(res, statusCode, message, error, {
+      action: error.action || 'UPDATE_ML_ACCOUNT_ERROR',
       accountId: req.params.accountId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update account',
-      error: error.message,
     });
   }
 });
@@ -292,17 +326,7 @@ router.put('/:accountId', authenticateToken, async (req, res) => {
  */
 router.delete('/:accountId', authenticateToken, async (req, res) => {
   try {
-    const account = await MLAccount.findOne({
-      id: req.params.accountId,
-      userId: req.user.userId,
-    });
-
-    if (!account) {
-      return res.status(404).json({
-        success: false,
-        message: 'Account not found',
-      });
-    }
+    const account = await getAndValidateAccount(req.params.accountId, req.user.userId);
 
     // Tentar revogar token via SDK (best effort - não falha se ML não responde)
     try {
@@ -320,8 +344,6 @@ router.delete('/:accountId', authenticateToken, async (req, res) => {
 
     // Deletar conta localmente
     await MLAccount.findByIdAndDelete(account._id);
-
-    // Invalidar cache
     sdkManager.invalidateCache(req.params.accountId);
 
     logger.info({
@@ -330,21 +352,13 @@ router.delete('/:accountId', authenticateToken, async (req, res) => {
       userId: req.user.userId,
     });
 
-    res.json({
-      success: true,
-      message: 'Account deleted successfully',
-    });
+    sendSuccess(res, {}, 'Account deleted successfully');
   } catch (error) {
-    logger.error({
-      action: 'DELETE_ML_ACCOUNT_ERROR',
+    const statusCode = error.statusCode || 500;
+    const message = error.message || 'Failed to delete account';
+    handleError(res, statusCode, message, error, {
+      action: error.action || 'DELETE_ML_ACCOUNT_ERROR',
       accountId: req.params.accountId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to delete account',
-      error: error.message,
     });
   }
 });
@@ -368,25 +382,14 @@ router.post('/:accountId/sync', authenticateToken, validateMLToken('accountId'),
     // const items = await sdkManager.getItemsByUser(req.params.accountId, account.mlUserId);
     // const orders = await sdkManager.searchOrders(req.params.accountId, {});
 
-    res.json({
-      success: true,
-      message: 'Sync started. Check back later for results.',
-      data: {
-        accountId: account.id,
-        status: 'syncing',
-      },
-    });
+    sendSuccess(res, {
+      accountId: account.id,
+      status: 'syncing',
+    }, 'Sync started. Check back later for results.');
   } catch (error) {
-    logger.error({
+    handleError(res, 500, 'Sync failed', error, {
       action: 'ACCOUNT_SYNC_ERROR',
       accountId: req.params.accountId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Sync failed',
-      error: error.message,
     });
   }
 });
@@ -418,25 +421,14 @@ router.post('/sync-all', authenticateToken, async (req, res) => {
       // Disparar sync em background
     });
 
-    res.json({
-      success: true,
-      message: 'Sync started for all accounts',
-      data: {
-        accountCount: accounts.length,
-        status: 'syncing',
-      },
-    });
+    sendSuccess(res, {
+      accountCount: accounts.length,
+      status: 'syncing',
+    }, 'Sync started for all accounts');
   } catch (error) {
-    logger.error({
+    handleError(res, 500, 'Failed to start sync', error, {
       action: 'ALL_ACCOUNTS_SYNC_ERROR',
       userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to start sync',
-      error: error.message,
     });
   }
 });
@@ -447,17 +439,7 @@ router.post('/sync-all', authenticateToken, async (req, res) => {
  */
 router.put('/:accountId/pause', authenticateToken, async (req, res) => {
   try {
-    const account = await MLAccount.findOne({
-      id: req.params.accountId,
-      userId: req.user.userId,
-    });
-
-    if (!account) {
-      return res.status(404).json({
-        success: false,
-        message: 'Account not found',
-      });
-    }
+    const account = await getAndValidateAccount(req.params.accountId, req.user.userId);
 
     account.isSyncPaused = true;
     account.syncPausedAt = new Date();
@@ -469,22 +451,13 @@ router.put('/:accountId/pause', authenticateToken, async (req, res) => {
       userId: req.user.userId,
     });
 
-    res.json({
-      success: true,
-      message: 'Account sync paused',
-      data: account.getSummary(),
-    });
+    sendSuccess(res, account.getSummary(), 'Account sync paused');
   } catch (error) {
-    logger.error({
-      action: 'PAUSE_ACCOUNT_SYNC_ERROR',
+    const statusCode = error.statusCode || 500;
+    const message = error.message || 'Failed to pause sync';
+    handleError(res, statusCode, message, error, {
+      action: error.action || 'PAUSE_ACCOUNT_SYNC_ERROR',
       accountId: req.params.accountId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to pause sync',
-      error: error.message,
     });
   }
 });
@@ -495,17 +468,7 @@ router.put('/:accountId/pause', authenticateToken, async (req, res) => {
  */
 router.put('/:accountId/resume', authenticateToken, async (req, res) => {
   try {
-    const account = await MLAccount.findOne({
-      id: req.params.accountId,
-      userId: req.user.userId,
-    });
-
-    if (!account) {
-      return res.status(404).json({
-        success: false,
-        message: 'Account not found',
-      });
-    }
+    const account = await getAndValidateAccount(req.params.accountId, req.user.userId);
 
     account.isSyncPaused = false;
     account.syncPausedAt = null;
@@ -517,22 +480,13 @@ router.put('/:accountId/resume', authenticateToken, async (req, res) => {
       userId: req.user.userId,
     });
 
-    res.json({
-      success: true,
-      message: 'Account sync resumed',
-      data: account.getSummary(),
-    });
+    sendSuccess(res, account.getSummary(), 'Account sync resumed');
   } catch (error) {
-    logger.error({
-      action: 'RESUME_ACCOUNT_SYNC_ERROR',
+    const statusCode = error.statusCode || 500;
+    const message = error.message || 'Failed to resume sync';
+    handleError(res, statusCode, message, error, {
+      action: error.action || 'RESUME_ACCOUNT_SYNC_ERROR',
       accountId: req.params.accountId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to resume sync',
-      error: error.message,
     });
   }
 });
@@ -544,17 +498,7 @@ router.put('/:accountId/resume', authenticateToken, async (req, res) => {
  */
 router.put('/:accountId/refresh-token', authenticateToken, async (req, res) => {
   try {
-    const account = await MLAccount.findOne({
-      id: req.params.accountId,
-      userId: req.user.userId,
-    });
-
-    if (!account) {
-      return res.status(404).json({
-        success: false,
-        message: 'Account not found',
-      });
-    }
+    const account = await getAndValidateAccount(req.params.accountId, req.user.userId);
 
     if (!account.refreshToken) {
       return res.status(400).json({
@@ -629,25 +573,16 @@ router.put('/:accountId/refresh-token', authenticateToken, async (req, res) => {
       expiresIn: result.expiresIn,
     });
 
-    res.json({
-      success: true,
-      message: 'Token refreshed successfully',
-      data: {
-        accountId: account.id,
-        tokenExpiresAt: account.tokenExpiresAt,
-      },
-    });
+    sendSuccess(res, {
+      accountId: account.id,
+      tokenExpiresAt: account.tokenExpiresAt,
+    }, 'Token refreshed successfully');
   } catch (error) {
-    logger.error({
-      action: 'MANUAL_TOKEN_REFRESH_ERROR',
+    const statusCode = error.statusCode || 500;
+    const message = error.message || 'Failed to refresh token';
+    handleError(res, statusCode, message, error, {
+      action: error.action || 'MANUAL_TOKEN_REFRESH_ERROR',
       accountId: req.params.accountId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to refresh token',
-      error: error.message,
     });
   }
 });
