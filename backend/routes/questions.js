@@ -22,21 +22,78 @@ const MLAccount = require("../db/models/MLAccount");
 
 const router = express.Router();
 
+// ============================================================================
+// CORE HELPERS
+// ============================================================================
+
+/**
+ * Handle and log errors with consistent response format
+ * @param {Object} res - Express response object
+ * @param {number} statusCode - HTTP status code (default: 500)
+ * @param {string} message - Error message to send to client
+ * @param {Error} error - Original error object
+ * @param {Object} context - Additional logging context
+ */
+const handleError = (res, statusCode = 500, message, error = null, context = {}) => {
+  logger.error({
+    action: context.action || 'UNKNOWN_ERROR',
+    error: error?.message || message,
+    statusCode,
+    ...context,
+  });
+
+  const response = { success: false, message };
+  if (error?.message) response.error = error.message;
+  res.status(statusCode).json(response);
+};
+
+/**
+ * Send success response with consistent format
+ * @param {Object} res - Express response object
+ * @param {*} data - Response data
+ * @param {string} message - Optional success message
+ * @param {number} statusCode - HTTP status code (default: 200)
+ */
+const sendSuccess = (res, data, message = null, statusCode = 200) => {
+  const response = { success: true, data };
+  if (message) response.message = message;
+  res.status(statusCode).json(response);
+};
+
+/**
+ * Validate and return ML account
+ * @param {string} accountId - Account ID
+ * @param {string} userId - User ID
+ * @returns {Promise<Object>} Account object
+ */
+const getAndValidateAccount = async (accountId, userId) => {
+  const account = await MLAccount.findOne({ id: accountId, userId });
+  if (!account) throw new Error("Account not found");
+  return account;
+};
+
+/**
+ * Find question by ID or ML question ID
+ * @param {string} questionId - Question ID
+ * @param {string} accountId - Account ID
+ * @param {string} userId - User ID
+ * @returns {Promise<Object>} Question object
+ */
+const findQuestion = async (questionId, accountId, userId) => {
+  return Question.findOne({
+    $or: [{ id: questionId }, { mlQuestionId: questionId }],
+    accountId,
+    userId,
+  });
+};
+
 /**
  * GET /api/questions
  * List all questions for the authenticated user
  */
 router.get("/", authenticateToken, async (req, res) => {
   try {
-    const {
-      limit: queryLimit,
-      offset = 0,
-      status,
-      sort = "-dateCreated",
-      all,
-    } = req.query;
-
-    // If all=true, fetch everything. Otherwise use limit (default 100)
+    const { limit: queryLimit, offset = 0, status, sort = "-dateCreated", all } = req.query;
     const limit = all === "true" ? 999999 : queryLimit || 100;
 
     const query = { userId: req.user.userId };
@@ -49,26 +106,16 @@ router.get("/", authenticateToken, async (req, res) => {
 
     const total = await Question.countDocuments(query);
 
-    res.json({
-      success: true,
-      data: {
-        questions: questions.map((q) => q.getSummary()),
-        total,
-        limit: parseInt(limit),
-        offset: parseInt(offset),
-      },
+    sendSuccess(res, {
+      questions: questions.map((q) => q.getSummary()),
+      total,
+      limit: parseInt(limit),
+      offset: parseInt(offset),
     });
   } catch (error) {
-    logger.error({
+    handleError(res, 500, "Failed to fetch questions", error, {
       action: "GET_QUESTIONS_ERROR",
       userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch questions",
-      error: error.message,
     });
   }
 });
@@ -81,22 +128,10 @@ router.get("/:accountId/stats", authenticateToken, async (req, res) => {
   try {
     const { accountId } = req.params;
 
-    // Verify account exists
-    const account = await MLAccount.findOne({
-      id: accountId,
-      userId: req.user.userId,
-    });
-
-    if (!account) {
-      return res.status(404).json({
-        success: false,
-        message: "Account not found",
-      });
-    }
+    await getAndValidateAccount(accountId, req.user.userId);
 
     const stats = await Question.getStats(accountId);
 
-    // Get today's unanswered
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -106,26 +141,19 @@ router.get("/:accountId/stats", authenticateToken, async (req, res) => {
       dateCreated: { $gte: today },
     });
 
-    res.json({
-      success: true,
-      data: {
-        accountId,
-        ...stats,
-        todayUnanswered,
-      },
+    sendSuccess(res, {
+      accountId,
+      ...stats,
+      todayUnanswered,
     });
   } catch (error) {
-    logger.error({
+    if (error.message === "Account not found") {
+      return res.status(404).json({ success: false, message: "Account not found" });
+    }
+    handleError(res, 500, "Failed to get question statistics", error, {
       action: "GET_QUESTION_STATS_ERROR",
       accountId: req.params.accountId,
       userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: "Failed to get question statistics",
-      error: error.message,
     });
   }
 });
@@ -139,49 +167,25 @@ router.get("/:accountId/unanswered", authenticateToken, async (req, res) => {
     const { accountId } = req.params;
     const { limit: queryLimit, all } = req.query;
 
-    // If all=true, fetch everything. Otherwise use limit (default 50)
     const limit = all === "true" ? 999999 : queryLimit || 50;
 
-    // Verify account belongs to user
-    const account = await MLAccount.findOne({
-      id: accountId,
-      userId: req.user.userId,
-    });
+    const account = await getAndValidateAccount(accountId, req.user.userId);
 
-    if (!account) {
-      return res.status(404).json({
-        success: false,
-        message: "Account not found",
-      });
-    }
+    const questions = await Question.findUnanswered(accountId, { limit: parseInt(limit) });
 
-    const questions = await Question.findUnanswered(accountId, {
-      limit: parseInt(limit),
-    });
-
-    res.json({
-      success: true,
-      data: {
-        account: {
-          id: account.id,
-          nickname: account.nickname,
-        },
-        questions: questions.map((q) => q.getSummary()),
-        total: questions.length,
-      },
+    sendSuccess(res, {
+      account: { id: account.id, nickname: account.nickname },
+      questions: questions.map((q) => q.getSummary()),
+      total: questions.length,
     });
   } catch (error) {
-    logger.error({
+    if (error.message === "Account not found") {
+      return res.status(404).json({ success: false, message: "Account not found" });
+    }
+    handleError(res, 500, "Failed to fetch unanswered questions", error, {
       action: "GET_UNANSWERED_QUESTIONS_ERROR",
       accountId: req.params.accountId,
       userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch unanswered questions",
-      error: error.message,
     });
   }
 });
@@ -193,30 +197,11 @@ router.get("/:accountId/unanswered", authenticateToken, async (req, res) => {
 router.get("/:accountId", authenticateToken, async (req, res) => {
   try {
     const { accountId } = req.params;
-    const {
-      limit: queryLimit,
-      offset = 0,
-      status,
-      itemId,
-      sort = "-dateCreated",
-      all,
-    } = req.query;
+    const { limit: queryLimit, offset = 0, status, itemId, sort = "-dateCreated", all } = req.query;
 
-    // If all=true, fetch everything. Otherwise use limit (default 100)
     const limit = all === "true" ? 999999 : queryLimit || 100;
 
-    // Verify account belongs to user
-    const account = await MLAccount.findOne({
-      id: accountId,
-      userId: req.user.userId,
-    });
-
-    if (!account) {
-      return res.status(404).json({
-        success: false,
-        message: "Account not found",
-      });
-    }
+    const account = await getAndValidateAccount(accountId, req.user.userId);
 
     const query = { accountId, userId: req.user.userId };
     if (status) query.status = status;
@@ -229,31 +214,21 @@ router.get("/:accountId", authenticateToken, async (req, res) => {
 
     const total = await Question.countDocuments(query);
 
-    res.json({
-      success: true,
-      data: {
-        account: {
-          id: account.id,
-          nickname: account.nickname,
-        },
-        questions: questions.map((q) => q.getSummary()),
-        total,
-        limit: parseInt(limit),
-        offset: parseInt(offset),
-      },
+    sendSuccess(res, {
+      account: { id: account.id, nickname: account.nickname },
+      questions: questions.map((q) => q.getSummary()),
+      total,
+      limit: parseInt(limit),
+      offset: parseInt(offset),
     });
   } catch (error) {
-    logger.error({
+    if (error.message === "Account not found") {
+      return res.status(404).json({ success: false, message: "Account not found" });
+    }
+    handleError(res, 500, "Failed to fetch questions", error, {
       action: "GET_ACCOUNT_QUESTIONS_ERROR",
       accountId: req.params.accountId,
       userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch questions",
-      error: error.message,
     });
   }
 });
@@ -266,35 +241,18 @@ router.get("/:accountId/:questionId", authenticateToken, async (req, res) => {
   try {
     const { accountId, questionId } = req.params;
 
-    const question = await Question.findOne({
-      $or: [{ id: questionId }, { mlQuestionId: questionId }],
-      accountId,
-      userId: req.user.userId,
-    });
+    const question = await findQuestion(questionId, accountId, req.user.userId);
 
     if (!question) {
-      return res.status(404).json({
-        success: false,
-        message: "Question not found",
-      });
+      return res.status(404).json({ success: false, message: "Question not found" });
     }
 
-    res.json({
-      success: true,
-      data: question.getDetails(),
-    });
+    sendSuccess(res, question.getDetails());
   } catch (error) {
-    logger.error({
+    handleError(res, 500, "Failed to fetch question", error, {
       action: "GET_QUESTION_ERROR",
       questionId: req.params.questionId,
       userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch question",
-      error: error.message,
     });
   }
 });
@@ -303,82 +261,49 @@ router.get("/:accountId/:questionId", authenticateToken, async (req, res) => {
  * POST /api/questions/:accountId/:questionId/answer
  * Answer a question on Mercado Livre
  */
-router.post(
-  "/:accountId/:questionId/answer",
-  authenticateToken,
-  validateMLToken("accountId"),
-  async (req, res) => {
-    try {
-      const { accountId, questionId } = req.params;
-      const { text } = req.body;
-      const account = req.mlAccount;
+router.post("/:accountId/:questionId/answer", authenticateToken, validateMLToken("accountId"), async (req, res) => {
+  try {
+    const { accountId, questionId } = req.params;
+    const { text } = req.body;
+    const account = req.mlAccount;
 
-      if (!text || text.trim().length === 0) {
-        return res.status(400).json({
-          success: false,
-          message: "Answer text is required",
-        });
-      }
-
-      // Find question in DB
-      const question = await Question.findOne({
-        $or: [{ id: questionId }, { mlQuestionId: questionId }],
-        accountId,
-        userId: req.user.userId,
-      });
-
-      if (!question) {
-        return res.status(404).json({
-          success: false,
-          message: "Question not found",
-        });
-      }
-
-      // Send answer using SDK Manager
-      await sdkManager.answerQuestion(
-        accountId,
-        question.mlQuestionId,
-        text.trim(),
-      );
-
-      // Update question in DB
-      question.answer = {
-        text: text.trim(),
-        status: "ACTIVE",
-        dateCreated: new Date(),
-      };
-      question.status = "ANSWERED";
-      question.lastSyncedAt = new Date();
-      await question.save();
-
-      logger.info({
-        action: "QUESTION_ANSWERED",
-        questionId: question.mlQuestionId,
-        accountId,
-        userId: req.user.userId,
-      });
-
-      res.json({
-        success: true,
-        message: "Question answered successfully",
-        data: question.getDetails(),
-      });
-    } catch (error) {
-      logger.error({
-        action: "ANSWER_QUESTION_ERROR",
-        questionId: req.params.questionId,
-        userId: req.user.userId,
-        error: error.message,
-      });
-
-      res.status(500).json({
-        success: false,
-        message: "Failed to answer question",
-        error: error.message,
-      });
+    if (!text || text.trim().length === 0) {
+      return res.status(400).json({ success: false, message: "Answer text is required" });
     }
-  },
-);
+
+    const question = await findQuestion(questionId, accountId, req.user.userId);
+
+    if (!question) {
+      return res.status(404).json({ success: false, message: "Question not found" });
+    }
+
+    await sdkManager.answerQuestion(accountId, question.mlQuestionId, text.trim());
+
+    question.answer = {
+      text: text.trim(),
+      status: "ACTIVE",
+      dateCreated: new Date(),
+    };
+    question.status = "ANSWERED";
+    question.lastSyncedAt = new Date();
+    await question.save();
+
+    logger.info({
+      action: "QUESTION_ANSWERED",
+      questionId: question.mlQuestionId,
+      accountId,
+      userId: req.user.userId,
+    });
+
+    sendSuccess(res, question.getDetails(), "Question answered successfully");
+  } catch (error) {
+    handleError(res, 500, "Failed to answer question", error, {
+      action: "ANSWER_QUESTION_ERROR",
+      questionId: req.params.questionId,
+      userId: req.user.userId,
+    });
+  }
+});
 
 /**
  * POST /api/questions/:accountId/sync
@@ -387,145 +312,97 @@ router.post(
  *   - status: Question status (default 'UNANSWERED')
  *   - all: If true, fetch ALL questions with auto-pagination (default false)
  */
-router.post(
-  "/:accountId/sync",
-  authenticateToken,
-  validateMLToken("accountId"),
-  async (req, res) => {
-    try {
-      const { accountId } = req.params;
-      const { status = "UNANSWERED", all = false } = req.body;
-      const account = req.mlAccount;
+router.post("/:accountId/sync", authenticateToken, validateMLToken("accountId"), async (req, res) => {
+  try {
+    const { accountId } = req.params;
+    const { status = "UNANSWERED", all = false } = req.body;
+    const account = req.mlAccount;
 
-      logger.info({
-        action: "QUESTIONS_SYNC_STARTED",
+    logger.info({
+      action: "QUESTIONS_SYNC_STARTED",
+      accountId,
+      userId: req.user.userId,
+      all,
+      timestamp: new Date().toISOString(),
+    });
+
+    const mlQuestions = await fetchMLQuestions(account.mlUserId, accountId, { status, all });
+    const savedQuestions = await saveQuestions(accountId, req.user.userId, account.mlUserId, mlQuestions);
+
+    logger.info({
+      action: "QUESTIONS_SYNC_COMPLETED",
+      accountId,
+      userId: req.user.userId,
+      questionsCount: savedQuestions.length,
+      timestamp: new Date().toISOString(),
+    });
+
+    sendSuccess(
+      res,
+      {
         accountId,
-        userId: req.user.userId,
-        all,
-        timestamp: new Date().toISOString(),
-      });
-
-      // Fetch questions from ML using SDK Manager
-      const mlQuestions = await fetchMLQuestions(account.mlUserId, accountId, {
-        status,
-        all,
-      });
-
-      // Store/update questions in database
-      const savedQuestions = await saveQuestions(
-        accountId,
-        req.user.userId,
-        account.mlUserId,
-        mlQuestions,
-      );
-
-      logger.info({
-        action: "QUESTIONS_SYNC_COMPLETED",
-        accountId,
-        userId: req.user.userId,
         questionsCount: savedQuestions.length,
-        timestamp: new Date().toISOString(),
-      });
-
-      res.json({
-        success: true,
-        message: `Synchronized ${savedQuestions.length} questions`,
-        data: {
-          accountId,
-          questionsCount: savedQuestions.length,
-          questions: savedQuestions.map((q) => q.getSummary()),
-          syncedAt: new Date().toISOString(),
-        },
-      });
-    } catch (error) {
-      logger.error({
-        action: "QUESTIONS_SYNC_ERROR",
-        accountId: req.params.accountId,
-        userId: req.user.userId,
-        error: error.message,
-        timestamp: new Date().toISOString(),
-      });
-
-      res.status(500).json({
-        success: false,
-        message: "Failed to sync questions",
-        error: error.message,
-      });
-    }
-  },
-);
+        questions: savedQuestions.map((q) => q.getSummary()),
+        syncedAt: new Date().toISOString(),
+      },
+      `Synchronized ${savedQuestions.length} questions`
+    );
+  } catch (error) {
+    handleError(res, 500, "Failed to sync questions", error, {
+      action: "QUESTIONS_SYNC_ERROR",
+      accountId: req.params.accountId,
+      userId: req.user.userId,
+    });
+  }
+});
 
 /**
  * DELETE /api/questions/:accountId/:questionId
  * Delete/hide question from ML
  */
-router.delete(
-  "/:accountId/:questionId",
-  authenticateToken,
-  validateMLToken("accountId"),
-  async (req, res) => {
-    try {
-      const { accountId, questionId } = req.params;
-      const account = req.mlAccount;
+router.delete("/:accountId/:questionId", authenticateToken, validateMLToken("accountId"), async (req, res) => {
+  try {
+    const { accountId, questionId } = req.params;
+    const account = req.mlAccount;
 
-      const question = await Question.findOne({
-        $or: [{ id: questionId }, { mlQuestionId: questionId }],
-        accountId,
-        userId: req.user.userId,
-      });
+    const question = await findQuestion(questionId, accountId, req.user.userId);
 
-      if (!question) {
-        return res.status(404).json({
-          success: false,
-          message: "Question not found",
-        });
-      }
-
-      // Delete from ML API using SDK Manager
-      await sdkManager
-        .execute(accountId, async (sdk) => {
-          return await sdk.questions.deleteQuestion(question.mlQuestionId);
-        })
-        .catch((err) => {
-          logger.warn({
-            action: "DELETE_QUESTION_ML_ERROR",
-            questionId: question.mlQuestionId,
-            error: err.message,
-          });
-        });
-
-      // Update in DB
-      question.status = "DISABLED";
-      question.deletedFromListing = true;
-      await question.save();
-
-      logger.info({
-        action: "QUESTION_DELETED",
-        questionId: question.mlQuestionId,
-        accountId,
-        userId: req.user.userId,
-      });
-
-      res.json({
-        success: true,
-        message: "Question deleted successfully",
-      });
-    } catch (error) {
-      logger.error({
-        action: "DELETE_QUESTION_ERROR",
-        questionId: req.params.questionId,
-        userId: req.user.userId,
-        error: error.message,
-      });
-
-      res.status(500).json({
-        success: false,
-        message: "Failed to delete question",
-        error: error.message,
-      });
+    if (!question) {
+      return res.status(404).json({ success: false, message: "Question not found" });
     }
-  },
-);
+
+    await sdkManager
+      .execute(accountId, async (sdk) => {
+        return await sdk.questions.deleteQuestion(question.mlQuestionId);
+      })
+      .catch((err) => {
+        logger.warn({
+          action: "DELETE_QUESTION_ML_ERROR",
+          questionId: question.mlQuestionId,
+          error: err.message,
+        });
+      });
+
+    question.status = "DISABLED";
+    question.deletedFromListing = true;
+    await question.save();
+
+    logger.info({
+      action: "QUESTION_DELETED",
+      questionId: question.mlQuestionId,
+      accountId,
+      userId: req.user.userId,
+    });
+
+    sendSuccess(res, null, "Question deleted successfully");
+  } catch (error) {
+    handleError(res, 500, "Failed to delete question", error, {
+      action: "DELETE_QUESTION_ERROR",
+      questionId: req.params.questionId,
+      userId: req.user.userId,
+    });
+  }
+});
 
 // ============================================
 // HELPER FUNCTIONS
