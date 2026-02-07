@@ -12,37 +12,8 @@ const axios = require('axios');
 const logger = require('../logger');
 const sdkManager = require("../services/sdk-manager");
 const { authenticateToken } = require('../middleware/auth');
+const { handleError, sendSuccess } = require('../middleware/response-helpers');
 
-const router = express.Router();
-
-// ============================================================================
-// CORE HELPERS
-// ============================================================================
-
-/**
- * Handle and log errors with consistent response format
- */
-const handleError = (res, statusCode = 500, message, error = null, context = {}) => {
-  logger.error({
-    action: context.action || 'UNKNOWN_ERROR',
-    error: error?.message || message,
-    statusCode,
-    ...context,
-  });
-
-  const response = { success: false, message };
-  if (error?.message) response.error = error.message;
-  res.status(statusCode).json(response);
-};
-
-/**
- * Send success response with consistent format
- */
-const sendSuccess = (res, data, message = null, statusCode = 200) => {
-  const response = { success: true, data };
-  if (message) response.message = message;
-  res.status(statusCode).json(response);
-};
 
 
 
@@ -54,6 +25,7 @@ const ML_SANDBOX_BASE = 'https://api.mercadolibre.com'; // Usar sandbox em dev s
  * Obter dados atuais da conta
  */
 router.get('/account/:accountId', authenticateToken, async (req, res) => {
+const { handleError, sendSuccess } = require('../middleware/response-helpers');
   try {
     const { accountId } = req.params;
     const accessToken = req.headers['x-access-token'] || req.body.accessToken;
@@ -100,6 +72,7 @@ router.get('/account/:accountId', authenticateToken, async (req, res) => {
  * Disparar sincronização para uma conta
  */
 router.post('/account/:accountId', authenticateToken, async (req, res) => {
+const { handleError, sendSuccess } = require('../middleware/response-helpers');
   try {
     const { accountId } = req.params;
     const accessToken = req.headers['x-access-token'] || req.body.accessToken;
@@ -162,6 +135,7 @@ router.post('/account/:accountId', authenticateToken, async (req, res) => {
  * Sincronizar todas as contas do usuário
  */
 router.post('/all', authenticateToken, async (req, res) => {
+const { handleError, sendSuccess } = require('../middleware/response-helpers');
   try {
     const { accounts } = req.body;
 
@@ -241,6 +215,7 @@ router.post('/all', authenticateToken, async (req, res) => {
  * Obter status de sincronização
  */
 router.get('/status/:accountId', authenticateToken, async (req, res) => {
+const { handleError, sendSuccess } = require('../middleware/response-helpers');
   try {
     const { accountId } = req.params;
 

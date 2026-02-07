@@ -13,36 +13,6 @@
  * POST   /api/ml-accounts                    - Adicionar nova conta
  * PUT    /api/ml-accounts/:accountId         - Atualizar conta
  * DELETE /api/ml-accounts/:accountId         - Remover conta
- * POST   /api/ml-accounts/:accountId/sync    - Sincronizar conta
- * POST   /api/ml-accounts/sync-all           - Sincronizar todas as contas
- * PUT    /api/ml-accounts/:accountId/pause   - Pausar sincronização
- * PUT    /api/ml-accounts/:accountId/resume  - Retomar sincronização
- * PUT    /api/ml-accounts/:accountId/refresh-token - Refresh token manualmente
- */
-
-const express = require('express');
-const logger = require('../logger');
-const sdkManager = require("../services/sdk-manager");
-const { authenticateToken } = require('../middleware/auth');
-const { validateMLToken } = require('../middleware/ml-token-validation');
-const MLAccount = require('../db/models/MLAccount');
-const MLTokenManager = require('../utils/ml-token-manager');
-const User = require('../db/models/User');
-
-const router = express.Router();
-
-// ============================================================================
-// CORE HELPERS
-// ============================================================================
-
-/**
- * Handle and log errors with consistent response format
- */
-const handleError = (res, statusCode = 500, message, error = null, context = {}) => {
-  logger.error({
-    action: context.action || 'UNKNOWN_ERROR',
-    error: error?.message || message,
-    statusCode,
     ...context,
   });
 
@@ -67,6 +37,7 @@ const sendSuccess = (res, data, message = null, statusCode = 200) => {
  * Listar todas as contas ML do usuário
  */
 router.get('/', authenticateToken, async (req, res) => {
+const { handleError, sendSuccess } = require('../middleware/response-helpers');
   try {
     const accounts = await MLAccount.findByUserId(req.user.userId);
 
@@ -98,6 +69,7 @@ router.get('/', authenticateToken, async (req, res) => {
  * Agora também valida se token ainda é válido
  */
 router.get('/:accountId', authenticateToken, async (req, res) => {
+const { handleError, sendSuccess } = require('../middleware/response-helpers');
   try {
     const account = await MLAccount.findOne({
       id: req.params.accountId,
@@ -153,6 +125,7 @@ router.get('/:accountId', authenticateToken, async (req, res) => {
  * SDK valida o token e busca informações do usuário automaticamente
  */
 router.post('/', authenticateToken, async (req, res) => {
+const { handleError, sendSuccess } = require('../middleware/response-helpers');
   try {
     const { 
       accessToken, 
@@ -265,6 +238,7 @@ router.post('/', authenticateToken, async (req, res) => {
  * Atualizar informações da conta
  */
 router.put('/:accountId', authenticateToken, async (req, res) => {
+const { handleError, sendSuccess } = require('../middleware/response-helpers');
   try {
     const account = await MLAccount.findOne({
       id: req.params.accountId,
@@ -322,6 +296,7 @@ router.put('/:accountId', authenticateToken, async (req, res) => {
  * Remover conta usando SDK para revogar token
  */
 router.delete('/:accountId', authenticateToken, async (req, res) => {
+const { handleError, sendSuccess } = require('../middleware/response-helpers');
   try {
     const account = await MLAccount.findOne({
       id: req.params.accountId,
@@ -386,6 +361,7 @@ router.delete('/:accountId', authenticateToken, async (req, res) => {
  * (Import items, orders, etc from ML)
  */
 router.post('/:accountId/sync', authenticateToken, validateMLToken('accountId'), async (req, res) => {
+const { handleError, sendSuccess } = require('../middleware/response-helpers');
   try {
     const account = req.mlAccount;
 
@@ -427,6 +403,7 @@ router.post('/:accountId/sync', authenticateToken, validateMLToken('accountId'),
  * Sincronizar todas as contas do usuário
  */
 router.post('/sync-all', authenticateToken, async (req, res) => {
+const { handleError, sendSuccess } = require('../middleware/response-helpers');
   try {
     const accounts = await MLAccount.findByUserId(req.user.userId);
 
@@ -477,6 +454,7 @@ router.post('/sync-all', authenticateToken, async (req, res) => {
  * Pausar sincronização de uma conta
  */
 router.put('/:accountId/pause', authenticateToken, async (req, res) => {
+const { handleError, sendSuccess } = require('../middleware/response-helpers');
   try {
     const account = await MLAccount.findOne({
       id: req.params.accountId,
@@ -525,6 +503,7 @@ router.put('/:accountId/pause', authenticateToken, async (req, res) => {
  * Retomar sincronização de uma conta
  */
 router.put('/:accountId/resume', authenticateToken, async (req, res) => {
+const { handleError, sendSuccess } = require('../middleware/response-helpers');
   try {
     const account = await MLAccount.findOne({
       id: req.params.accountId,
@@ -574,6 +553,7 @@ router.put('/:accountId/resume', authenticateToken, async (req, res) => {
  * SDK handles all the OAuth logic automatically
  */
 router.put('/:accountId/refresh-token', authenticateToken, async (req, res) => {
+const { handleError, sendSuccess } = require('../middleware/response-helpers');
   try {
     const account = await MLAccount.findOne({
       id: req.params.accountId,
