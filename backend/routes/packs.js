@@ -37,6 +37,332 @@ const router = express.Router();
 
 const ML_API_BASE = 'https://api.mercadolibre.com';
 
+// ============================================================================
+// CORE HELPER FUNCTIONS
+// ============================================================================
+
+/**
+ * Send successful response
+ */
+function sendSuccess(res, data, message = '', statusCode = 200) {
+  const response = { success: true };
+  if (message) response.message = message;
+  if (data !== undefined) response.data = data;
+  return res.status(statusCode).json(response);
+}
+
+/**
+ * Handle error response with logging
+ */
+function handleError(res, statusCode, message, error, action, context = {}) {
+  logger.error({
+    action,
+    ...context,
+    error: error.message || error,
+  });
+  return res.status(statusCode).json({
+    success: false,
+    message,
+    error: error.message || error,
+  });
+}
+
+/**
+ * Build authorization headers
+ */
+function buildHeaders(accessToken) {
+  return {
+    'Authorization': `Bearer ${accessToken}`,
+    'Content-Type': 'application/json',
+  };
+}
+
+/**
+ * Get and validate ML account
+ */
+async function getAndValidateAccount(accountId, userId) {
+  const account = await MLAccount.findOne({
+    id: accountId,
+    userId,
+  });
+  return account;
+}
+
+// ============================================================================
+// PACK-SPECIFIC HELPER FUNCTIONS
+// ============================================================================
+
+/**
+ * Build pack search filters from query params
+ */
+function buildPackFilters(query) {
+  return {
+    status: query.status,
+    paymentStatus: query.paymentStatus,
+    dateFrom: query.dateFrom,
+    dateTo: query.dateTo,
+    minAmount: query.minAmount ? parseFloat(query.minAmount) : undefined,
+    maxAmount: query.maxAmount ? parseFloat(query.maxAmount) : undefined,
+    buyerId: query.buyerId,
+    limit: parseInt(query.limit || 20),
+    offset: parseInt(query.offset || 0),
+    sort: query.sort || '-dateCreated',
+  };
+}
+
+/**
+ * Find pack by ID or mlPackId
+ */
+async function findPackById(packId, accountId, userId) {
+  return Pack.findOne({
+    $or: [{ id: packId }, { mlPackId: packId }],
+    accountId,
+    userId,
+  });
+}
+
+/**
+ * Validate required pack creation fields
+ */
+function validatePackCreation(buyer, items) {
+  if (!buyer || !buyer.id) {
+    return 'Buyer information is required';
+  }
+  if (!items || items.length === 0) {
+    return 'At least one item is required';
+  }
+  return null;
+}
+
+/**
+ * Create pack from request data
+ */
+function createPackData(accountId, userId, { buyer, items, shippingCost = 0, notes }) {
+  return {
+    accountId,
+    userId,
+    mlPackId: `pack_${Date.now()}`,
+    buyer,
+    items: items.map(item => ({
+      ...item,
+      finalPrice: (item.unitPrice || 0) * (item.quantity || 1),
+    })),
+    shippingCost,
+    notes,
+    status: 'pending',
+    paymentStatus: 'pending',
+    dateCreated: new Date(),
+  };
+}
+
+/**
+ * Update pack fields
+ */
+function updatePackFields(pack, updates) {
+  if (updates.status) pack.status = updates.status;
+  if (updates.paymentStatus) pack.paymentStatus = updates.paymentStatus;
+  if (updates.shippingCost !== undefined) pack.shippingCost = updates.shippingCost;
+  if (updates.notes) pack.notes = updates.notes;
+  if (updates.tags) pack.tags = updates.tags;
+  pack.dateLastUpdated = new Date();
+}
+
+/**
+ * Validate item data for adding to pack
+ */
+function validateItemData({ itemId, title, quantity, unitPrice }) {
+  const missing = [];
+  if (!itemId) missing.push('itemId');
+  if (!title) missing.push('title');
+  if (!quantity) missing.push('quantity');
+  if (!unitPrice) missing.push('unitPrice');
+  return missing.length > 0 ? `Missing required fields: ${missing.join(', ')}` : null;
+}
+
+/**
+ * Add item to pack
+ */
+function addItemToPack(pack, itemData) {
+  const existingItem = pack.items.find(i => i.itemId === itemData.itemId);
+  if (existingItem) {
+    return { error: 'Item already exists in pack' };
+  }
+
+  const finalPrice = (itemData.unitPrice * itemData.quantity) - (itemData.discount || 0);
+  pack.items.push({
+    itemId: itemData.itemId,
+    mlItemId: itemData.mlItemId,
+    title: itemData.title,
+    quantity: itemData.quantity,
+    unitPrice: itemData.unitPrice,
+    totalPrice: itemData.unitPrice * itemData.quantity,
+    discount: itemData.discount || 0,
+    finalPrice,
+  });
+
+  return { success: true };
+}
+
+/**
+ * Update item in pack
+ */
+function updateItemInPack(item, updates) {
+  if (updates.quantity !== undefined) item.quantity = updates.quantity;
+  if (updates.unitPrice !== undefined) item.unitPrice = updates.unitPrice;
+  if (updates.discount !== undefined) item.discount = updates.discount;
+
+  item.totalPrice = (item.unitPrice || 0) * (item.quantity || 1);
+  item.finalPrice = item.totalPrice - (item.discount || 0);
+}
+
+/**
+ * Calculate pricing with strategies
+ */
+function calculatePackPricing(pack, { discountStrategy, taxRate = 0, insuranceOption }) {
+  // Base amount
+  const baseAmount = pack.items.reduce((sum, item) => sum + (item.finalPrice || 0), 0);
+
+  // Apply discount strategy
+  let totalDiscount = 0;
+  if (discountStrategy) {
+    if (discountStrategy.type === 'percentage') {
+      totalDiscount = baseAmount * (discountStrategy.value / 100);
+    } else if (discountStrategy.type === 'fixed') {
+      totalDiscount = discountStrategy.value;
+    } else if (discountStrategy.type === 'bulk') {
+      const totalQty = pack.items.reduce((sum, item) => sum + item.quantity, 0);
+      if (totalQty >= discountStrategy.minQty) {
+        totalDiscount = baseAmount * (discountStrategy.value / 100);
+      }
+    }
+  }
+
+  // Calculate taxes
+  const taxableAmount = baseAmount - totalDiscount + (pack.shippingCost || 0);
+  const taxes = taxableAmount * (taxRate / 100);
+
+  // Insurance cost
+  let insuranceCost = 0;
+  if (insuranceOption && insuranceOption.enabled) {
+    insuranceCost = (baseAmount - totalDiscount) * (insuranceOption.percentage / 100);
+  }
+
+  const finalAmount = baseAmount - totalDiscount + (pack.shippingCost || 0) + taxes + insuranceCost;
+
+  return {
+    baseAmount,
+    totalDiscount,
+    taxes,
+    insuranceCost,
+    finalAmount,
+  };
+}
+
+/**
+ * Process bulk pack operations
+ */
+async function processBulkOperation(action, packIds, accountId, updateData) {
+  let result;
+
+  switch (action) {
+    case 'update':
+      result = await Pack.updateMany(
+        { $or: [{ id: { $in: packIds } }, { mlPackId: { $in: packIds } }], accountId },
+        { ...updateData, dateLastUpdated: new Date() }
+      );
+      break;
+
+    case 'delete':
+      result = await Pack.deleteMany(
+        { $or: [{ id: { $in: packIds } }, { mlPackId: { $in: packIds } }], accountId }
+      );
+      break;
+
+    case 'status':
+      result = await Pack.updateMany(
+        { $or: [{ id: { $in: packIds } }, { mlPackId: { $in: packIds } }], accountId },
+        { status: updateData.status, dateLastUpdated: new Date() }
+      );
+      break;
+
+    default:
+      return { error: 'Invalid action. Valid actions: update, delete, status' };
+  }
+
+  return { success: true, result };
+}
+
+/**
+ * Fetch and group orders by pack_id from ML API
+ */
+async function fetchAndGroupOrdersByPack(headers, mlUserId) {
+  const ordersResponse = await axios.get(`${ML_API_BASE}/orders/search`, {
+    headers,
+    params: {
+      seller: mlUserId,
+      limit: 100,
+    },
+  });
+
+  const orders = ordersResponse.data.results || [];
+  const packsMap = new Map();
+
+  orders.forEach(order => {
+    if (order.pack_id) {
+      if (!packsMap.has(order.pack_id)) {
+        packsMap.set(order.pack_id, {
+          mlPackId: order.pack_id,
+          orders: [],
+          totalAmount: 0,
+          dateCreated: new Date(order.date_created),
+          buyer: order.buyer,
+        });
+      }
+      const pack = packsMap.get(order.pack_id);
+      pack.orders.push(order.id);
+      pack.totalAmount += order.total_amount || 0;
+    }
+  });
+
+  return packsMap;
+}
+
+/**
+ * Sync pack from API data
+ */
+async function syncPackFromData(packData, accountId, userId) {
+  try {
+    const existingPack = await Pack.findOne({
+      mlPackId: packData.mlPackId,
+      accountId,
+    });
+
+    if (!existingPack) {
+      const newPack = new Pack({
+        accountId,
+        userId,
+        mlPackId: packData.mlPackId,
+        buyer: packData.buyer,
+        orders: packData.orders.map(orderId => ({ orderId })),
+        totalAmount: packData.totalAmount,
+        dateCreated: packData.dateCreated,
+        status: 'pending',
+        paymentStatus: 'pending',
+      });
+      await newPack.save();
+      return true;
+    }
+    return false;
+  } catch (error) {
+    logger.error({
+      action: 'SYNC_PACK_ERROR',
+      mlPackId: packData.mlPackId,
+      error: error.message,
+    });
+    return false;
+  }
+}
+
 /**
  * GET /api/packs/:accountId
  * List packs with advanced filtering
@@ -44,69 +370,28 @@ const ML_API_BASE = 'https://api.mercadolibre.com';
 router.get('/:accountId', authenticateToken, async (req, res) => {
   try {
     const { accountId } = req.params;
-    const {
-      limit = 20,
-      offset = 0,
-      status,
-      paymentStatus,
-      dateFrom,
-      dateTo,
-      minAmount,
-      maxAmount,
-      buyerId,
-      sort = '-dateCreated',
-    } = req.query;
-
-    // Verify account exists
-    const account = await MLAccount.findOne({
-      id: accountId,
-      userId: req.user.userId,
-    });
+    const account = await getAndValidateAccount(accountId, req.user.userId);
 
     if (!account) {
-      return res.status(404).json({
-        success: false,
-        message: 'Account not found',
+      return handleError(res, 404, 'Account not found', {}, 'GET_PACKS_ERROR', {
+        accountId,
+        userId: req.user.userId,
       });
     }
 
-    // Build search filters
-    const filters = {
-      status,
-      paymentStatus,
-      dateFrom,
-      dateTo,
-      minAmount: minAmount ? parseFloat(minAmount) : undefined,
-      maxAmount: maxAmount ? parseFloat(maxAmount) : undefined,
-      buyerId,
-      limit: parseInt(limit),
-      offset: parseInt(offset),
-      sort,
-    };
-
+    const filters = buildPackFilters(req.query);
     const result = await Pack.search(accountId, filters);
 
-    res.json({
-      success: true,
-      data: {
-        packs: result.packs.map(p => p.getSummary()),
-        total: result.total,
-        limit: result.limit,
-        offset: result.offset,
-      },
+    return sendSuccess(res, {
+      packs: result.packs.map(p => p.getSummary()),
+      total: result.total,
+      limit: result.limit,
+      offset: result.offset,
     });
   } catch (error) {
-    logger.error({
-      action: 'GET_PACKS_ERROR',
+    return handleError(res, 500, 'Failed to fetch packs', error, 'GET_PACKS_ERROR', {
       accountId: req.params.accountId,
       userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch packs',
-      error: error.message,
     });
   }
 });
@@ -120,16 +405,12 @@ router.get('/:accountId/stats', authenticateToken, async (req, res) => {
     const { accountId } = req.params;
     const { startDate, endDate } = req.query;
 
-    // Verify account exists
-    const account = await MLAccount.findOne({
-      id: accountId,
-      userId: req.user.userId,
-    });
+    const account = await getAndValidateAccount(accountId, req.user.userId);
 
     if (!account) {
-      return res.status(404).json({
-        success: false,
-        message: 'Account not found',
+      return handleError(res, 404, 'Account not found', {}, 'GET_PACK_STATS_ERROR', {
+        accountId,
+        userId: req.user.userId,
       });
     }
 
@@ -139,22 +420,11 @@ router.get('/:accountId/stats', authenticateToken, async (req, res) => {
       endDate ? new Date(endDate) : undefined
     );
 
-    res.json({
-      success: true,
-      data: stats,
-    });
+    return sendSuccess(res, stats);
   } catch (error) {
-    logger.error({
-      action: 'GET_PACK_STATS_ERROR',
+    return handleError(res, 500, 'Failed to fetch pack statistics', error, 'GET_PACK_STATS_ERROR', {
       accountId: req.params.accountId,
       userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch pack statistics',
-      error: error.message,
     });
   }
 });
@@ -167,35 +437,20 @@ router.get('/:accountId/:packId', authenticateToken, async (req, res) => {
   try {
     const { accountId, packId } = req.params;
 
-    const pack = await Pack.findOne({
-      $or: [{ id: packId }, { mlPackId: packId }],
-      accountId,
-      userId: req.user.userId,
-    });
+    const pack = await findPackById(packId, accountId, req.user.userId);
 
     if (!pack) {
-      return res.status(404).json({
-        success: false,
-        message: 'Pack not found',
+      return handleError(res, 404, 'Pack not found', {}, 'GET_PACK_ERROR', {
+        packId,
+        userId: req.user.userId,
       });
     }
 
-    res.json({
-      success: true,
-      data: pack.getDetails(),
-    });
+    return sendSuccess(res, pack.getDetails());
   } catch (error) {
-    logger.error({
-      action: 'GET_PACK_ERROR',
+    return handleError(res, 500, 'Failed to fetch pack', error, 'GET_PACK_ERROR', {
       packId: req.params.packId,
       userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch pack',
-      error: error.message,
     });
   }
 });
@@ -209,47 +464,32 @@ router.post('/:accountId', authenticateToken, async (req, res) => {
     const { accountId } = req.params;
     const { buyer, items, shippingCost = 0, notes } = req.body;
 
-    // Verify account exists
-    const account = await MLAccount.findOne({
-      id: accountId,
-      userId: req.user.userId,
-    });
+    const account = await getAndValidateAccount(accountId, req.user.userId);
 
     if (!account) {
-      return res.status(404).json({
-        success: false,
-        message: 'Account not found',
+      return handleError(res, 404, 'Account not found', {}, 'CREATE_PACK_ERROR', {
+        accountId,
+        userId: req.user.userId,
       });
     }
 
-    // Validate required fields
-    if (!buyer || !buyer.id || !items || items.length === 0) {
+    const validationError = validatePackCreation(buyer, items);
+    if (validationError) {
       return res.status(400).json({
         success: false,
-        message: 'Buyer information and items are required',
+        message: validationError,
       });
     }
 
-    // Create pack
-    const pack = new Pack({
-      accountId,
-      userId: req.user.userId,
-      mlPackId: `pack_${Date.now()}`,
+    const packData = createPackData(accountId, req.user.userId, {
       buyer,
-      items: items.map(item => ({
-        ...item,
-        finalPrice: (item.unitPrice || 0) * (item.quantity || 1),
-      })),
+      items,
       shippingCost,
       notes,
-      status: 'pending',
-      paymentStatus: 'pending',
-      dateCreated: new Date(),
     });
 
-    // Calculate totals
+    const pack = new Pack(packData);
     pack.calculateTotals();
-
     await pack.save();
 
     logger.info({
@@ -259,23 +499,11 @@ router.post('/:accountId', authenticateToken, async (req, res) => {
       userId: req.user.userId,
     });
 
-    res.status(201).json({
-      success: true,
-      message: 'Pack created successfully',
-      data: pack.getDetails(),
-    });
+    return sendSuccess(res, pack.getDetails(), 'Pack created successfully', 201);
   } catch (error) {
-    logger.error({
-      action: 'CREATE_PACK_ERROR',
+    return handleError(res, 500, 'Failed to create pack', error, 'CREATE_PACK_ERROR', {
       accountId: req.params.accountId,
       userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to create pack',
-      error: error.message,
     });
   }
 });
@@ -289,27 +517,16 @@ router.put('/:accountId/:packId', authenticateToken, async (req, res) => {
     const { accountId, packId } = req.params;
     const { status, paymentStatus, shippingCost, notes, tags } = req.body;
 
-    const pack = await Pack.findOne({
-      $or: [{ id: packId }, { mlPackId: packId }],
-      accountId,
-      userId: req.user.userId,
-    });
+    const pack = await findPackById(packId, accountId, req.user.userId);
 
     if (!pack) {
-      return res.status(404).json({
-        success: false,
-        message: 'Pack not found',
+      return handleError(res, 404, 'Pack not found', {}, 'UPDATE_PACK_ERROR', {
+        packId,
+        userId: req.user.userId,
       });
     }
 
-    // Update allowed fields
-    if (status) pack.status = status;
-    if (paymentStatus) pack.paymentStatus = paymentStatus;
-    if (shippingCost !== undefined) pack.shippingCost = shippingCost;
-    if (notes) pack.notes = notes;
-    if (tags) pack.tags = tags;
-
-    pack.dateLastUpdated = new Date();
+    updatePackFields(pack, { status, paymentStatus, shippingCost, notes, tags });
     await pack.save();
 
     logger.info({
@@ -319,23 +536,11 @@ router.put('/:accountId/:packId', authenticateToken, async (req, res) => {
       userId: req.user.userId,
     });
 
-    res.json({
-      success: true,
-      message: 'Pack updated successfully',
-      data: pack.getDetails(),
-    });
+    return sendSuccess(res, pack.getDetails(), 'Pack updated successfully');
   } catch (error) {
-    logger.error({
-      action: 'UPDATE_PACK_ERROR',
+    return handleError(res, 500, 'Failed to update pack', error, 'UPDATE_PACK_ERROR', {
       packId: req.params.packId,
       userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update pack',
-      error: error.message,
     });
   }
 });
@@ -348,20 +553,15 @@ router.delete('/:accountId/:packId', authenticateToken, async (req, res) => {
   try {
     const { accountId, packId } = req.params;
 
-    const pack = await Pack.findOne({
-      $or: [{ id: packId }, { mlPackId: packId }],
-      accountId,
-      userId: req.user.userId,
-    });
+    const pack = await findPackById(packId, accountId, req.user.userId);
 
     if (!pack) {
-      return res.status(404).json({
-        success: false,
-        message: 'Pack not found',
+      return handleError(res, 404, 'Pack not found', {}, 'DELETE_PACK_ERROR', {
+        packId,
+        userId: req.user.userId,
       });
     }
 
-    // Only allow deletion of pending or cancelled packs
     if (!['pending', 'cancelled'].includes(pack.status)) {
       return res.status(400).json({
         success: false,
@@ -378,22 +578,11 @@ router.delete('/:accountId/:packId', authenticateToken, async (req, res) => {
       userId: req.user.userId,
     });
 
-    res.json({
-      success: true,
-      message: 'Pack deleted successfully',
-    });
+    return sendSuccess(res, {}, 'Pack deleted successfully');
   } catch (error) {
-    logger.error({
-      action: 'DELETE_PACK_ERROR',
+    return handleError(res, 500, 'Failed to delete pack', error, 'DELETE_PACK_ERROR', {
       packId: req.params.packId,
       userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to delete pack',
-      error: error.message,
     });
   }
 });
@@ -407,48 +596,31 @@ router.post('/:accountId/:packId/items', authenticateToken, async (req, res) => 
     const { accountId, packId } = req.params;
     const { itemId, mlItemId, title, quantity, unitPrice, discount = 0 } = req.body;
 
-    if (!itemId || !title || !quantity || !unitPrice) {
+    const validationError = validateItemData({ itemId, title, quantity, unitPrice });
+    if (validationError) {
       return res.status(400).json({
         success: false,
-        message: 'Item ID, title, quantity, and unit price are required',
+        message: validationError,
       });
     }
 
-    const pack = await Pack.findOne({
-      $or: [{ id: packId }, { mlPackId: packId }],
-      accountId,
-      userId: req.user.userId,
-    });
+    const pack = await findPackById(packId, accountId, req.user.userId);
 
     if (!pack) {
-      return res.status(404).json({
-        success: false,
-        message: 'Pack not found',
+      return handleError(res, 404, 'Pack not found', {}, 'ADD_PACK_ITEM_ERROR', {
+        packId,
+        userId: req.user.userId,
       });
     }
 
-    // Check if item already exists
-    const existingItem = pack.items.find(i => i.itemId === itemId);
-    if (existingItem) {
+    const addResult = addItemToPack(pack, { itemId, mlItemId, title, quantity, unitPrice, discount });
+    if (addResult.error) {
       return res.status(400).json({
         success: false,
-        message: 'Item already exists in pack',
+        message: addResult.error,
       });
     }
 
-    const finalPrice = (unitPrice * quantity) - discount;
-    pack.items.push({
-      itemId,
-      mlItemId,
-      title,
-      quantity,
-      unitPrice,
-      totalPrice: unitPrice * quantity,
-      discount,
-      finalPrice,
-    });
-
-    // Recalculate totals
     pack.calculateTotals();
     pack.dateLastUpdated = new Date();
     await pack.save();
@@ -461,23 +633,11 @@ router.post('/:accountId/:packId/items', authenticateToken, async (req, res) => 
       userId: req.user.userId,
     });
 
-    res.status(201).json({
-      success: true,
-      message: 'Item added to pack',
-      data: pack.getDetails(),
-    });
+    return sendSuccess(res, pack.getDetails(), 'Item added to pack', 201);
   } catch (error) {
-    logger.error({
-      action: 'ADD_PACK_ITEM_ERROR',
+    return handleError(res, 500, 'Failed to add item to pack', error, 'ADD_PACK_ITEM_ERROR', {
       packId: req.params.packId,
       userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to add item to pack',
-      error: error.message,
     });
   }
 });
@@ -491,37 +651,26 @@ router.put('/:accountId/:packId/items/:itemId', authenticateToken, async (req, r
     const { accountId, packId, itemId } = req.params;
     const { quantity, unitPrice, discount } = req.body;
 
-    const pack = await Pack.findOne({
-      $or: [{ id: packId }, { mlPackId: packId }],
-      accountId,
-      userId: req.user.userId,
-    });
+    const pack = await findPackById(packId, accountId, req.user.userId);
 
     if (!pack) {
-      return res.status(404).json({
-        success: false,
-        message: 'Pack not found',
+      return handleError(res, 404, 'Pack not found', {}, 'UPDATE_PACK_ITEM_ERROR', {
+        packId,
+        userId: req.user.userId,
       });
     }
 
     const item = pack.items.find(i => i.itemId === itemId);
     if (!item) {
-      return res.status(404).json({
-        success: false,
-        message: 'Item not found in pack',
+      return handleError(res, 404, 'Item not found in pack', {}, 'UPDATE_PACK_ITEM_ERROR', {
+        packId,
+        itemId,
+        userId: req.user.userId,
       });
     }
 
-    // Update item
-    if (quantity !== undefined) item.quantity = quantity;
-    if (unitPrice !== undefined) item.unitPrice = unitPrice;
-    if (discount !== undefined) item.discount = discount;
+    updateItemInPack(item, { quantity, unitPrice, discount });
 
-    // Recalculate item prices
-    item.totalPrice = (item.unitPrice || 0) * (item.quantity || 1);
-    item.finalPrice = item.totalPrice - (item.discount || 0);
-
-    // Recalculate pack totals
     pack.calculateTotals();
     pack.dateLastUpdated = new Date();
     await pack.save();
@@ -534,24 +683,12 @@ router.put('/:accountId/:packId/items/:itemId', authenticateToken, async (req, r
       userId: req.user.userId,
     });
 
-    res.json({
-      success: true,
-      message: 'Item updated',
-      data: pack.getDetails(),
-    });
+    return sendSuccess(res, pack.getDetails(), 'Item updated');
   } catch (error) {
-    logger.error({
-      action: 'UPDATE_PACK_ITEM_ERROR',
+    return handleError(res, 500, 'Failed to update pack item', error, 'UPDATE_PACK_ITEM_ERROR', {
       packId: req.params.packId,
       itemId: req.params.itemId,
       userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update pack item',
-      error: error.message,
     });
   }
 });
@@ -564,16 +701,12 @@ router.delete('/:accountId/:packId/items/:itemId', authenticateToken, async (req
   try {
     const { accountId, packId, itemId } = req.params;
 
-    const pack = await Pack.findOne({
-      $or: [{ id: packId }, { mlPackId: packId }],
-      accountId,
-      userId: req.user.userId,
-    });
+    const pack = await findPackById(packId, accountId, req.user.userId);
 
     if (!pack) {
-      return res.status(404).json({
-        success: false,
-        message: 'Pack not found',
+      return handleError(res, 404, 'Pack not found', {}, 'REMOVE_PACK_ITEM_ERROR', {
+        packId,
+        userId: req.user.userId,
       });
     }
 
@@ -581,13 +714,13 @@ router.delete('/:accountId/:packId/items/:itemId', authenticateToken, async (req
     pack.items = pack.items.filter(i => i.itemId !== itemId);
 
     if (pack.items.length === initialLength) {
-      return res.status(404).json({
-        success: false,
-        message: 'Item not found in pack',
+      return handleError(res, 404, 'Item not found in pack', {}, 'REMOVE_PACK_ITEM_ERROR', {
+        packId,
+        itemId,
+        userId: req.user.userId,
       });
     }
 
-    // Recalculate totals
     pack.calculateTotals();
     pack.dateLastUpdated = new Date();
     await pack.save();
@@ -600,24 +733,12 @@ router.delete('/:accountId/:packId/items/:itemId', authenticateToken, async (req
       userId: req.user.userId,
     });
 
-    res.json({
-      success: true,
-      message: 'Item removed from pack',
-      data: pack.getDetails(),
-    });
+    return sendSuccess(res, pack.getDetails(), 'Item removed from pack');
   } catch (error) {
-    logger.error({
-      action: 'REMOVE_PACK_ITEM_ERROR',
+    return handleError(res, 500, 'Failed to remove pack item', error, 'REMOVE_PACK_ITEM_ERROR', {
       packId: req.params.packId,
       itemId: req.params.itemId,
       userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to remove pack item',
-      error: error.message,
     });
   }
 });
@@ -631,89 +752,48 @@ router.post('/:accountId/:packId/pricing', authenticateToken, async (req, res) =
     const { accountId, packId } = req.params;
     const { discountStrategy, taxRate = 0, insuranceOption } = req.body;
 
-    const pack = await Pack.findOne({
-      $or: [{ id: packId }, { mlPackId: packId }],
-      accountId,
-      userId: req.user.userId,
-    });
+    const pack = await findPackById(packId, accountId, req.user.userId);
 
     if (!pack) {
-      return res.status(404).json({
-        success: false,
-        message: 'Pack not found',
+      return handleError(res, 404, 'Pack not found', {}, 'CALCULATE_PACK_PRICING_ERROR', {
+        packId,
+        userId: req.user.userId,
       });
     }
 
-    // Calculate base amount
-    let baseAmount = pack.items.reduce((sum, item) => sum + (item.finalPrice || 0), 0);
+    const pricing = calculatePackPricing(pack, { discountStrategy, taxRate, insuranceOption });
 
-    // Apply discount strategy
-    let totalDiscount = 0;
-    if (discountStrategy) {
-      if (discountStrategy.type === 'percentage') {
-        totalDiscount = baseAmount * (discountStrategy.value / 100);
-      } else if (discountStrategy.type === 'fixed') {
-        totalDiscount = discountStrategy.value;
-      } else if (discountStrategy.type === 'bulk') {
-        // Discount based on quantity
-        const totalQty = pack.items.reduce((sum, item) => sum + item.quantity, 0);
-        if (totalQty >= discountStrategy.minQty) {
-          totalDiscount = baseAmount * (discountStrategy.value / 100);
-        }
-      }
-    }
+    pack.discountAmount = pricing.totalDiscount;
+    pack.taxAmount = pricing.taxes;
+    pack.grossAmount = pricing.baseAmount;
+    pack.finalAmount = pricing.finalAmount;
 
-    // Calculate taxes
-    const taxableAmount = baseAmount - totalDiscount + (pack.shippingCost || 0);
-    const taxes = taxableAmount * (taxRate / 100);
-
-    // Add insurance if requested
-    let insuranceCost = 0;
     if (insuranceOption && insuranceOption.enabled) {
-      insuranceCost = (baseAmount - totalDiscount) * (insuranceOption.percentage / 100);
       pack.hasInsurance = true;
     }
 
-    // Update pack
-    pack.discountAmount = totalDiscount;
-    pack.taxAmount = taxes;
-    pack.grossAmount = baseAmount;
-    pack.finalAmount = baseAmount - totalDiscount + (pack.shippingCost || 0) + taxes + insuranceCost;
-
     await pack.save();
 
-    res.json({
-      success: true,
-      message: 'Pricing calculated',
-      data: {
-        baseAmount,
-        discountAmount: totalDiscount,
-        shippingCost: pack.shippingCost || 0,
-        taxAmount: taxes,
-        insuranceCost,
-        finalAmount: pack.finalAmount,
-        breakdown: {
-          items: baseAmount,
-          discount: -totalDiscount,
-          shipping: pack.shippingCost || 0,
-          taxes,
-          insurance: insuranceCost,
-          total: pack.finalAmount,
-        },
+    return sendSuccess(res, {
+      baseAmount: pricing.baseAmount,
+      discountAmount: pricing.totalDiscount,
+      shippingCost: pack.shippingCost || 0,
+      taxAmount: pricing.taxes,
+      insuranceCost: pricing.insuranceCost,
+      finalAmount: pricing.finalAmount,
+      breakdown: {
+        items: pricing.baseAmount,
+        discount: -pricing.totalDiscount,
+        shipping: pack.shippingCost || 0,
+        taxes: pricing.taxes,
+        insurance: pricing.insuranceCost,
+        total: pricing.finalAmount,
       },
-    });
+    }, 'Pricing calculated');
   } catch (error) {
-    logger.error({
-      action: 'CALCULATE_PACK_PRICING_ERROR',
+    return handleError(res, 500, 'Failed to calculate pricing', error, 'CALCULATE_PACK_PRICING_ERROR', {
       packId: req.params.packId,
       userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to calculate pricing',
-      error: error.message,
     });
   }
 });
@@ -734,46 +814,21 @@ router.post('/:accountId/bulk', authenticateToken, async (req, res) => {
       });
     }
 
-    const account = await MLAccount.findOne({
-      id: accountId,
-      userId: req.user.userId,
-    });
+    const account = await getAndValidateAccount(accountId, req.user.userId);
 
     if (!account) {
-      return res.status(404).json({
-        success: false,
-        message: 'Account not found',
+      return handleError(res, 404, 'Account not found', {}, 'BULK_PACKS_ERROR', {
+        accountId,
+        userId: req.user.userId,
       });
     }
 
-    let result;
-
-    switch (action) {
-      case 'update':
-        result = await Pack.updateMany(
-          { $or: [{ id: { $in: packIds } }, { mlPackId: { $in: packIds } }], accountId },
-          { ...updateData, dateLastUpdated: new Date() }
-        );
-        break;
-
-      case 'delete':
-        result = await Pack.deleteMany(
-          { $or: [{ id: { $in: packIds } }, { mlPackId: { $in: packIds } }], accountId }
-        );
-        break;
-
-      case 'status':
-        result = await Pack.updateMany(
-          { $or: [{ id: { $in: packIds } }, { mlPackId: { $in: packIds } }], accountId },
-          { status: updateData.status, dateLastUpdated: new Date() }
-        );
-        break;
-
-      default:
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid action. Valid actions: update, delete, status',
-        });
+    const bulkResult = await processBulkOperation(action, packIds, accountId, updateData);
+    if (bulkResult.error) {
+      return res.status(400).json({
+        success: false,
+        message: bulkResult.error,
+      });
     }
 
     logger.info({
@@ -783,28 +838,16 @@ router.post('/:accountId/bulk', authenticateToken, async (req, res) => {
       userId: req.user.userId,
     });
 
-    res.json({
-      success: true,
-      message: `Bulk ${action} completed`,
-      data: {
-        action,
-        matched: result.matchedCount,
-        modified: result.modifiedCount,
-        deleted: result.deletedCount,
-      },
-    });
+    return sendSuccess(res, {
+      action,
+      matched: bulkResult.result.matchedCount,
+      modified: bulkResult.result.modifiedCount,
+      deleted: bulkResult.result.deletedCount,
+    }, `Bulk ${action} completed`);
   } catch (error) {
-    logger.error({
-      action: 'BULK_PACKS_ERROR',
+    return handleError(res, 500, 'Failed to perform bulk operation', error, 'BULK_PACKS_ERROR', {
       accountId: req.params.accountId,
       userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to perform bulk operation',
-      error: error.message,
     });
   }
 });
@@ -824,70 +867,13 @@ router.post('/:accountId/sync', authenticateToken, validateMLToken('accountId'),
       userId: req.user.userId,
     });
 
-    // Fetch orders and group by pack_id
-    const headers = {
-      'Authorization': `Bearer ${account.accessToken}`,
-      'Content-Type': 'application/json',
-    };
-
-    const ordersResponse = await axios.get(`${ML_API_BASE}/orders/search`, {
-      headers,
-      params: {
-        seller: account.mlUserId,
-        limit: 100,
-      },
-    });
-
-    const orders = ordersResponse.data.results || [];
-    const packsMap = new Map();
-
-    orders.forEach(order => {
-      if (order.pack_id) {
-        if (!packsMap.has(order.pack_id)) {
-          packsMap.set(order.pack_id, {
-            mlPackId: order.pack_id,
-            orders: [],
-            totalAmount: 0,
-            dateCreated: new Date(order.date_created),
-            buyer: order.buyer,
-          });
-        }
-        const pack = packsMap.get(order.pack_id);
-        pack.orders.push(order.id);
-        pack.totalAmount += order.total_amount || 0;
-      }
-    });
+    const headers = buildHeaders(account.accessToken);
+    const packsMap = await fetchAndGroupOrdersByPack(headers, account.mlUserId);
 
     let syncedCount = 0;
     for (const [, packData] of packsMap) {
-      try {
-        const existingPack = await Pack.findOne({
-          mlPackId: packData.mlPackId,
-          accountId,
-        });
-
-        if (!existingPack) {
-          const newPack = new Pack({
-            accountId,
-            userId: req.user.userId,
-            mlPackId: packData.mlPackId,
-            buyer: packData.buyer,
-            orders: packData.orders.map(orderId => ({ orderId })),
-            totalAmount: packData.totalAmount,
-            dateCreated: packData.dateCreated,
-            status: 'pending',
-            paymentStatus: 'pending',
-          });
-          await newPack.save();
-          syncedCount++;
-        }
-      } catch (error) {
-        logger.error({
-          action: 'SYNC_PACK_ERROR',
-          mlPackId: packData.mlPackId,
-          error: error.message,
-        });
-      }
+      const synced = await syncPackFromData(packData, accountId, req.user.userId);
+      if (synced) syncedCount++;
     }
 
     logger.info({
@@ -897,26 +883,14 @@ router.post('/:accountId/sync', authenticateToken, validateMLToken('accountId'),
       syncedCount,
     });
 
-    res.json({
-      success: true,
-      message: `Synced ${syncedCount} packs`,
-      data: {
-        syncedCount,
-        totalFound: packsMap.size,
-      },
-    });
+    return sendSuccess(res, {
+      syncedCount,
+      totalFound: packsMap.size,
+    }, `Synced ${syncedCount} packs`);
   } catch (error) {
-    logger.error({
-      action: 'SYNC_PACKS_ERROR',
+    return handleError(res, 500, 'Failed to sync packs', error, 'SYNC_PACKS_ERROR', {
       accountId: req.params.accountId,
       userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to sync packs',
-      error: error.message,
     });
   }
 });
