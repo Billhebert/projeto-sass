@@ -22,47 +22,11 @@ const logger = require('../logger');
 const sdkManager = require("../services/sdk-manager");
 const { authenticateToken } = require('../middleware/auth');
 const { validateMLToken } = require('../middleware/ml-token-validation');
+const { handleError, sendSuccess, buildHeaders } = require('../middleware/response-helpers');
 
 const router = express.Router();
 
 const ML_API_BASE = 'https://api.mercadolibre.com';
-
-// ============================================================================
-// CORE HELPERS
-// ============================================================================
-
-/**
- * Handle and log errors with consistent response format
- */
-const handleError = (res, statusCode = 500, message, error = null, context = {}) => {
-  logger.error({
-    action: context.action || 'UNKNOWN_ERROR',
-    error: error?.message || message,
-    statusCode,
-    ...context,
-  });
-
-  const response = { success: false, message };
-  if (error?.message) response.error = error.message;
-  res.status(statusCode).json(response);
-};
-
-/**
- * Send success response with consistent format
- */
-const sendSuccess = (res, data, message = null, statusCode = 200) => {
-  const response = { success: true, data };
-  if (message) response.message = message;
-  res.status(statusCode).json(response);
-};
-
-/**
- * Build ML API headers from account
- */
-const buildHeaders = (account) => ({
-  'Authorization': `Bearer ${account.accessToken}`,
-  'Content-Type': 'application/json',
-});
 
 /**
  * GET /api/reviews/:accountId/item/:itemId
