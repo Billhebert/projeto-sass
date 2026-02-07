@@ -2,13 +2,21 @@
  * Claims Routes
  * Manage claims/complaints from Mercado Livre
  *
- * GET    /api/claims                           - List all claims for user
- * GET    /api/claims/:accountId                - List claims for specific account
- * GET    /api/claims/:accountId/open           - List open claims
- * GET    /api/claims/:accountId/:claimId       - Get claim details
- * POST   /api/claims/:accountId/:claimId/message - Send message in claim
- * POST   /api/claims/:accountId/sync           - Sync claims from ML
- * GET    /api/claims/:accountId/stats          - Get claim statistics
+ * GET    /api/claims                                   - List all claims for user
+ * GET    /api/claims/:accountId                        - List claims for specific account
+ * GET    /api/claims/:accountId/open                   - List open claims
+ * GET    /api/claims/:accountId/:claimId               - Get claim details
+ * POST   /api/claims/:accountId/:claimId/message       - Send message in claim
+ * POST   /api/claims/:accountId/sync                   - Sync claims from ML
+ * GET    /api/claims/:accountId/stats                  - Get claim statistics
+ * GET    /api/claims/:accountId/:claimId/exchange      - Get exchange details
+ * POST   /api/claims/:accountId/:claimId/exchange/accept - Accept exchange
+ * POST   /api/claims/:accountId/:claimId/exchange/reject - Reject exchange
+ * GET    /api/claims/:accountId/:claimId/evidences     - Get evidences
+ * POST   /api/claims/:accountId/:claimId/evidences     - Upload evidence
+ * POST   /api/claims/:accountId/:claimId/resolve       - Resolve claim
+ * GET    /api/claims/:accountId/:claimId/available-actions - Get actions
+ * GET    /api/claims/:accountId/:claimId/timeline      - Get timeline
  */
 
 const express = require("express");
@@ -24,9 +32,159 @@ const router = express.Router();
 
 const ML_API_BASE = "https://api.mercadolibre.com";
 
+// ============================================
+// HELPER FUNCTIONS - Core error & response handling
+// ============================================
+
 /**
- * Helper function to parse multiple status values
- * Converts "open,in_mediation,resolved" to ["open", "in_mediation", "resolved"]
+ * Unified error handler for API responses
+ */
+function handleError(res, statusCode, message, error, context = {}) {
+  const logData = {
+    action: context.action || 'UNKNOWN_ERROR',
+    ...context,
+    error: error.response?.data || error.message,
+  };
+
+  logger.error(logData);
+
+  return res.status(statusCode).json({
+    success: false,
+    message,
+    error: error.response?.data?.message || error.message,
+  });
+}
+
+/**
+ * Unified success response handler
+ */
+function sendSuccess(res, data, message = null, statusCode = 200) {
+  const response = {
+    success: true,
+    ...data,
+  };
+
+  if (message) {
+    response.message = message;
+  }
+
+  return res.status(statusCode).json(response);
+}
+
+/**
+ * Build MongoDB query for claims with filters
+ */
+function buildClaimQuery(userId, accountId = null, filters = {}) {
+  const query = { userId };
+  if (accountId) query.accountId = accountId;
+  if (filters.status) query.status = filters.status;
+  if (filters.type) query.type = filters.type;
+  if (filters.dateFrom || filters.dateTo) {
+    query.dateCreated = {};
+    if (filters.dateFrom) query.dateCreated.$gte = new Date(filters.dateFrom);
+    if (filters.dateTo) query.dateCreated.$lte = new Date(filters.dateTo);
+  }
+  return query;
+}
+
+/**
+ * Paginate Claim queries with consistent formatting
+ */
+async function paginate(query, options = {}) {
+  const {
+    limit = 100,
+    offset = 0,
+    sort = '-dateCreated',
+  } = options;
+
+  const limitNum = parseInt(limit);
+  const offsetNum = parseInt(offset);
+
+  const [data, total] = await Promise.all([
+    Claim.find(query)
+      .sort(sort)
+      .limit(limitNum)
+      .skip(offsetNum),
+    Claim.countDocuments(query),
+  ]);
+
+  return {
+    data,
+    total,
+    limit: limitNum,
+    offset: offsetNum,
+  };
+}
+
+/**
+ * Fetch account with validation
+ */
+async function fetchAccount(accountId, userId) {
+  const account = await MLAccount.findOne({
+    id: accountId,
+    userId,
+  });
+
+  return account || null;
+}
+
+/**
+ * Get ML headers for authenticated requests
+ */
+function getMLHeaders(accessToken) {
+  return {
+    'Authorization': `Bearer ${accessToken}`,
+    'Content-Type': 'application/json',
+  };
+}
+
+/**
+ * Make ML API request with error handling
+ */
+async function makeMLRequest(method, endpoint, data = null, headers = {}, params = {}) {
+  try {
+    const config = {
+      headers,
+      params,
+    };
+
+    let response;
+    switch (method.toLowerCase()) {
+      case 'get':
+        response = await axios.get(`${ML_API_BASE}${endpoint}`, config);
+        break;
+      case 'post':
+        response = await axios.post(`${ML_API_BASE}${endpoint}`, data, config);
+        break;
+      case 'put':
+        response = await axios.put(`${ML_API_BASE}${endpoint}`, data, config);
+        break;
+      case 'delete':
+        response = await axios.delete(`${ML_API_BASE}${endpoint}`, config);
+        break;
+      default:
+        throw new Error(`Unsupported method: ${method}`);
+    }
+
+    return { success: true, data: response.data };
+  } catch (error) {
+    logger.warn({
+      action: 'ML_API_ERROR',
+      method,
+      endpoint,
+      error: error.response?.data || error.message,
+    });
+
+    return {
+      success: false,
+      error,
+      data: error.response?.data,
+    };
+  }
+}
+
+/**
+ * Parse multiple status values (supports "open,in_mediation,resolved")
  */
 function parseMultipleStatus(statusParam) {
   if (!statusParam) return null;
@@ -35,587 +193,9 @@ function parseMultipleStatus(statusParam) {
     .split(",")
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
+
   return statuses.length > 1 ? { $in: statuses } : statuses[0];
 }
-
-/**
- * GET /api/claims
- * List all claims for the authenticated user
- */
-router.get("/", authenticateToken, async (req, res) => {
-  try {
-    const {
-      limit = 100,
-      offset = 0,
-      status,
-      type,
-      sort = "-dateCreated",
-    } = req.query;
-
-    const query = { userId: req.user.userId };
-
-    // Parse multiple status values (supports "open,in_mediation,resolved")
-    if (status) {
-      const parsedStatus = parseMultipleStatus(status);
-      if (parsedStatus) {
-        query.status = parsedStatus;
-      }
-    }
-
-    if (type) query.type = type;
-
-    const claims = await Claim.find(query)
-      .sort(sort)
-      .limit(parseInt(limit))
-      .skip(parseInt(offset));
-
-    const total = await Claim.countDocuments(query);
-
-    res.json({
-      success: true,
-      data: {
-        claims: claims.map((c) => c.getSummary()),
-        total,
-        limit: parseInt(limit),
-        offset: parseInt(offset),
-      },
-    });
-  } catch (error) {
-    logger.error({
-      action: "GET_CLAIMS_ERROR",
-      userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch claims",
-      error: error.message,
-    });
-  }
-});
-
-/**
- * GET /api/claims/:accountId/stats
- * Get claim statistics for an account
- */
-router.get("/:accountId/stats", authenticateToken, async (req, res) => {
-  try {
-    const { accountId } = req.params;
-
-    // Verify account exists
-    const account = await MLAccount.findOne({
-      id: accountId,
-      userId: req.user.userId,
-    });
-
-    if (!account) {
-      return res.status(404).json({
-        success: false,
-        message: "Account not found",
-      });
-    }
-
-    const { stats, openCount } = await Claim.getStats(accountId);
-
-    const totalClaims = await Claim.countDocuments({
-      accountId,
-      userId: req.user.userId,
-    });
-
-    res.json({
-      success: true,
-      data: {
-        accountId,
-        claims: {
-          total: totalClaims,
-          open: openCount,
-        },
-        breakdown: stats,
-      },
-    });
-  } catch (error) {
-    logger.error({
-      action: "GET_CLAIM_STATS_ERROR",
-      accountId: req.params.accountId,
-      userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: "Failed to get claim statistics",
-      error: error.message,
-    });
-  }
-});
-
-/**
- * GET /api/claims/:accountId/open
- * List open claims for specific account
- */
-router.get("/:accountId/open", authenticateToken, async (req, res) => {
-  try {
-    const { accountId } = req.params;
-
-    // Verify account belongs to user
-    const account = await MLAccount.findOne({
-      id: accountId,
-      userId: req.user.userId,
-    });
-
-    if (!account) {
-      return res.status(404).json({
-        success: false,
-        message: "Account not found",
-      });
-    }
-
-    const claims = await Claim.findOpen(accountId);
-
-    res.json({
-      success: true,
-      data: {
-        account: {
-          id: account.id,
-          nickname: account.nickname,
-        },
-        claims: claims.map((c) => c.getSummary()),
-        total: claims.length,
-      },
-    });
-  } catch (error) {
-    logger.error({
-      action: "GET_OPEN_CLAIMS_ERROR",
-      accountId: req.params.accountId,
-      userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch open claims",
-      error: error.message,
-    });
-  }
-});
-
-/**
- * GET /api/claims/:accountId
- * List claims for specific account
- * Query params:
- *   - limit: number of results (default 20)
- *   - offset: pagination offset (default 0)
- *   - status: claim status filter (comma-separated for multiple: open,in_mediation,resolved)
- *   - type: claim type filter
- *   - date_created.from: RFC 3339 format (2024-01-31T18:03:35.000-04:00)
- *   - date_created.to: RFC 3339 format
- *   - sort: sort field (default -dateCreated)
- */
-router.get("/:accountId", authenticateToken, async (req, res) => {
-  try {
-    const { accountId } = req.params;
-    const {
-      all,
-      limit: queryLimit,
-      offset = 0,
-      status,
-      type,
-      sort = "-dateCreated",
-      "date_created.from": dateFrom,
-      "date_created.to": dateTo,
-    } = req.query;
-
-    // If all=true, fetch everything. Otherwise use limit (default 100)
-    const limit = all === "true" ? 999999 : queryLimit || 100;
-
-    // Verify account belongs to user
-    const account = await MLAccount.findOne({
-      id: accountId,
-      userId: req.user.userId,
-    });
-
-    if (!account) {
-      return res.status(404).json({
-        success: false,
-        message: "Account not found",
-      });
-    }
-
-    const query = { accountId, userId: req.user.userId };
-
-    // Parse multiple status values (supports "open,in_mediation,resolved")
-    if (status) {
-      const parsedStatus = parseMultipleStatus(status);
-      if (parsedStatus) {
-        query.status = parsedStatus;
-      }
-    }
-
-    if (type) query.type = type;
-
-    // Add date range filters
-    if (dateFrom || dateTo) {
-      query.dateCreated = {};
-      if (dateFrom) {
-        query.dateCreated.$gte = new Date(dateFrom);
-      }
-      if (dateTo) {
-        query.dateCreated.$lte = new Date(dateTo);
-      }
-    }
-
-    const claims = await Claim.find(query)
-      .sort(sort)
-      .limit(parseInt(limit))
-      .skip(parseInt(offset));
-
-    const total = await Claim.countDocuments(query);
-
-    res.json({
-      success: true,
-      data: {
-        account: {
-          id: account.id,
-          nickname: account.nickname,
-        },
-        claims: claims.map((c) => c.getSummary()),
-        total,
-        limit: parseInt(limit),
-        offset: parseInt(offset),
-      },
-    });
-  } catch (error) {
-    logger.error({
-      action: "GET_ACCOUNT_CLAIMS_ERROR",
-      accountId: req.params.accountId,
-      userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch claims",
-      error: error.message,
-    });
-  }
-});
-
-/**
- * GET /api/claims/:accountId/:claimId
- * Get detailed claim information
- */
-router.get(
-  "/:accountId/:claimId",
-  authenticateToken,
-  validateMLToken("accountId"),
-  async (req, res) => {
-    try {
-      const { accountId, claimId } = req.params;
-      const account = req.mlAccount;
-
-      // Try to find in local DB first
-      let claim = await Claim.findOne({
-        $or: [{ id: claimId }, { mlClaimId: claimId }],
-        accountId,
-        userId: req.user.userId,
-      });
-
-      // Fetch fresh data from ML API
-      const headers = {
-        Authorization: `Bearer ${account.accessToken}`,
-        "Content-Type": "application/json",
-      };
-
-      const mlClaimId = claim?.mlClaimId || claimId;
-
-      const mlResponse = await axios
-        .get(`${ML_API_BASE}/claims/${mlClaimId}`, { headers })
-        .catch((err) => {
-          logger.warn({
-            action: "FETCH_CLAIM_DETAILS_ERROR",
-            claimId: mlClaimId,
-            error: err.response?.data || err.message,
-          });
-          return null;
-        });
-
-      if (!claim && !mlResponse) {
-        return res.status(404).json({
-          success: false,
-          message: "Claim not found",
-        });
-      }
-
-      res.json({
-        success: true,
-        data: {
-          local: claim?.getDetails() || null,
-          ml: mlResponse?.data || null,
-        },
-      });
-    } catch (error) {
-      logger.error({
-        action: "GET_CLAIM_ERROR",
-        claimId: req.params.claimId,
-        userId: req.user.userId,
-        error: error.message,
-      });
-
-      res.status(500).json({
-        success: false,
-        message: "Failed to fetch claim",
-        error: error.message,
-      });
-    }
-  },
-);
-
-/**
- * POST /api/claims/:accountId/:claimId/message
- * Send message in claim
- */
-router.post(
-  "/:accountId/:claimId/message",
-  authenticateToken,
-  validateMLToken("accountId"),
-  async (req, res) => {
-    try {
-      const { accountId, claimId } = req.params;
-      const { text, role = "seller" } = req.body;
-      const account = req.mlAccount;
-
-      if (!text || text.trim().length === 0) {
-        return res.status(400).json({
-          success: false,
-          message: "Message text is required",
-        });
-      }
-
-      const claim = await Claim.findOne({
-        $or: [{ id: claimId }, { mlClaimId: claimId }],
-        accountId,
-        userId: req.user.userId,
-      });
-
-      if (!claim) {
-        return res.status(404).json({
-          success: false,
-          message: "Claim not found",
-        });
-      }
-
-      const headers = {
-        Authorization: `Bearer ${account.accessToken}`,
-        "Content-Type": "application/json",
-      };
-
-      // Send message to ML
-      const response = await axios.post(
-        `${ML_API_BASE}/claims/${claim.mlClaimId}/messages`,
-        {
-          message: text.trim(),
-          role,
-        },
-        { headers },
-      );
-
-      // Update local claim with new message
-      claim.messages.push({
-        id: response.data.id || `local_${Date.now()}`,
-        from: {
-          id: account.mlUserId,
-          role: "seller",
-        },
-        text: text.trim(),
-        dateCreated: new Date(),
-      });
-      claim.dateLastUpdated = new Date();
-      await claim.save();
-
-      logger.info({
-        action: "CLAIM_MESSAGE_SENT",
-        claimId: claim.mlClaimId,
-        accountId,
-        userId: req.user.userId,
-      });
-
-      res.json({
-        success: true,
-        message: "Message sent successfully",
-        data: claim.getDetails(),
-      });
-    } catch (error) {
-      logger.error({
-        action: "SEND_CLAIM_MESSAGE_ERROR",
-        claimId: req.params.claimId,
-        userId: req.user.userId,
-        error: error.response?.data || error.message,
-      });
-
-      res.status(error.response?.status || 500).json({
-        success: false,
-        message: "Failed to send message",
-        error: error.response?.data?.message || error.message,
-      });
-    }
-  },
-);
-
-/**
- * POST /api/claims/:accountId/sync
- * Sync claims from Mercado Livre
- */
-router.post(
-  "/:accountId/sync",
-  authenticateToken,
-  validateMLToken("accountId"),
-  async (req, res) => {
-    try {
-      const { accountId } = req.params;
-      const { all = false } = req.body;
-      const account = req.mlAccount;
-
-      logger.info({
-        action: "CLAIMS_SYNC_STARTED",
-        accountId,
-        userId: req.user.userId,
-        all,
-        timestamp: new Date().toISOString(),
-      });
-
-      const headers = {
-        Authorization: `Bearer ${account.accessToken}`,
-        "Content-Type": "application/json",
-      };
-
-      // Get claims with pagination support
-      let mlClaims = [];
-      let offset = 0;
-      const limit = 50;
-
-      if (all) {
-        // Unlimited mode with pagination
-        logger.info({
-          action: "FETCH_ALL_CLAIMS_START",
-          accountId,
-          timestamp: new Date().toISOString(),
-        });
-
-        while (true) {
-          const claimsResponse = await axios
-            .get(`${ML_API_BASE}/claims/search`, {
-              headers,
-              params: {
-                seller_id: account.mlUserId,
-                status: "opened,pending,waiting_seller",
-                limit,
-                offset,
-              },
-            })
-            .catch((err) => {
-              logger.warn({
-                action: "FETCH_CLAIMS_ERROR",
-                accountId,
-                offset,
-                error: err.response?.data || err.message,
-              });
-              return { data: { data: [], paging: { total: 0 } } };
-            });
-
-          const claims = claimsResponse.data?.data || [];
-          if (claims.length === 0) break;
-
-          mlClaims.push(...claims);
-          offset += limit;
-
-          logger.info({
-            action: "FETCH_CLAIMS_BATCH",
-            accountId,
-            batchSize: claims.length,
-            totalFetched: mlClaims.length,
-            offset,
-          });
-
-          // Check if we got all claims
-          const total = claimsResponse.data?.paging?.total || 0;
-          if (offset >= total) break;
-        }
-
-        logger.info({
-          action: "FETCH_ALL_CLAIMS_COMPLETE",
-          accountId,
-          totalClaims: mlClaims.length,
-          timestamp: new Date().toISOString(),
-        });
-      } else {
-        // Normal mode - single request
-        const claimsResponse = await axios
-          .get(`${ML_API_BASE}/claims/search`, {
-            headers,
-            params: {
-              seller_id: account.mlUserId,
-              status: "opened,pending,waiting_seller",
-            },
-          })
-          .catch((err) => {
-            logger.warn({
-              action: "FETCH_CLAIMS_ERROR",
-              accountId,
-              error: err.response?.data || err.message,
-            });
-            return { data: { data: [] } };
-          });
-
-        mlClaims = claimsResponse.data?.data || [];
-      }
-
-      // Save claims
-      const savedClaims = await saveClaims(
-        accountId,
-        req.user.userId,
-        mlClaims,
-      );
-
-      logger.info({
-        action: "CLAIMS_SYNC_COMPLETED",
-        accountId,
-        userId: req.user.userId,
-        claimsCount: savedClaims.length,
-        timestamp: new Date().toISOString(),
-      });
-
-      res.json({
-        success: true,
-        message: `Synchronized ${savedClaims.length} claims`,
-        data: {
-          accountId,
-          claimsCount: savedClaims.length,
-          claims: savedClaims.map((c) => c.getSummary()),
-          syncedAt: new Date().toISOString(),
-        },
-      });
-    } catch (error) {
-      logger.error({
-        action: "CLAIMS_SYNC_ERROR",
-        accountId: req.params.accountId,
-        userId: req.user.userId,
-        error: error.message,
-        timestamp: new Date().toISOString(),
-      });
-
-      res.status(500).json({
-        success: false,
-        message: "Failed to sync claims",
-        error: error.message,
-      });
-    }
-  },
-);
-
-// ============================================
-// HELPER FUNCTIONS
-// ============================================
 
 /**
  * Save or update claims in database
@@ -705,7 +285,7 @@ async function saveClaims(accountId, userId, mlClaims) {
       savedClaims.push(claim);
     } catch (error) {
       logger.error({
-        action: "SAVE_CLAIM_ERROR",
+        action: 'SAVE_CLAIM_ERROR',
         mlClaimId: mlClaim.id,
         accountId,
         error: error.message,
@@ -717,7 +297,452 @@ async function saveClaims(accountId, userId, mlClaims) {
 }
 
 // ============================================
-// EXCHANGES (TROCAS) ENDPOINTS
+// ROUTES - User Claims (Local Database)
+// ============================================
+
+/**
+ * GET /api/claims
+ * List all claims for the authenticated user
+ */
+router.get("/", authenticateToken, async (req, res) => {
+  try {
+    const {
+      limit = 100,
+      offset = 0,
+      status,
+      type,
+      sort = "-dateCreated",
+    } = req.query;
+
+    const statusFilter = parseMultipleStatus(status);
+    const query = buildClaimQuery(req.user.userId, null, {
+      status: statusFilter,
+      type,
+    });
+
+    const result = await paginate(query, { limit, offset, sort });
+
+    sendSuccess(res, {
+      data: {
+        claims: result.data.map((c) => c.getSummary()),
+        total: result.total,
+        limit: result.limit,
+        offset: result.offset,
+      },
+    });
+  } catch (error) {
+    handleError(res, 500, 'Failed to fetch claims', error, {
+      action: 'GET_CLAIMS_ERROR',
+      userId: req.user.userId,
+    });
+  }
+});
+
+/**
+ * GET /api/claims/:accountId
+ * List claims for specific account
+ */
+router.get("/:accountId", authenticateToken, async (req, res) => {
+  try {
+    const { accountId } = req.params;
+    const {
+      all,
+      limit: queryLimit,
+      offset = 0,
+      status,
+      type,
+      sort = "-dateCreated",
+      "date_created.from": dateFrom,
+      "date_created.to": dateTo,
+    } = req.query;
+
+    // If all=true, fetch everything. Otherwise use limit (default 100)
+    const limit = all === "true" ? 999999 : queryLimit || 100;
+
+    // Verify account belongs to user
+    const account = await fetchAccount(accountId, req.user.userId);
+    if (!account) {
+      return res.status(404).json({
+        success: false,
+        message: "Account not found",
+      });
+    }
+
+    const statusFilter = parseMultipleStatus(status);
+    const query = buildClaimQuery(req.user.userId, accountId, {
+      status: statusFilter,
+      type,
+      dateFrom,
+      dateTo,
+    });
+
+    const result = await paginate(query, { limit, offset, sort });
+
+    sendSuccess(res, {
+      data: {
+        account: {
+          id: account.id,
+          nickname: account.nickname,
+        },
+        claims: result.data.map((c) => c.getSummary()),
+        total: result.total,
+        limit: result.limit,
+        offset: result.offset,
+      },
+    });
+  } catch (error) {
+    handleError(res, 500, 'Failed to fetch claims', error, {
+      action: 'GET_ACCOUNT_CLAIMS_ERROR',
+      accountId: req.params.accountId,
+      userId: req.user.userId,
+    });
+  }
+});
+
+/**
+ * GET /api/claims/:accountId/open
+ * List open claims for specific account
+ */
+router.get("/:accountId/open", authenticateToken, async (req, res) => {
+  try {
+    const { accountId } = req.params;
+
+    // Verify account belongs to user
+    const account = await fetchAccount(accountId, req.user.userId);
+    if (!account) {
+      return res.status(404).json({
+        success: false,
+        message: "Account not found",
+      });
+    }
+
+    const claims = await Claim.findOpen(accountId);
+
+    sendSuccess(res, {
+      data: {
+        account: {
+          id: account.id,
+          nickname: account.nickname,
+        },
+        claims: claims.map((c) => c.getSummary()),
+        total: claims.length,
+      },
+    });
+  } catch (error) {
+    handleError(res, 500, 'Failed to fetch open claims', error, {
+      action: 'GET_OPEN_CLAIMS_ERROR',
+      accountId: req.params.accountId,
+      userId: req.user.userId,
+    });
+  }
+});
+
+/**
+ * GET /api/claims/:accountId/stats
+ * Get claim statistics for an account
+ */
+router.get("/:accountId/stats", authenticateToken, async (req, res) => {
+  try {
+    const { accountId } = req.params;
+
+    // Verify account exists
+    const account = await fetchAccount(accountId, req.user.userId);
+    if (!account) {
+      return res.status(404).json({
+        success: false,
+        message: "Account not found",
+      });
+    }
+
+    const { stats, openCount } = await Claim.getStats(accountId);
+
+    const totalClaims = await Claim.countDocuments({
+      accountId,
+      userId: req.user.userId,
+    });
+
+    sendSuccess(res, {
+      data: {
+        accountId,
+        claims: {
+          total: totalClaims,
+          open: openCount,
+        },
+        breakdown: stats,
+      },
+    });
+  } catch (error) {
+    handleError(res, 500, 'Failed to get claim statistics', error, {
+      action: 'GET_CLAIM_STATS_ERROR',
+      accountId: req.params.accountId,
+      userId: req.user.userId,
+    });
+  }
+});
+
+/**
+ * GET /api/claims/:accountId/:claimId
+ * Get detailed claim information
+ */
+router.get(
+  "/:accountId/:claimId",
+  authenticateToken,
+  validateMLToken("accountId"),
+  async (req, res) => {
+    try {
+      const { accountId, claimId } = req.params;
+      const account = req.mlAccount;
+
+      // Try to find in local DB first
+      let claim = await Claim.findOne({
+        $or: [{ id: claimId }, { mlClaimId: claimId }],
+        accountId,
+        userId: req.user.userId,
+      });
+
+      // Fetch fresh data from ML API
+      const headers = getMLHeaders(account.accessToken);
+      const mlClaimId = claim?.mlClaimId || claimId;
+
+      const { success, data: mlData } = await makeMLRequest(
+        'get',
+        `/claims/${mlClaimId}`,
+        null,
+        headers
+      );
+
+      if (!claim && !success) {
+        return res.status(404).json({
+          success: false,
+          message: "Claim not found",
+        });
+      }
+
+      sendSuccess(res, {
+        data: {
+          local: claim?.getDetails() || null,
+          ml: mlData || null,
+        },
+      });
+    } catch (error) {
+      handleError(res, 500, 'Failed to fetch claim', error, {
+        action: 'GET_CLAIM_ERROR',
+        claimId: req.params.claimId,
+        userId: req.user.userId,
+      });
+    }
+  },
+);
+
+/**
+ * POST /api/claims/:accountId/:claimId/message
+ * Send message in claim
+ */
+router.post(
+  "/:accountId/:claimId/message",
+  authenticateToken,
+  validateMLToken("accountId"),
+  async (req, res) => {
+    try {
+      const { accountId, claimId } = req.params;
+      const { text, role = "seller" } = req.body;
+      const account = req.mlAccount;
+
+      if (!text || text.trim().length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Message text is required",
+        });
+      }
+
+      const claim = await Claim.findOne({
+        $or: [{ id: claimId }, { mlClaimId: claimId }],
+        accountId,
+        userId: req.user.userId,
+      });
+
+      if (!claim) {
+        return res.status(404).json({
+          success: false,
+          message: "Claim not found",
+        });
+      }
+
+      const headers = getMLHeaders(account.accessToken);
+
+      // Send message to ML
+      const response = await axios.post(
+        `${ML_API_BASE}/claims/${claim.mlClaimId}/messages`,
+        {
+          message: text.trim(),
+          role,
+        },
+        { headers },
+      );
+
+      // Update local claim with new message
+      claim.messages.push({
+        id: response.data.id || `local_${Date.now()}`,
+        from: {
+          id: account.mlUserId,
+          role: "seller",
+        },
+        text: text.trim(),
+        dateCreated: new Date(),
+      });
+      claim.dateLastUpdated = new Date();
+      await claim.save();
+
+      logger.info({
+        action: 'CLAIM_MESSAGE_SENT',
+        claimId: claim.mlClaimId,
+        accountId,
+        userId: req.user.userId,
+      });
+
+      sendSuccess(res, {
+        data: claim.getDetails(),
+        message: 'Message sent successfully',
+      });
+    } catch (error) {
+      handleError(res, error.response?.status || 500, 'Failed to send message', error, {
+        action: 'SEND_CLAIM_MESSAGE_ERROR',
+        claimId: req.params.claimId,
+        userId: req.user.userId,
+      });
+    }
+  },
+);
+
+/**
+ * POST /api/claims/:accountId/sync
+ * Sync claims from Mercado Livre
+ */
+router.post(
+  "/:accountId/sync",
+  authenticateToken,
+  validateMLToken("accountId"),
+  async (req, res) => {
+    try {
+      const { accountId } = req.params;
+      const { all = false } = req.body;
+      const account = req.mlAccount;
+
+      logger.info({
+        action: 'CLAIMS_SYNC_STARTED',
+        accountId,
+        userId: req.user.userId,
+        all,
+        timestamp: new Date().toISOString(),
+      });
+
+      const headers = getMLHeaders(account.accessToken);
+
+      // Get claims with pagination support
+      let mlClaims = [];
+      let offset = 0;
+      const limit = 50;
+
+      if (all) {
+        // Unlimited mode with pagination
+        logger.info({
+          action: 'FETCH_ALL_CLAIMS_START',
+          accountId,
+          timestamp: new Date().toISOString(),
+        });
+
+        while (true) {
+          const { success, data } = await makeMLRequest(
+            'get',
+            '/claims/search',
+            null,
+            headers,
+            {
+              seller_id: account.mlUserId,
+              status: "opened,pending,waiting_seller",
+              limit,
+              offset,
+            }
+          );
+
+          const claims = data?.data || [];
+          if (claims.length === 0) break;
+
+          mlClaims.push(...claims);
+          offset += limit;
+
+          logger.info({
+            action: 'FETCH_CLAIMS_BATCH',
+            accountId,
+            batchSize: claims.length,
+            totalFetched: mlClaims.length,
+            offset,
+          });
+
+          // Check if we got all claims
+          const total = data?.paging?.total || 0;
+          if (offset >= total) break;
+        }
+
+        logger.info({
+          action: 'FETCH_ALL_CLAIMS_COMPLETE',
+          accountId,
+          totalClaims: mlClaims.length,
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        // Normal mode - single request
+        const { success, data } = await makeMLRequest(
+          'get',
+          '/claims/search',
+          null,
+          headers,
+          {
+            seller_id: account.mlUserId,
+            status: "opened,pending,waiting_seller",
+          }
+        );
+
+        mlClaims = data?.data || [];
+      }
+
+      // Save claims
+      const savedClaims = await saveClaims(
+        accountId,
+        req.user.userId,
+        mlClaims,
+      );
+
+      logger.info({
+        action: 'CLAIMS_SYNC_COMPLETED',
+        accountId,
+        userId: req.user.userId,
+        claimsCount: savedClaims.length,
+        timestamp: new Date().toISOString(),
+      });
+
+      sendSuccess(res, {
+        data: {
+          accountId,
+          claimsCount: savedClaims.length,
+          claims: savedClaims.map((c) => c.getSummary()),
+          syncedAt: new Date().toISOString(),
+        },
+        message: `Synchronized ${savedClaims.length} claims`,
+      });
+    } catch (error) {
+      handleError(res, 500, 'Failed to sync claims', error, {
+        action: 'CLAIMS_SYNC_ERROR',
+        accountId: req.params.accountId,
+        userId: req.user.userId,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  },
+);
+
+// ============================================
+// ROUTES - Exchanges (Trocas)
 // ============================================
 
 /**
@@ -733,17 +758,23 @@ router.get(
       const { accountId, claimId } = req.params;
       const account = req.mlAccount;
 
-      const headers = {
-        Authorization: `Bearer ${account.accessToken}`,
-        "Content-Type": "application/json",
-      };
+      const headers = getMLHeaders(account.accessToken);
 
       // Get claim details
-      const claimRes = await axios.get(`${ML_API_BASE}/claims/${claimId}`, {
-        headers,
-      });
+      const { success, data: claim } = await makeMLRequest(
+        'get',
+        `/claims/${claimId}`,
+        null,
+        headers
+      );
 
-      const claim = claimRes.data;
+      if (!success) {
+        return handleError(res, 500, 'Failed to get exchange details', new Error('Claim not found'), {
+          action: 'GET_EXCHANGE_ERROR',
+          accountId,
+          claimId,
+        });
+      }
 
       // Check if it's an exchange type
       const isExchange =
@@ -752,8 +783,7 @@ router.get(
         claim.solution === "change";
 
       if (!isExchange) {
-        return res.json({
-          success: true,
+        return sendSuccess(res, {
           data: {
             claim_id: claimId,
             is_exchange: false,
@@ -765,26 +795,25 @@ router.get(
       // Get exchange shipment info if available
       let exchangeShipment = null;
       if (claim.exchange_shipment_id) {
-        try {
-          const shipmentRes = await axios.get(
-            `${ML_API_BASE}/shipments/${claim.exchange_shipment_id}`,
-            { headers },
-          );
-          exchangeShipment = shipmentRes.data;
-        } catch (err) {
-          // Shipment may not be available
+        const { success: shipmentSuccess, data: shipmentData } = await makeMLRequest(
+          'get',
+          `/shipments/${claim.exchange_shipment_id}`,
+          null,
+          headers
+        );
+        if (shipmentSuccess) {
+          exchangeShipment = shipmentData;
         }
       }
 
       logger.info({
-        action: "GET_EXCHANGE_DETAILS",
+        action: 'GET_EXCHANGE_DETAILS',
         accountId,
         claimId,
         userId: req.user.userId,
       });
 
-      res.json({
-        success: true,
+      sendSuccess(res, {
         data: {
           claim_id: claimId,
           is_exchange: true,
@@ -795,18 +824,11 @@ router.get(
         },
       });
     } catch (error) {
-      logger.error({
-        action: "GET_EXCHANGE_ERROR",
+      handleError(res, 500, 'Failed to get exchange details', error, {
+        action: 'GET_EXCHANGE_ERROR',
         accountId: req.params.accountId,
         claimId: req.params.claimId,
         userId: req.user.userId,
-        error: error.response?.data || error.message,
-      });
-
-      res.status(error.response?.status || 500).json({
-        success: false,
-        message: "Failed to get exchange details",
-        error: error.response?.data?.message || error.message,
       });
     }
   },
@@ -826,10 +848,7 @@ router.post(
       const { shipping_option } = req.body;
       const account = req.mlAccount;
 
-      const headers = {
-        Authorization: `Bearer ${account.accessToken}`,
-        "Content-Type": "application/json",
-      };
+      const headers = getMLHeaders(account.accessToken);
 
       const payload = {
         action: "accept_change",
@@ -838,11 +857,21 @@ router.post(
         payload.shipping_option = shipping_option;
       }
 
-      const response = await axios.post(
-        `${ML_API_BASE}/claims/${claimId}/actions`,
+      const { success, data, error } = await makeMLRequest(
+        'post',
+        `/claims/${claimId}/actions`,
         payload,
-        { headers },
+        headers
       );
+
+      if (!success) {
+        return handleError(res, error.response?.status || 500, 'Failed to accept exchange', error, {
+          action: 'ACCEPT_EXCHANGE_ERROR',
+          accountId,
+          claimId,
+          userId: req.user.userId,
+        });
+      }
 
       // Update local claim
       await Claim.findOneAndUpdate(
@@ -851,30 +880,22 @@ router.post(
       );
 
       logger.info({
-        action: "ACCEPT_EXCHANGE",
+        action: 'ACCEPT_EXCHANGE',
         accountId,
         claimId,
         userId: req.user.userId,
       });
 
-      res.json({
-        success: true,
-        message: "Exchange accepted successfully",
-        data: response.data,
+      sendSuccess(res, {
+        data,
+        message: 'Exchange accepted successfully',
       });
     } catch (error) {
-      logger.error({
-        action: "ACCEPT_EXCHANGE_ERROR",
+      handleError(res, 500, 'Failed to accept exchange', error, {
+        action: 'ACCEPT_EXCHANGE_ERROR',
         accountId: req.params.accountId,
         claimId: req.params.claimId,
         userId: req.user.userId,
-        error: error.response?.data || error.message,
-      });
-
-      res.status(error.response?.status || 500).json({
-        success: false,
-        message: "Failed to accept exchange",
-        error: error.response?.data?.message || error.message,
       });
     }
   },
@@ -894,10 +915,7 @@ router.post(
       const { reason } = req.body;
       const account = req.mlAccount;
 
-      const headers = {
-        Authorization: `Bearer ${account.accessToken}`,
-        "Content-Type": "application/json",
-      };
+      const headers = getMLHeaders(account.accessToken);
 
       const payload = {
         action: "reject_change",
@@ -906,11 +924,21 @@ router.post(
         payload.reason = reason;
       }
 
-      const response = await axios.post(
-        `${ML_API_BASE}/claims/${claimId}/actions`,
+      const { success, data, error } = await makeMLRequest(
+        'post',
+        `/claims/${claimId}/actions`,
         payload,
-        { headers },
+        headers
       );
+
+      if (!success) {
+        return handleError(res, error.response?.status || 500, 'Failed to reject exchange', error, {
+          action: 'REJECT_EXCHANGE_ERROR',
+          accountId,
+          claimId,
+          userId: req.user.userId,
+        });
+      }
 
       // Update local claim
       await Claim.findOneAndUpdate(
@@ -919,37 +947,26 @@ router.post(
       );
 
       logger.info({
-        action: "REJECT_EXCHANGE",
+        action: 'REJECT_EXCHANGE',
         accountId,
         claimId,
         userId: req.user.userId,
       });
 
-      res.json({
-        success: true,
-        message: "Exchange rejected",
-        data: response.data,
-      });
+      sendSuccess(res, { data, message: 'Exchange rejected' });
     } catch (error) {
-      logger.error({
-        action: "REJECT_EXCHANGE_ERROR",
+      handleError(res, 500, 'Failed to reject exchange', error, {
+        action: 'REJECT_EXCHANGE_ERROR',
         accountId: req.params.accountId,
         claimId: req.params.claimId,
         userId: req.user.userId,
-        error: error.response?.data || error.message,
-      });
-
-      res.status(error.response?.status || 500).json({
-        success: false,
-        message: "Failed to reject exchange",
-        error: error.response?.data?.message || error.message,
       });
     }
   },
 );
 
 // ============================================
-// EVIDENCES ENDPOINTS
+// ROUTES - Evidences
 // ============================================
 
 /**
@@ -965,40 +982,37 @@ router.get(
       const { accountId, claimId } = req.params;
       const account = req.mlAccount;
 
-      const headers = {
-        Authorization: `Bearer ${account.accessToken}`,
-        "Content-Type": "application/json",
-      };
+      const headers = getMLHeaders(account.accessToken);
 
-      const response = await axios.get(
-        `${ML_API_BASE}/claims/${claimId}/evidences`,
-        { headers },
+      const { success, data, error } = await makeMLRequest(
+        'get',
+        `/claims/${claimId}/evidences`,
+        null,
+        headers
       );
 
+      if (!success) {
+        return handleError(res, error.response?.status || 500, 'Failed to get evidences', error, {
+          action: 'GET_EVIDENCES_ERROR',
+          accountId,
+          claimId,
+        });
+      }
+
       logger.info({
-        action: "GET_CLAIM_EVIDENCES",
+        action: 'GET_CLAIM_EVIDENCES',
         accountId,
         claimId,
         userId: req.user.userId,
       });
 
-      res.json({
-        success: true,
-        data: response.data,
-      });
+      sendSuccess(res, { data });
     } catch (error) {
-      logger.error({
-        action: "GET_EVIDENCES_ERROR",
+      handleError(res, 500, 'Failed to get evidences', error, {
+        action: 'GET_EVIDENCES_ERROR',
         accountId: req.params.accountId,
         claimId: req.params.claimId,
         userId: req.user.userId,
-        error: error.response?.data || error.message,
-      });
-
-      res.status(error.response?.status || 500).json({
-        success: false,
-        message: "Failed to get evidences",
-        error: error.response?.data?.message || error.message,
       });
     }
   },
@@ -1025,10 +1039,7 @@ router.post(
         });
       }
 
-      const headers = {
-        Authorization: `Bearer ${account.accessToken}`,
-        "Content-Type": "application/json",
-      };
+      const headers = getMLHeaders(account.accessToken);
 
       const payload = {
         evidence_type,
@@ -1039,45 +1050,47 @@ router.post(
         payload.files = files;
       }
 
-      const response = await axios.post(
-        `${ML_API_BASE}/claims/${claimId}/evidences`,
+      const { success, data, error } = await makeMLRequest(
+        'post',
+        `/claims/${claimId}/evidences`,
         payload,
-        { headers },
+        headers
       );
 
+      if (!success) {
+        return handleError(res, error.response?.status || 500, 'Failed to upload evidence', error, {
+          action: 'UPLOAD_EVIDENCE_ERROR',
+          accountId,
+          claimId,
+          userId: req.user.userId,
+        });
+      }
+
       logger.info({
-        action: "UPLOAD_EVIDENCE",
+        action: 'UPLOAD_EVIDENCE',
         accountId,
         claimId,
         evidenceType: evidence_type,
         userId: req.user.userId,
       });
 
-      res.json({
-        success: true,
-        message: "Evidence uploaded successfully",
-        data: response.data,
+      sendSuccess(res, {
+        data,
+        message: 'Evidence uploaded successfully',
       });
     } catch (error) {
-      logger.error({
-        action: "UPLOAD_EVIDENCE_ERROR",
+      handleError(res, 500, 'Failed to upload evidence', error, {
+        action: 'UPLOAD_EVIDENCE_ERROR',
         accountId: req.params.accountId,
         claimId: req.params.claimId,
         userId: req.user.userId,
-        error: error.response?.data || error.message,
-      });
-
-      res.status(error.response?.status || 500).json({
-        success: false,
-        message: "Failed to upload evidence",
-        error: error.response?.data?.message || error.message,
       });
     }
   },
 );
 
 // ============================================
-// RESOLUTION ENDPOINTS
+// ROUTES - Resolution & Actions
 // ============================================
 
 /**
@@ -1108,10 +1121,7 @@ router.post(
         });
       }
 
-      const headers = {
-        Authorization: `Bearer ${account.accessToken}`,
-        "Content-Type": "application/json",
-      };
+      const headers = getMLHeaders(account.accessToken);
 
       const payload = {
         action: resolution,
@@ -1120,11 +1130,21 @@ router.post(
         payload.reason = reason;
       }
 
-      const response = await axios.post(
-        `${ML_API_BASE}/claims/${claimId}/actions`,
+      const { success, data, error } = await makeMLRequest(
+        'post',
+        `/claims/${claimId}/actions`,
         payload,
-        { headers },
+        headers
       );
+
+      if (!success) {
+        return handleError(res, error.response?.status || 500, 'Failed to resolve claim', error, {
+          action: 'RESOLVE_CLAIM_ERROR',
+          accountId,
+          claimId,
+          userId: req.user.userId,
+        });
+      }
 
       // Update local claim
       await Claim.findOneAndUpdate(
@@ -1140,31 +1160,23 @@ router.post(
       );
 
       logger.info({
-        action: "RESOLVE_CLAIM",
+        action: 'RESOLVE_CLAIM',
         accountId,
         claimId,
         resolution,
         userId: req.user.userId,
       });
 
-      res.json({
-        success: true,
-        message: "Claim resolved successfully",
-        data: response.data,
+      sendSuccess(res, {
+        data,
+        message: 'Claim resolved successfully',
       });
     } catch (error) {
-      logger.error({
-        action: "RESOLVE_CLAIM_ERROR",
+      handleError(res, 500, 'Failed to resolve claim', error, {
+        action: 'RESOLVE_CLAIM_ERROR',
         accountId: req.params.accountId,
         claimId: req.params.claimId,
         userId: req.user.userId,
-        error: error.response?.data || error.message,
-      });
-
-      res.status(error.response?.status || 500).json({
-        success: false,
-        message: "Failed to resolve claim",
-        error: error.response?.data?.message || error.message,
       });
     }
   },
@@ -1183,40 +1195,37 @@ router.get(
       const { accountId, claimId } = req.params;
       const account = req.mlAccount;
 
-      const headers = {
-        Authorization: `Bearer ${account.accessToken}`,
-        "Content-Type": "application/json",
-      };
+      const headers = getMLHeaders(account.accessToken);
 
-      const response = await axios.get(
-        `${ML_API_BASE}/claims/${claimId}/actions`,
-        { headers },
+      const { success, data, error } = await makeMLRequest(
+        'get',
+        `/claims/${claimId}/actions`,
+        null,
+        headers
       );
 
+      if (!success) {
+        return handleError(res, error.response?.status || 500, 'Failed to get available actions', error, {
+          action: 'GET_AVAILABLE_ACTIONS_ERROR',
+          accountId,
+          claimId,
+        });
+      }
+
       logger.info({
-        action: "GET_AVAILABLE_ACTIONS",
+        action: 'GET_AVAILABLE_ACTIONS',
         accountId,
         claimId,
         userId: req.user.userId,
       });
 
-      res.json({
-        success: true,
-        data: response.data,
-      });
+      sendSuccess(res, { data });
     } catch (error) {
-      logger.error({
-        action: "GET_AVAILABLE_ACTIONS_ERROR",
+      handleError(res, 500, 'Failed to get available actions', error, {
+        action: 'GET_AVAILABLE_ACTIONS_ERROR',
         accountId: req.params.accountId,
         claimId: req.params.claimId,
         userId: req.user.userId,
-        error: error.response?.data || error.message,
-      });
-
-      res.status(error.response?.status || 500).json({
-        success: false,
-        message: "Failed to get available actions",
-        error: error.response?.data?.message || error.message,
       });
     }
   },
@@ -1235,49 +1244,45 @@ router.get(
       const { accountId, claimId } = req.params;
       const account = req.mlAccount;
 
-      const headers = {
-        Authorization: `Bearer ${account.accessToken}`,
-        "Content-Type": "application/json",
-      };
+      const headers = getMLHeaders(account.accessToken);
 
-      const response = await axios.get(
-        `${ML_API_BASE}/claims/${claimId}/timeline`,
-        { headers },
+      const { success, data, error } = await makeMLRequest(
+        'get',
+        `/claims/${claimId}/timeline`,
+        null,
+        headers
       );
 
+      // Timeline may not be available for all claims
+      if (!success && error.response?.status === 404) {
+        return sendSuccess(res, {
+          data: [],
+          message: 'No timeline available',
+        });
+      }
+
+      if (!success) {
+        return handleError(res, error.response?.status || 500, 'Failed to get timeline', error, {
+          action: 'GET_TIMELINE_ERROR',
+          accountId,
+          claimId,
+        });
+      }
+
       logger.info({
-        action: "GET_CLAIM_TIMELINE",
+        action: 'GET_CLAIM_TIMELINE',
         accountId,
         claimId,
         userId: req.user.userId,
       });
 
-      res.json({
-        success: true,
-        data: response.data,
-      });
+      sendSuccess(res, { data });
     } catch (error) {
-      // Timeline may not be available for all claims
-      if (error.response?.status === 404) {
-        return res.json({
-          success: true,
-          data: [],
-          message: "No timeline available",
-        });
-      }
-
-      logger.error({
-        action: "GET_TIMELINE_ERROR",
+      handleError(res, 500, 'Failed to get timeline', error, {
+        action: 'GET_TIMELINE_ERROR',
         accountId: req.params.accountId,
         claimId: req.params.claimId,
         userId: req.user.userId,
-        error: error.response?.data || error.message,
-      });
-
-      res.status(error.response?.status || 500).json({
-        success: false,
-        message: "Failed to get timeline",
-        error: error.response?.data?.message || error.message,
       });
     }
   },
