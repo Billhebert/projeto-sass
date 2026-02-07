@@ -27,6 +27,43 @@ const router = express.Router();
 
 const ML_API_BASE = 'https://api.mercadolibre.com';
 
+// ============================================================================
+// CORE HELPERS
+// ============================================================================
+
+/**
+ * Handle and log errors with consistent response format
+ */
+const handleError = (res, statusCode = 500, message, error = null, context = {}) => {
+  logger.error({
+    action: context.action || 'UNKNOWN_ERROR',
+    error: error?.message || message,
+    statusCode,
+    ...context,
+  });
+
+  const response = { success: false, message };
+  if (error?.message) response.error = error.message;
+  res.status(statusCode).json(response);
+};
+
+/**
+ * Send success response with consistent format
+ */
+const sendSuccess = (res, data, message = null, statusCode = 200) => {
+  const response = { success: true, data };
+  if (message) response.message = message;
+  res.status(statusCode).json(response);
+};
+
+/**
+ * Build ML API headers from account
+ */
+const buildHeaders = (account) => ({
+  'Authorization': `Bearer ${account.accessToken}`,
+  'Content-Type': 'application/json',
+});
+
 /**
  * GET /api/reviews/:accountId/item/:itemId
  * Get reviews for a specific item
@@ -37,15 +74,10 @@ router.get('/:accountId/item/:itemId', authenticateToken, validateMLToken('accou
     const { limit = 50, offset = 0 } = req.query;
     const account = req.mlAccount;
 
-    const headers = {
-      'Authorization': `Bearer ${account.accessToken}`,
-      'Content-Type': 'application/json',
-    };
-
     const response = await axios.get(
       `${ML_API_BASE}/reviews/item/${itemId}`,
       {
-        headers,
+        headers: buildHeaders(account),
         params: {
           limit: parseInt(limit),
           offset: parseInt(offset),
@@ -61,24 +93,20 @@ router.get('/:accountId/item/:itemId', authenticateToken, validateMLToken('accou
       reviewsCount: response.data.reviews?.length || 0,
     });
 
-    res.json({
-      success: true,
-      data: response.data,
-    });
+    sendSuccess(res, response.data);
   } catch (error) {
-    logger.error({
-      action: 'GET_ITEM_REVIEWS_ERROR',
-      accountId: req.params.accountId,
-      itemId: req.params.itemId,
-      userId: req.user.userId,
-      error: error.response?.data || error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      message: 'Failed to get item reviews',
-      error: error.response?.data?.message || error.message,
-    });
+    handleError(
+      res,
+      error.response?.status || 500,
+      'Failed to get item reviews',
+      error,
+      {
+        action: 'GET_ITEM_REVIEWS_ERROR',
+        accountId: req.params.accountId,
+        itemId: req.params.itemId,
+        userId: req.user.userId,
+      },
+    );
   }
 });
 
@@ -90,11 +118,7 @@ router.get('/:accountId/item/:itemId/summary', authenticateToken, validateMLToke
   try {
     const { accountId, itemId } = req.params;
     const account = req.mlAccount;
-
-    const headers = {
-      'Authorization': `Bearer ${account.accessToken}`,
-      'Content-Type': 'application/json',
-    };
+    const headers = buildHeaders(account);
 
     const [reviewsRes, itemRes] = await Promise.all([
       axios.get(`${ML_API_BASE}/reviews/item/${itemId}`, { headers }),
@@ -123,31 +147,27 @@ router.get('/:accountId/item/:itemId/summary', authenticateToken, validateMLToke
       userId: req.user.userId,
     });
 
-    res.json({
-      success: true,
-      data: {
-        item_id: itemId,
-        title: itemRes.data.title,
-        total_reviews: totalReviews,
-        average_rating: parseFloat(avgRating.toFixed(2)),
-        rating_distribution: ratingDist,
-        paging: reviewsRes.data.paging,
-      },
+    sendSuccess(res, {
+      item_id: itemId,
+      title: itemRes.data.title,
+      total_reviews: totalReviews,
+      average_rating: parseFloat(avgRating.toFixed(2)),
+      rating_distribution: ratingDist,
+      paging: reviewsRes.data.paging,
     });
   } catch (error) {
-    logger.error({
-      action: 'GET_RATINGS_SUMMARY_ERROR',
-      accountId: req.params.accountId,
-      itemId: req.params.itemId,
-      userId: req.user.userId,
-      error: error.response?.data || error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      message: 'Failed to get ratings summary',
-      error: error.response?.data?.message || error.message,
-    });
+    handleError(
+      res,
+      error.response?.status || 500,
+      'Failed to get ratings summary',
+      error,
+      {
+        action: 'GET_RATINGS_SUMMARY_ERROR',
+        accountId: req.params.accountId,
+        itemId: req.params.itemId,
+        userId: req.user.userId,
+      },
+    );
   }
 });
 
@@ -160,13 +180,8 @@ router.get('/:accountId/all', authenticateToken, validateMLToken('accountId'), a
     const { accountId } = req.params;
     const { limit = 50 } = req.query;
     const account = req.mlAccount;
+    const headers = buildHeaders(account);
 
-    const headers = {
-      'Authorization': `Bearer ${account.accessToken}`,
-      'Content-Type': 'application/json',
-    };
-
-    // Get seller's items first
     const itemsRes = await axios.get(
       `${ML_API_BASE}/users/${account.mlUserId}/items/search`,
       {
@@ -208,27 +223,23 @@ router.get('/:accountId/all', authenticateToken, validateMLToken('accountId'), a
       reviewsCount: allReviews.length,
     });
 
-    res.json({
-      success: true,
-      data: {
-        reviews: allReviews.slice(0, parseInt(limit)),
-        total: allReviews.length,
-        items_analyzed: itemIds.length,
-      },
+    sendSuccess(res, {
+      reviews: allReviews.slice(0, parseInt(limit)),
+      total: allReviews.length,
+      items_analyzed: itemIds.length,
     });
   } catch (error) {
-    logger.error({
-      action: 'GET_ALL_REVIEWS_ERROR',
-      accountId: req.params.accountId,
-      userId: req.user.userId,
-      error: error.response?.data || error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      message: 'Failed to get all reviews',
-      error: error.response?.data?.message || error.message,
-    });
+    handleError(
+      res,
+      error.response?.status || 500,
+      'Failed to get all reviews',
+      error,
+      {
+        action: 'GET_ALL_REVIEWS_ERROR',
+        accountId: req.params.accountId,
+        userId: req.user.userId,
+      },
+    );
   }
 });
 
@@ -249,15 +260,10 @@ router.post('/:accountId/reply/:reviewId', authenticateToken, validateMLToken('a
       });
     }
 
-    const headers = {
-      'Authorization': `Bearer ${account.accessToken}`,
-      'Content-Type': 'application/json',
-    };
-
     const response = await axios.post(
       `${ML_API_BASE}/reviews/${reviewId}/reply`,
       { text },
-      { headers }
+      { headers: buildHeaders(account) }
     );
 
     logger.info({
@@ -267,25 +273,20 @@ router.post('/:accountId/reply/:reviewId', authenticateToken, validateMLToken('a
       userId: req.user.userId,
     });
 
-    res.json({
-      success: true,
-      message: 'Reply posted successfully',
-      data: response.data,
-    });
+    sendSuccess(res, response.data, 'Reply posted successfully');
   } catch (error) {
-    logger.error({
-      action: 'REPLY_TO_REVIEW_ERROR',
-      accountId: req.params.accountId,
-      reviewId: req.params.reviewId,
-      userId: req.user.userId,
-      error: error.response?.data || error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      message: 'Failed to reply to review',
-      error: error.response?.data?.message || error.message,
-    });
+    handleError(
+      res,
+      error.response?.status || 500,
+      'Failed to reply to review',
+      error,
+      {
+        action: 'REPLY_TO_REVIEW_ERROR',
+        accountId: req.params.accountId,
+        reviewId: req.params.reviewId,
+        userId: req.user.userId,
+      },
+    );
   }
 });
 
@@ -297,13 +298,8 @@ router.get('/:accountId/pending', authenticateToken, validateMLToken('accountId'
   try {
     const { accountId } = req.params;
     const account = req.mlAccount;
+    const headers = buildHeaders(account);
 
-    const headers = {
-      'Authorization': `Bearer ${account.accessToken}`,
-      'Content-Type': 'application/json',
-    };
-
-    // Get seller's items
     const itemsRes = await axios.get(
       `${ML_API_BASE}/users/${account.mlUserId}/items/search`,
       {
@@ -325,7 +321,6 @@ router.get('/:accountId/pending', authenticateToken, validateMLToken('accountId'
         
         const reviews = reviewsRes.data.reviews || [];
         reviews.forEach(review => {
-          // Check if review has no seller reply
           if (!review.reply || !review.reply.text) {
             pendingReviews.push({
               ...review,
@@ -338,7 +333,7 @@ router.get('/:accountId/pending', authenticateToken, validateMLToken('accountId'
       }
     }
 
-    // Sort by date (oldest first - should be replied first)
+    // Sort by date (oldest first)
     pendingReviews.sort((a, b) => new Date(a.date_created) - new Date(b.date_created));
 
     logger.info({
@@ -348,26 +343,22 @@ router.get('/:accountId/pending', authenticateToken, validateMLToken('accountId'
       pendingCount: pendingReviews.length,
     });
 
-    res.json({
-      success: true,
-      data: {
-        pending_reviews: pendingReviews,
-        total: pendingReviews.length,
-      },
+    sendSuccess(res, {
+      pending_reviews: pendingReviews,
+      total: pendingReviews.length,
     });
   } catch (error) {
-    logger.error({
-      action: 'GET_PENDING_REVIEWS_ERROR',
-      accountId: req.params.accountId,
-      userId: req.user.userId,
-      error: error.response?.data || error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      message: 'Failed to get pending reviews',
-      error: error.response?.data?.message || error.message,
-    });
+    handleError(
+      res,
+      error.response?.status || 500,
+      'Failed to get pending reviews',
+      error,
+      {
+        action: 'GET_PENDING_REVIEWS_ERROR',
+        accountId: req.params.accountId,
+        userId: req.user.userId,
+      },
+    );
   }
 });
 
@@ -379,13 +370,8 @@ router.get('/:accountId/stats', authenticateToken, validateMLToken('accountId'),
   try {
     const { accountId } = req.params;
     const account = req.mlAccount;
+    const headers = buildHeaders(account);
 
-    const headers = {
-      'Authorization': `Bearer ${account.accessToken}`,
-      'Content-Type': 'application/json',
-    };
-
-    // Get seller's items
     const itemsRes = await axios.get(
       `${ML_API_BASE}/users/${account.mlUserId}/items/search`,
       {
@@ -400,9 +386,9 @@ router.get('/:accountId/stats', authenticateToken, validateMLToken('accountId'),
     let totalReviews = 0;
     let totalRating = 0;
     let pendingReplies = 0;
-    let positiveReviews = 0; // 4-5 stars
-    let negativeReviews = 0; // 1-2 stars
-    let neutralReviews = 0;  // 3 stars
+    let positiveReviews = 0;
+    let negativeReviews = 0;
+    let neutralReviews = 0;
 
     for (const itemId of itemIds.slice(0, 20)) {
       try {
@@ -439,34 +425,30 @@ router.get('/:accountId/stats', authenticateToken, validateMLToken('accountId'),
       totalReviews,
     });
 
-    res.json({
-      success: true,
-      data: {
-        total_reviews: totalReviews,
-        average_rating: parseFloat(averageRating.toFixed(2)),
-        pending_replies: pendingReplies,
-        sentiment: {
-          positive: positiveReviews,
-          neutral: neutralReviews,
-          negative: negativeReviews,
-        },
-        positive_percentage: parseFloat(positivePercentage.toFixed(1)),
-        items_analyzed: Math.min(itemIds.length, 20),
+    sendSuccess(res, {
+      total_reviews: totalReviews,
+      average_rating: parseFloat(averageRating.toFixed(2)),
+      pending_replies: pendingReplies,
+      sentiment: {
+        positive: positiveReviews,
+        neutral: neutralReviews,
+        negative: negativeReviews,
       },
+      positive_percentage: parseFloat(positivePercentage.toFixed(1)),
+      items_analyzed: Math.min(itemIds.length, 20),
     });
   } catch (error) {
-    logger.error({
-      action: 'GET_REVIEW_STATS_ERROR',
-      accountId: req.params.accountId,
-      userId: req.user.userId,
-      error: error.response?.data || error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      message: 'Failed to get review statistics',
-      error: error.response?.data?.message || error.message,
-    });
+    handleError(
+      res,
+      error.response?.status || 500,
+      'Failed to get review statistics',
+      error,
+      {
+        action: 'GET_REVIEW_STATS_ERROR',
+        accountId: req.params.accountId,
+        userId: req.user.userId,
+      },
+    );
   }
 });
 
@@ -478,13 +460,8 @@ router.get('/:accountId/negative', authenticateToken, validateMLToken('accountId
   try {
     const { accountId } = req.params;
     const account = req.mlAccount;
+    const headers = buildHeaders(account);
 
-    const headers = {
-      'Authorization': `Bearer ${account.accessToken}`,
-      'Content-Type': 'application/json',
-    };
-
-    // Get seller's items
     const itemsRes = await axios.get(
       `${ML_API_BASE}/users/${account.mlUserId}/items/search`,
       {
@@ -528,26 +505,22 @@ router.get('/:accountId/negative', authenticateToken, validateMLToken('accountId
       negativeCount: negativeReviews.length,
     });
 
-    res.json({
-      success: true,
-      data: {
-        negative_reviews: negativeReviews,
-        total: negativeReviews.length,
-      },
+    sendSuccess(res, {
+      negative_reviews: negativeReviews,
+      total: negativeReviews.length,
     });
   } catch (error) {
-    logger.error({
-      action: 'GET_NEGATIVE_REVIEWS_ERROR',
-      accountId: req.params.accountId,
-      userId: req.user.userId,
-      error: error.response?.data || error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      message: 'Failed to get negative reviews',
-      error: error.response?.data?.message || error.message,
-    });
+    handleError(
+      res,
+      error.response?.status || 500,
+      'Failed to get negative reviews',
+      error,
+      {
+        action: 'GET_NEGATIVE_REVIEWS_ERROR',
+        accountId: req.params.accountId,
+        userId: req.user.userId,
+      },
+    );
   }
 });
 
