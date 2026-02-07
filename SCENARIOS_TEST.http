@@ -1,0 +1,446 @@
+### ADVANCED TESTING - Complete Order to Delivery Flow
+### Use este arquivo para testar fluxos completos de negócio
+
+# ============================================================================
+# VARIÁVEIS E AMBIENTE
+# ============================================================================
+
+@baseUrl = http://localhost:3011
+@token = seu_token_aqui
+@accountId = sua_conta_aqui
+@mlUserId = seu_ml_user_id_aqui
+@orderId = um_order_id_aqui
+@itemId = um_item_id_aqui
+
+# Headers reutilizáveis
+@authHeader = Authorization: Bearer {{token}}
+@contentType = Content-Type: application/json
+
+# ============================================================================
+# CENÁRIO 1: SETUP INICIAL & VERIFICAÇÃO
+# ============================================================================
+
+### S1-01: Verificar Autenticação
+GET {{baseUrl}}/api/ml-auth/status
+{{authHeader}}
+
+### S1-02: Listar Contas Conectadas
+GET {{baseUrl}}/api/ml-accounts
+{{authHeader}}
+
+### S1-03: Verificar Saúde do API
+GET {{baseUrl}}/health
+
+### S1-04: Verificar Status do SDK
+GET {{baseUrl}}/api/sdk/status
+{{authHeader}}
+
+# ============================================================================
+# CENÁRIO 2: GERENCIAMENTO DE PRODUTOS
+# ============================================================================
+
+### S2-01: Listar Produtos Existentes
+GET {{baseUrl}}/api/items?limit=10&offset=0&status=active
+{{authHeader}}
+
+### S2-02: Buscar Produto por Keyword
+GET {{baseUrl}}/api/items?search=iphone&limit=20
+{{authHeader}}
+
+### S2-03: Obter Detalhes de Um Produto
+GET {{baseUrl}}/api/items/{{itemId}}
+{{authHeader}}
+
+### S2-04: Criar Novo Produto
+POST {{baseUrl}}/api/items
+{{authHeader}}
+{{contentType}}
+
+{
+  "title": "iPhone 15 Pro 256GB - Prata",
+  "description": "Novo iPhone 15 Pro com 256GB de armazenamento. Lacrado na caixa, garantia Apple 1 ano.",
+  "categoryId": "MLB1055",
+  "price": 6999.00,
+  "currency": "BRL",
+  "available_quantity": 5,
+  "condition": "new",
+  "buying_mode": "buy_it_now",
+  "listing_type": "gold_pro",
+  "pictures": [
+    {
+      "url": "https://example.com/iphone15-01.jpg",
+      "alt": "Frente do iPhone"
+    },
+    {
+      "url": "https://example.com/iphone15-02.jpg",
+      "alt": "Traseira do iPhone"
+    }
+  ],
+  "attributes": [
+    {
+      "id": "BRAND",
+      "value_name": "Apple"
+    },
+    {
+      "id": "MODEL",
+      "value_name": "iPhone 15 Pro"
+    },
+    {
+      "id": "MEMORY",
+      "value_name": "256 GB"
+    }
+  ],
+  "shipping": {
+    "mode": "me1",
+    "local_pick_up": true,
+    "free_shipping": true
+  }
+}
+
+### S2-05: Atualizar Preço do Produto
+PUT {{baseUrl}}/api/items/{{itemId}}
+{{authHeader}}
+{{contentType}}
+
+{
+  "price": 6499.00,
+  "available_quantity": 10
+}
+
+### S2-06: Publicar Produto
+POST {{baseUrl}}/api/items/{{itemId}}/publish
+{{authHeader}}
+{{contentType}}
+
+{
+  "status": "active"
+}
+
+### S2-07: Despublicar Produto
+POST {{baseUrl}}/api/items/{{itemId}}/unpublish
+{{authHeader}}
+{{contentType}}
+
+{
+  "reason": "item_not_available"
+}
+
+# ============================================================================
+# CENÁRIO 3: GERENCIAMENTO DE PEDIDOS
+# ============================================================================
+
+### S3-01: Listar Todos os Pedidos do Usuário
+GET {{baseUrl}}/api/orders?limit=50&offset=0&status=paid
+{{authHeader}}
+
+### S3-02: Listar Pedidos da Conta Específica
+GET {{baseUrl}}/api/orders/{{accountId}}?status=paid&limit=50
+{{authHeader}}
+
+### S3-03: Obter Detalhes Completos do Pedido
+GET {{baseUrl}}/api/orders/{{accountId}}/{{orderId}}
+{{authHeader}}
+
+### S3-04: Obter Info de Faturamento para NFe
+GET {{baseUrl}}/api/orders/{{accountId}}/{{orderId}}/billing
+{{authHeader}}
+
+### S3-05: Sincronizar Pedidos do Mercado Livre
+POST {{baseUrl}}/api/orders/{{accountId}}/sync
+{{authHeader}}
+{{contentType}}
+
+{
+  "status": "paid",
+  "days": 30,
+  "all": false
+}
+
+### S3-06: Sincronizar TODOS os Pedidos (sem limite)
+POST {{baseUrl}}/api/orders/{{accountId}}/sync
+{{authHeader}}
+{{contentType}}
+
+{
+  "status": "all",
+  "all": true
+}
+
+### S3-07: Obter Estatísticas de Pedidos
+GET {{baseUrl}}/api/orders/{{accountId}}/stats?period=30d
+{{authHeader}}
+
+### S3-08: Cancelar Pedido
+POST {{baseUrl}}/api/orders/{{accountId}}/actions
+{{authHeader}}
+{{contentType}}
+
+{
+  "orderId": "{{orderId}}",
+  "action": "cancel",
+  "reason": "customer_request",
+  "message": "Cliente pediu cancelamento"
+}
+
+### S3-09: Marcar Pedido como Entregue
+POST {{baseUrl}}/api/orders/{{accountId}}/actions
+{{authHeader}}
+{{contentType}}
+
+{
+  "orderId": "{{orderId}}",
+  "action": "mark_as_delivered"
+}
+
+# ============================================================================
+# CENÁRIO 4: GERENCIAMENTO DE ENVIOS
+# ============================================================================
+
+### S4-01: Listar Todos os Envios
+GET {{baseUrl}}/api/shipments?limit=50&offset=0
+{{authHeader}}
+
+### S4-02: Obter Detalhes do Envio
+GET {{baseUrl}}/api/shipments/{{accountId}}/SHP123456
+{{authHeader}}
+
+### S4-03: Atualizar Status do Envio
+PUT {{baseUrl}}/api/shipments/{{accountId}}/SHP123456
+{{authHeader}}
+{{contentType}}
+
+{
+  "status": "delivered",
+  "tracking_code": "BR1234567890",
+  "carrier": "Correios"
+}
+
+### S4-04: Sincronizar Envios
+POST {{baseUrl}}/api/shipments/{{accountId}}/sync
+{{authHeader}}
+{{contentType}}
+
+{
+  "status": "pending"
+}
+
+# ============================================================================
+# CENÁRIO 5: GERENCIAMENTO DE PAGAMENTOS
+# ============================================================================
+
+### S5-01: Listar Pagamentos Recebidos
+GET {{baseUrl}}/api/payments?status=approved&limit=50
+{{authHeader}}
+
+### S5-02: Obter Detalhes do Pagamento
+GET {{baseUrl}}/api/payments/{{accountId}}/PAY123456
+{{authHeader}}
+
+### S5-03: Obter Informações de Faturamento
+GET {{baseUrl}}/api/billing/{{accountId}}?period=30d
+{{authHeader}}
+
+### S5-04: Listar Faturas/Invoices
+GET {{baseUrl}}/api/invoices?limit=50&offset=0
+{{authHeader}}
+
+# ============================================================================
+# CENÁRIO 6: PROMOÇÕES E DESCONTOS
+# ============================================================================
+
+### S6-01: Listar Promoções Ativas
+GET {{baseUrl}}/api/promotions?status=active&limit=20
+{{authHeader}}
+
+### S6-02: Criar Nova Promoção (Desconto)
+POST {{baseUrl}}/api/promotions
+{{authHeader}}
+{{contentType}}
+
+{
+  "name": "Black Friday 2025",
+  "description": "50% de desconto em produtos selecionados",
+  "discount_type": "percentage",
+  "discount_value": 50,
+  "status": "active",
+  "start_date": "2025-11-28T00:00:00Z",
+  "end_date": "2025-11-30T23:59:59Z",
+  "item_ids": ["{{itemId}}"],
+  "min_purchase": 0
+}
+
+### S6-03: Parar Promoção
+POST {{baseUrl}}/api/promotions/PROMO123/pause
+{{authHeader}}
+
+### S6-04: Retomar Promoção
+POST {{baseUrl}}/api/promotions/PROMO123/resume
+{{authHeader}}
+
+# ============================================================================
+# CENÁRIO 7: ATENDIMENTO AO CLIENTE (Perguntas/Respostas)
+# ============================================================================
+
+### S7-01: Listar Perguntas Não Respondidas
+GET {{baseUrl}}/api/questions?item_id={{itemId}}&status=unanswered&limit=20
+{{authHeader}}
+
+### S7-02: Responder Pergunta
+POST {{baseUrl}}/api/questions/QST123456/answer
+{{authHeader}}
+{{contentType}}
+
+{
+  "answer": "Sim, o produto vem com todos os acessórios originais da Apple."
+}
+
+### S7-03: Listar Feedback Recebido
+GET {{baseUrl}}/api/feedback?status=positive&limit=50
+{{authHeader}}
+
+### S7-04: Responder Feedback Negativo
+POST {{baseUrl}}/api/feedback/{{accountId}}/FB123456/reply
+{{authHeader}}
+{{contentType}}
+
+{
+  "reply": "Desculpe pelo ocorrido. Gostaria de resolver isso. Pode nos contatar via WhatsApp?"
+}
+
+# ============================================================================
+# CENÁRIO 8: DEVOLUÇÃO E RECLAMAÇÕES (RMA)
+# ============================================================================
+
+### S8-01: Listar Reclamações Abertas
+GET {{baseUrl}}/api/claims?status=open&limit=20
+{{authHeader}}
+
+### S8-02: Obter Detalhes da Reclamação
+GET {{baseUrl}}/api/claims/{{accountId}}/CLM123456
+{{authHeader}}
+
+### S8-03: Responder Reclamação com Reembolso
+POST {{baseUrl}}/api/claims/{{accountId}}/CLM123456/respond
+{{authHeader}}
+{{contentType}}
+
+{
+  "response": "Authorized - Oferecemos reembolso total",
+  "mode": "refund",
+  "amount": 0
+}
+
+### S8-04: Responder Reclamação com Troca
+POST {{baseUrl}}/api/claims/{{accountId}}/CLM123456/respond
+{{authHeader}}
+{{contentType}}
+
+{
+  "response": "Enviaremos um produto novo em breve",
+  "mode": "replacement"
+}
+
+# ============================================================================
+# CENÁRIO 9: ANÁLISE E MÉTRICAS
+# ============================================================================
+
+### S9-01: Obter Métricas da Conta (últimos 30 dias)
+GET {{baseUrl}}/api/metrics/{{accountId}}?period=30d
+{{authHeader}}
+
+### S9-02: Obter Métricas de Item Específico
+GET {{baseUrl}}/api/metrics/items/{{itemId}}?period=30d
+{{authHeader}}
+
+### S9-03: Obter Itens Mais Vendidos
+GET {{baseUrl}}/api/metrics/{{accountId}}/top-items?period=30d&limit=10
+{{authHeader}}
+
+### S9-04: Obter Visitas em Busca
+GET {{baseUrl}}/api/visits/{{accountId}}?period=7d
+{{authHeader}}
+
+### S9-05: Obter Tendências do Mercado
+GET {{baseUrl}}/api/trends?category=smartphones&limit=10
+{{authHeader}}
+
+# ============================================================================
+# CENÁRIO 10: SINCRONIZAÇÃO COMPLETA
+# ============================================================================
+
+### S10-01: Sincronizar Tudo da Conta (Full Sync)
+POST {{baseUrl}}/api/ml-accounts/{{accountId}}/sync
+{{authHeader}}
+{{contentType}}
+
+{
+  "syncType": "full",
+  "includeOrders": true,
+  "includeItems": true,
+  "includeSales": true,
+  "includePayments": true,
+  "includeShipments": true,
+  "includeReturns": true
+}
+
+### S10-02: Extrair Todos os Dados da Conta
+POST {{baseUrl}}/api/ml-accounts/{{accountId}}/export
+{{authHeader}}
+{{contentType}}
+
+{
+  "includeOrders": true,
+  "includeItems": true,
+  "includeSales": true,
+  "includePayments": true,
+  "includeShipments": true,
+  "format": "json"
+}
+
+# ============================================================================
+# SCRIPTS DE TESTE - Execute em ordem para testar fluxo completo
+# ============================================================================
+
+### TESTE COMPLETO 1: Novo Produto até Venda
+# 1. S2-04 - Criar Produto
+# 2. S2-06 - Publicar Produto
+# 3. Aguardar venda...
+# 4. S3-02 - Ver novo pedido
+# 5. S3-04 - Ver detalhes do pedido
+# 6. S4-03 - Atualizar envio
+
+### TESTE COMPLETO 2: Atendimento ao Cliente
+# 1. S7-01 - Listar perguntas
+# 2. S7-02 - Responder pergunta
+# 3. S7-03 - Ver feedback
+# 4. S7-04 - Responder feedback
+
+### TESTE COMPLETO 3: Reclamação e Solução
+# 1. S8-01 - Listar reclamações
+# 2. S8-02 - Ver detalhes
+# 3. S8-03 ou S8-04 - Resolver reclamação
+
+# ============================================================================
+# NOTAS IMPORTANTES
+# ============================================================================
+
+# Variáveis do sistema operacional (se usar .env):
+# No arquivo .env na raiz do projeto:
+# API_BASE_URL=http://localhost:3011
+# ML_CLIENT_ID=seu_client_id
+# ML_CLIENT_SECRET=seu_client_secret
+# DB_URL=mongodb+srv://...
+
+# Para gerar um novo token:
+# 1. GET {{baseUrl}}/api/ml-auth/url (pega URL de autenticação)
+# 2. Visita a URL no navegador
+# 3. Faz login com conta Mercado Livre
+# 4. Copia o code da URL de redirecionamento
+# 5. POST para /api/ml-auth/complete com code e state
+
+# Dicas de teste:
+# - Use Ctrl+Alt+R para rodar um request
+# - Use Ctrl+Alt+N para rodar todos em sequência
+# - Clique em "Send Request" para rodar individual
+# - Response aparece no painel à direita
+# - Histórico fica em OUTPUT > REST Client

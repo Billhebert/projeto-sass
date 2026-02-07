@@ -1,0 +1,578 @@
+### Projeto SASS - API Testing
+### Use this file with REST Client extension in VS Code
+### Keyboard Shortcut: Ctrl+Alt+R to run a request
+
+# ============================================================================
+# VARIABLES & SETUP
+# ============================================================================
+
+@baseUrl = http://localhost:3011
+@frontendUrl = http://localhost:5173
+
+# Get these from your .env file or Mercado Livre OAuth
+@accessToken = your_access_token_here
+@userId = your_user_id_here
+@accountId = your_account_id_here
+@mlUserId = your_ml_user_id_here
+@orderId = order_id_to_test
+@itemId = item_id_to_test
+
+# ============================================================================
+# AUTHENTICATION - ML AUTH INVISIBLE (Refactored ✅)
+# ============================================================================
+
+### 1. Get Authorization URL
+GET {{baseUrl}}/api/ml-auth/url?userId={{userId}}
+
+### 2. Get OAuth Status
+GET {{baseUrl}}/api/ml-auth/status
+Authorization: Bearer {{accessToken}}
+
+### 3. Complete OAuth Connection (requires auth code from callback)
+POST {{baseUrl}}/api/ml-auth/complete
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "code": "YOUR_AUTH_CODE_HERE",
+  "state": "YOUR_STATE_HERE"
+}
+
+### 4. Get Custom Authorization URL
+POST {{baseUrl}}/api/ml-auth/url-custom
+Content-Type: application/json
+
+{
+  "clientId": "YOUR_CLIENT_ID",
+  "clientSecret": "YOUR_CLIENT_SECRET",
+  "redirectUri": "http://localhost:5173/ml-auth-callback"
+}
+
+### 5. Disconnect Account
+DELETE {{baseUrl}}/api/ml-auth/disconnect
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "accountId": "{{accountId}}"
+}
+
+# ============================================================================
+# ML ACCOUNTS - (Refactored ✅ -38% code reduction)
+# ============================================================================
+
+### 6. List All ML Accounts
+GET {{baseUrl}}/api/ml-accounts
+Authorization: Bearer {{accessToken}}
+
+### 7. Get Specific ML Account Details
+GET {{baseUrl}}/api/ml-accounts/{{accountId}}
+Authorization: Bearer {{accessToken}}
+
+### 8. Add New ML Account
+POST {{baseUrl}}/api/ml-accounts
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "mlUserId": "{{mlUserId}}",
+  "nickname": "My Store",
+  "status": "active"
+}
+
+### 9. Update ML Account
+PUT {{baseUrl}}/api/ml-accounts/{{accountId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "nickname": "Updated Store Name",
+  "status": "active"
+}
+
+### 10. Check Token Status for Account
+GET {{baseUrl}}/api/ml-accounts/{{accountId}}/token-status
+Authorization: Bearer {{accessToken}}
+
+### 11. Sync Account Data
+POST {{baseUrl}}/api/ml-accounts/{{accountId}}/sync
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "syncType": "full",
+  "includeOrders": true,
+  "includeItems": true
+}
+
+### 12. Get Account Statistics
+GET {{baseUrl}}/api/ml-accounts/{{accountId}}/stats
+Authorization: Bearer {{accessToken}}
+
+# ============================================================================
+# ORDERS (Large file - 1,157 lines, scheduled for refactoring)
+# ============================================================================
+
+### 13. List All User Orders
+GET {{baseUrl}}/api/orders?limit=50&offset=0
+Authorization: Bearer {{accessToken}}
+
+### 14. List Orders by Account (with SDK)
+GET {{baseUrl}}/api/orders/{{accountId}}?status=paid&limit=50
+Authorization: Bearer {{accessToken}}
+
+### 15. Get Order Details (with SDK)
+GET {{baseUrl}}/api/orders/{{accountId}}/{{orderId}}
+Authorization: Bearer {{accessToken}}
+
+### 16. Get Order Statistics
+GET {{baseUrl}}/api/orders/{{accountId}}/stats
+Authorization: Bearer {{accessToken}}
+
+### 17. Get Order Billing Info (with SDK)
+GET {{baseUrl}}/api/orders/{{accountId}}/{{orderId}}/billing
+Authorization: Bearer {{accessToken}}
+
+### 18. Sync Orders from ML (with SDK)
+POST {{baseUrl}}/api/orders/{{accountId}}/sync
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "status": "paid",
+  "days": 30
+}
+
+### 19. Perform Order Action (cancel, mark complete, etc)
+POST {{baseUrl}}/api/orders/{{accountId}}/actions
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "orderId": "{{orderId}}",
+  "action": "cancel",
+  "reason": "customer_request"
+}
+
+# ============================================================================
+# ITEMS (Products)
+# ============================================================================
+
+### 20. List Items
+GET {{baseUrl}}/api/items?limit=50&offset=0
+Authorization: Bearer {{accessToken}}
+
+### 21. Get Item Details
+GET {{baseUrl}}/api/items/{{itemId}}
+Authorization: Bearer {{accessToken}}
+
+### 22. Create New Item
+POST {{baseUrl}}/api/items
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "Test Product",
+  "description": "Test product description",
+  "categoryId": "MLB5672",
+  "price": 99.99,
+  "available_quantity": 100,
+  "condition": "new",
+  "pictures": [
+    {
+      "url": "https://example.com/image.jpg"
+    }
+  ]
+}
+
+### 23. Update Item
+PUT {{baseUrl}}/api/items/{{itemId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "Updated Product Title",
+  "price": 129.99,
+  "available_quantity": 150
+}
+
+### 24. Publish Item
+POST {{baseUrl}}/api/items/{{itemId}}/publish
+Authorization: Bearer {{accessToken}}
+
+### 25. Unpublish Item
+POST {{baseUrl}}/api/items/{{itemId}}/unpublish
+Authorization: Bearer {{accessToken}}
+
+### 26. Delete Item
+DELETE {{baseUrl}}/api/items/{{itemId}}
+Authorization: Bearer {{accessToken}}
+
+# ============================================================================
+# CATEGORIES & ATTRIBUTES
+# ============================================================================
+
+### 27. Get Categories
+GET {{baseUrl}}/api/categories?search=electronics
+Authorization: Bearer {{accessToken}}
+
+### 28. Get Category Attributes
+GET {{baseUrl}}/api/categories-attributes/MLB5672
+Authorization: Bearer {{accessToken}}
+
+### 29. Search Categories
+GET {{baseUrl}}/api/search-browse/categories?query=laptop
+Authorization: Bearer {{accessToken}}
+
+# ============================================================================
+# SHIPMENTS
+# ============================================================================
+
+### 30. List Shipments
+GET {{baseUrl}}/api/shipments?limit=50
+Authorization: Bearer {{accessToken}}
+
+### 31. Get Shipment Details
+GET {{baseUrl}}/api/shipments/{{accountId}}/SHP123456
+Authorization: Bearer {{accessToken}}
+
+### 32. Update Shipment Status
+PUT {{baseUrl}}/api/shipments/{{accountId}}/SHP123456
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "status": "delivered",
+  "tracking": "tracking_number_here"
+}
+
+### 33. Sync Shipments
+POST {{baseUrl}}/api/shipments/{{accountId}}/sync
+Authorization: Bearer {{accessToken}}
+
+# ============================================================================
+# PAYMENTS & BILLING
+# ============================================================================
+
+### 34. List Payments
+GET {{baseUrl}}/api/payments?limit=50
+Authorization: Bearer {{accessToken}}
+
+### 35. Get Payment Details
+GET {{baseUrl}}/api/payments/{{accountId}}/PAY123456
+Authorization: Bearer {{accessToken}}
+
+### 36. Get Billing Info
+GET {{baseUrl}}/api/billing/{{accountId}}
+Authorization: Bearer {{accessToken}}
+
+### 37. List Invoices
+GET {{baseUrl}}/api/invoices?limit=50
+Authorization: Bearer {{accessToken}}
+
+# ============================================================================
+# PROMOTIONS (1,419 lines - scheduled for refactoring)
+# ============================================================================
+
+### 38. List Promotions
+GET {{baseUrl}}/api/promotions?status=active
+Authorization: Bearer {{accessToken}}
+
+### 39. Get Promotion Details
+GET {{baseUrl}}/api/promotions/PROMO123
+Authorization: Bearer {{accessToken}}
+
+### 40. Create Promotion
+POST {{baseUrl}}/api/promotions
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "Summer Sale",
+  "description": "50% off on selected items",
+  "discount_type": "percentage",
+  "discount_value": 50,
+  "status": "active",
+  "start_date": "2025-02-10T00:00:00Z",
+  "end_date": "2025-02-28T23:59:59Z"
+}
+
+### 41. Update Promotion
+PUT {{baseUrl}}/api/promotions/PROMO123
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "Summer Sale Updated",
+  "discount_value": 60
+}
+
+### 42. Pause Promotion
+POST {{baseUrl}}/api/promotions/PROMO123/pause
+Authorization: Bearer {{accessToken}}
+
+### 43. Resume Promotion
+POST {{baseUrl}}/api/promotions/PROMO123/resume
+Authorization: Bearer {{accessToken}}
+
+### 44. Delete Promotion
+DELETE {{baseUrl}}/api/promotions/PROMO123
+Authorization: Bearer {{accessToken}}
+
+# ============================================================================
+# CLAIMS (Returns & Issues) (1,286 lines - scheduled for refactoring)
+# ============================================================================
+
+### 45. List Claims
+GET {{baseUrl}}/api/claims?status=open&limit=50
+Authorization: Bearer {{accessToken}}
+
+### 46. Get Claim Details
+GET {{baseUrl}}/api/claims/{{accountId}}/CLM123456
+Authorization: Bearer {{accessToken}}
+
+### 47. Create Claim
+POST {{baseUrl}}/api/claims
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "order_id": "{{orderId}}",
+  "reason": "product_not_as_described",
+  "description": "Product doesn't match description"
+}
+
+### 48. Respond to Claim
+POST {{baseUrl}}/api/claims/{{accountId}}/CLM123456/respond
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "response": "We apologize for the issue. Please return the item for a refund.",
+  "mode": "refund"
+}
+
+# ============================================================================
+# QUESTIONS & ANSWERS
+# ============================================================================
+
+### 49. List Questions on Item
+GET {{baseUrl}}/api/questions?item_id={{itemId}}&status=unanswered
+Authorization: Bearer {{accessToken}}
+
+### 50. Answer Question
+POST {{baseUrl}}/api/questions/QST123456/answer
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "answer": "Yes, it comes in blue color as well."
+}
+
+# ============================================================================
+# FEEDBACK & REVIEWS
+# ============================================================================
+
+### 51. List Feedback
+GET {{baseUrl}}/api/feedback?limit=50
+Authorization: Bearer {{accessToken}}
+
+### 52. Get Feedback Details
+GET {{baseUrl}}/api/feedback/{{accountId}}/FB123456
+Authorization: Bearer {{accessToken}}
+
+### 53. List Reviews
+GET {{baseUrl}}/api/reviews?limit=50
+Authorization: Bearer {{accessToken}}
+
+### 54. Reply to Feedback
+POST {{baseUrl}}/api/feedback/{{accountId}}/FB123456/reply
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "reply": "Thank you for your feedback! We appreciate your business."
+}
+
+# ============================================================================
+# METRICS & ANALYTICS
+# ============================================================================
+
+### 55. Get Account Metrics
+GET {{baseUrl}}/api/metrics/{{accountId}}?period=30d
+Authorization: Bearer {{accessToken}}
+
+### 56. Get Item Metrics
+GET {{baseUrl}}/api/metrics/items/{{itemId}}?period=30d
+Authorization: Bearer {{accessToken}}
+
+### 57. Get Search Visits
+GET {{baseUrl}}/api/visits/{{accountId}}?period=30d
+Authorization: Bearer {{accessToken}}
+
+### 58. Get Trending Topics
+GET {{baseUrl}}/api/trends?limit=10
+Authorization: Bearer {{accessToken}}
+
+# ============================================================================
+# WEBHOOK TESTING
+# ============================================================================
+
+### 59. Register Webhook
+POST {{baseUrl}}/api/webhooks
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "url": "https://example.com/webhook",
+  "events": ["orders_created", "payments_received", "items_changed"]
+}
+
+### 60. List Registered Webhooks
+GET {{baseUrl}}/api/webhooks
+Authorization: Bearer {{accessToken}}
+
+### 61. Test Webhook (send test payload)
+POST {{baseUrl}}/api/webhooks/test
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "event": "orders_created",
+  "data": {
+    "order_id": "{{orderId}}",
+    "status": "paid"
+  }
+}
+
+# ============================================================================
+# DATA EXTRACTION (NEW TOOLS)
+# ============================================================================
+
+### 62. Extract All Account Data (uses new script)
+POST {{baseUrl}}/api/ml-accounts/{{accountId}}/export
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "includeOrders": true,
+  "includeItems": true,
+  "includeSales": true,
+  "includePayments": true,
+  "includeShipments": true,
+  "format": "json"
+}
+
+# ============================================================================
+# HEALTH & STATUS CHECKS
+# ============================================================================
+
+### 63. API Health Check
+GET {{baseUrl}}/health
+
+### 64. Get Server Status
+GET {{baseUrl}}/api/status
+
+### 65. Get SDK Status
+GET {{baseUrl}}/api/sdk/status
+
+# ============================================================================
+# ADVANCED TESTING EXAMPLES
+# ============================================================================
+
+### TEST 1: Complete Auth Flow (Step 1 - Get URL)
+GET {{baseUrl}}/api/ml-auth/url?userId=test-user-123
+
+### TEST 2: Complete Auth Flow (Step 3 - Complete OAuth)
+POST {{baseUrl}}/api/ml-auth/complete
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "code": "TG4wQzJCSllyUlA2RTBv",
+  "state": "generated-state-value"
+}
+
+### TEST 3: Bulk Sync (sync all orders and items)
+POST {{baseUrl}}/api/ml-accounts/{{accountId}}/sync
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "syncType": "full",
+  "includeOrders": true,
+  "includeItems": true,
+  "includeSales": true,
+  "includePayments": true
+}
+
+### TEST 4: Search Items by Keyword
+GET {{baseUrl}}/api/search-browse/categories?query=smartphone&site_id=MLB
+Authorization: Bearer {{accessToken}}
+
+### TEST 5: Get Top Performing Items
+GET {{baseUrl}}/api/metrics/{{accountId}}/top-items?period=30d&limit=10
+Authorization: Bearer {{accessToken}}
+
+### TEST 6: Create and Publish Item (Complete Flow)
+POST {{baseUrl}}/api/items
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "title": "New iPhone 15 Pro",
+  "description": "Latest Apple iPhone 15 Pro - Sealed in box",
+  "categoryId": "MLB1055",
+  "price": 1299.99,
+  "available_quantity": 5,
+  "condition": "new",
+  "buying_mode": "buy_it_now",
+  "pictures": [
+    {
+      "url": "https://example.com/iphone15.jpg"
+    }
+  ],
+  "attributes": [
+    {
+      "id": "BRAND",
+      "value_name": "Apple"
+    },
+    {
+      "id": "MODEL",
+      "value_name": "iPhone 15 Pro"
+    }
+  ]
+}
+
+# ============================================================================
+# NOTES FOR TESTING
+# ============================================================================
+
+### Before running any tests:
+# 1. Start the backend: npm run dev
+# 2. Get a valid access token from OAuth flow
+# 3. Replace all @variables with your actual values
+# 4. Some endpoints require specific accountId/orderId to work
+
+### To get access token:
+# - Use endpoint #1 (Get Authorization URL)
+# - Visit the URL in browser to authorize
+# - Use endpoint #3 (Complete OAuth Connection) with code received
+# - Token will be in response
+
+### Environment Variables Setup:
+# Create a .env file with:
+# VITE_API_URL=http://localhost:3011
+# VITE_AUTH0_DOMAIN=your_domain
+# VITE_AUTH0_CLIENT_ID=your_client_id
+
+### Useful VS Code REST Client shortcuts:
+# - Ctrl+Alt+R = Run request
+# - Ctrl+Alt+N = Run all requests in sequence
+# - Ctrl+Shift+P = Command palette (search "REST Client")
+
+### Additional Resources:
+# - PROGRESS_DASHBOARD.md - Overall progress
+# - ML_AUTH_REFACTORING_REPORT.md - Auth improvements
+# - ORDERS_OPTIMIZATION_PLAN.md - Next optimization
+# - ROADMAP_SDK_INTEGRATION.md - Full roadmap
