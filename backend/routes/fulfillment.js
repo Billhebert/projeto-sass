@@ -21,436 +21,509 @@ const { authenticateToken } = require("../middleware/auth");
 
 const ML_API_BASE = "https://api.mercadolibre.com";
 
-// Middleware to get ML account and validate token
-async function getMLAccount(req, res, next) {
-  try {
-    const { accountId } = req.params;
-    const userId = req.user.userId;
+// ============================================
+// UNIFIED HELPER FUNCTIONS (CORE)
+// ============================================
 
-    const account = await MLAccount.findOne({ id: accountId, userId });
-    if (!account) {
-      return res.status(404).json({
-        success: false,
-        error: "ML account not found",
+/**
+ * Send success response
+ */
+function sendSuccess(res, data, message = null, statusCode = 200) {
+  const response = { success: true };
+  if (message) response.message = message;
+  if (data !== null && data !== undefined) {
+    Object.assign(response, data);
+  }
+  return res.status(statusCode).json(response);
+}
+
+/**
+ * Send error response
+ */
+function handleError(res, statusCode, message, error, action, context = {}) {
+  logger.error({
+    action,
+    error: error.message || error,
+    ...context,
+  });
+
+  return res.status(statusCode).json({
+    success: false,
+    error: message,
+    details: error.message || error,
+  });
+}
+
+/**
+ * Build authorization headers
+ */
+function buildHeaders(accessToken) {
+  return { Authorization: `Bearer ${accessToken}` };
+}
+
+/**
+ * Get ML Account with validation
+ */
+async function getAndValidateAccount(accountId, userId) {
+  const account = await MLAccount.findOne({ id: accountId, userId });
+  if (!account) return null;
+  if (account.isTokenExpired()) return null;
+  return account;
+}
+
+/**
+ * Fetch item details
+ */
+async function fetchItem(itemId, headers) {
+  try {
+    const response = await axios.get(`${ML_API_BASE}/items/${itemId}`, { headers });
+    return response.data;
+  } catch (error) {
+    return null;
+  }
+}
+
+/**
+ * Fetch inventory stock
+ */
+async function fetchInventoryStock(inventoryId, headers, includeConditions = false) {
+  try {
+    const params = includeConditions ? { include_attributes: "conditions" } : {};
+    const response = await axios.get(
+      `${ML_API_BASE}/inventories/${inventoryId}/stock/fulfillment`,
+      { headers, params }
+    );
+    return response.data;
+  } catch (error) {
+    return null;
+  }
+}
+
+/**
+ * Build operation search params
+ */
+function buildOperationParams(query, mlUserId) {
+  const today = new Date();
+  const fifteenDaysAgo = new Date(today);
+  fifteenDaysAgo.setDate(today.getDate() - 15);
+
+  const params = {
+    seller_id: mlUserId,
+    date_from: query.date_from || fifteenDaysAgo.toISOString().split("T")[0],
+    date_to: query.date_to || today.toISOString().split("T")[0],
+    limit: query.limit || 50,
+  };
+
+  if (query.inventory_id) params.inventory_id = query.inventory_id;
+  if (query.type) params.type = query.type;
+  if (query.shipment_id) params["external_references.shipment_id"] = query.shipment_id;
+  if (query.scroll) params.scroll = query.scroll;
+
+  return params;
+}
+
+/**
+ * Fetch items with fulfillment details
+ */
+async function fetchFulfillmentItems(itemIds, headers, limit = 50) {
+  const itemDetails = await Promise.all(
+    itemIds.map((id) =>
+      axios
+        .get(`${ML_API_BASE}/items/${id}`, { headers })
+        .catch(() => null)
+    )
+  );
+
+  return itemDetails
+    .filter((r) => r !== null && r.data.inventory_id)
+    .map((r) => ({
+      id: r.data.id,
+      title: r.data.title,
+      price: r.data.price,
+      currencyId: r.data.currency_id,
+      thumbnail: r.data.thumbnail,
+      permalink: r.data.permalink,
+      status: r.data.status,
+      availableQuantity: r.data.available_quantity,
+      soldQuantity: r.data.sold_quantity,
+      inventoryId: r.data.inventory_id,
+      logisticType: r.data.shipping?.logistic_type,
+      variations: r.data.variations?.map((v) => ({
+        id: v.id,
+        inventoryId: v.inventory_id,
+        attributeCombinations: v.attribute_combinations,
+        availableQuantity: v.available_quantity,
+      })),
+    }));
+}
+
+/**
+ * Calculate inventory summary stats
+ */
+function calculateInventorySummary(inventory) {
+  return {
+    total: inventory.length,
+    in_fulfillment: inventory.filter((i) => i.inventory_id).length,
+    out_of_stock: inventory.filter((i) => i.available_quantity === 0).length,
+    low_stock: inventory.filter(
+      (i) => i.available_quantity > 0 && i.available_quantity <= 5,
+    ).length,
+  };
+}
+
+/**
+ * Calculate stock aggregates
+ */
+function aggregateStockInfo(stockInfo) {
+  const validStockInfo = stockInfo.filter((s) => s.stock !== null);
+  
+  const totalAvailable = validStockInfo.reduce(
+    (sum, s) => sum + (s.stock?.available_quantity || 0),
+    0,
+  );
+  const totalNotAvailable = validStockInfo.reduce(
+    (sum, s) => sum + (s.stock?.not_available_quantity || 0),
+    0,
+  );
+  const totalStock = validStockInfo.reduce(
+    (sum, s) => sum + (s.stock?.total || 0),
+    0,
+  );
+
+  const notAvailableBreakdown = {};
+  validStockInfo.forEach((s) => {
+    if (s.stock?.not_available_detail) {
+      s.stock.not_available_detail.forEach((detail) => {
+        notAvailableBreakdown[detail.status] =
+          (notAvailableBreakdown[detail.status] || 0) + detail.quantity;
       });
     }
+  });
 
-    if (account.isTokenExpired()) {
-      return res.status(401).json({
-        success: false,
-        error: "Token expired. Please refresh.",
-      });
+  return {
+    total: totalStock,
+    available: totalAvailable,
+    notAvailable: totalNotAvailable,
+    notAvailableBreakdown,
+  };
+}
+
+/**
+ * Count operations by type
+ */
+function countOperationsByType(operations) {
+  const count = {};
+  operations.forEach((op) => {
+    count[op.type] = (count[op.type] || 0) + 1;
+  });
+  return count;
+}
+
+/**
+ * Fetch all items with pagination
+ */
+async function fetchAllItems(headers, mlUserId, fetchAll = false) {
+  let itemIds = [];
+
+  if (fetchAll) {
+    let currentOffset = 0;
+    const batchSize = 50;
+
+    while (true) {
+      const response = await axios.get(
+        `${ML_API_BASE}/users/${mlUserId}/items/search`,
+        {
+          headers,
+          params: { status: "active", limit: batchSize, offset: currentOffset },
+        },
+      );
+
+      const batch = response.data.results || [];
+      if (batch.length === 0) break;
+
+      itemIds.push(...batch);
+      currentOffset += batchSize;
+
+      if (currentOffset >= (response.data.paging?.total || 0)) break;
+    }
+  } else {
+    const response = await axios.get(
+      `${ML_API_BASE}/users/${mlUserId}/items/search`,
+      {
+        headers,
+        params: { status: "active", limit: 100, offset: 0 },
+      },
+    );
+    itemIds = response.data.results || [];
+  }
+
+  return itemIds;
+}
+
+// ============================================
+// FULFILLMENT ENDPOINTS
+// ============================================
+
+/**
+ * Middleware: Get ML account with validation
+ */
+async function validateMLAccount(req, res, next) {
+  try {
+    const { accountId } = req.params;
+    const account = await getAndValidateAccount(accountId, req.user.userId);
+
+    if (!account) {
+      const statusCode = !account ? 404 : 401;
+      const message = !account ? "ML account not found" : "Token expired. Please refresh.";
+      return sendSuccess(res, null, message, statusCode);
     }
 
     req.mlAccount = account;
     next();
   } catch (error) {
-    logger.error("Error getting ML account:", { error: error.message });
-    res.status(500).json({ success: false, error: "Internal server error" });
+    return handleError(
+      res,
+      500,
+      "Internal server error",
+      error,
+      "VALIDATE_ML_ACCOUNT_ERROR",
+      { userId: req.user.userId }
+    );
   }
 }
 
 /**
  * GET /api/fulfillment/:accountId/inventory/:inventoryId
- * Get fulfillment stock info for a specific inventory
  */
 router.get(
   "/:accountId/inventory/:inventoryId",
   authenticateToken,
-  getMLAccount,
+  validateMLAccount,
   async (req, res) => {
     try {
       const { inventoryId } = req.params;
       const { accessToken } = req.mlAccount;
+      const headers = buildHeaders(accessToken);
 
-      const response = await axios.get(
-        `${ML_API_BASE}/inventories/${inventoryId}/stock/fulfillment`,
-        {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        },
-      );
+      const stock = await fetchInventoryStock(inventoryId, headers);
+      if (!stock) {
+        return sendSuccess(res, null, "Inventory not found or not in fulfillment", 404);
+      }
 
-      res.json({
-        success: true,
-        data: response.data,
-      });
+      return sendSuccess(res, { data: stock });
     } catch (error) {
-      logger.error("Error fetching fulfillment inventory:", {
-        error: error.message,
-        inventoryId: req.params.inventoryId,
-        status: error.response?.status,
-      });
-
-      if (error.response?.status === 404) {
-        return res.status(404).json({
-          success: false,
-          error: "Inventory not found or not in fulfillment",
-        });
-      }
-
-      if (error.response?.status === 403) {
-        return res.status(403).json({
-          success: false,
-          error: "Access denied to this inventory",
-        });
-      }
-
-      res.status(error.response?.status || 500).json({
-        success: false,
-        error: error.response?.data?.message || error.message,
-      });
+      const statusCode = error.response?.status || 500;
+      const message = statusCode === 403 ? "Access denied to this inventory" : "Failed to fetch inventory";
+      
+      return handleError(
+        res,
+        statusCode,
+        message,
+        error,
+        "GET_INVENTORY_ERROR",
+        { inventoryId: req.params.inventoryId }
+      );
     }
   },
 );
 
 /**
  * GET /api/fulfillment/:accountId/inventory/:inventoryId/details
- * Get fulfillment stock with detailed conditions (damaged, not_supported, etc.)
  */
 router.get(
   "/:accountId/inventory/:inventoryId/details",
   authenticateToken,
-  getMLAccount,
+  validateMLAccount,
   async (req, res) => {
     try {
       const { inventoryId } = req.params;
       const { accessToken } = req.mlAccount;
+      const headers = buildHeaders(accessToken);
 
-      const response = await axios.get(
-        `${ML_API_BASE}/inventories/${inventoryId}/stock/fulfillment`,
-        {
-          headers: { Authorization: `Bearer ${accessToken}` },
-          params: {
-            include_attributes: "conditions",
-          },
-        },
-      );
+      const stock = await fetchInventoryStock(inventoryId, headers, true);
+      if (!stock) {
+        return sendSuccess(res, null, "Failed to fetch inventory details", 500);
+      }
 
-      res.json({
-        success: true,
-        data: response.data,
-      });
+      return sendSuccess(res, { data: stock });
     } catch (error) {
-      logger.error("Error fetching fulfillment inventory details:", {
-        error: error.message,
-        inventoryId: req.params.inventoryId,
-      });
-
-      res.status(error.response?.status || 500).json({
-        success: false,
-        error: error.response?.data?.message || error.message,
-      });
+      return handleError(
+        res,
+        error.response?.status || 500,
+        "Failed to fetch inventory details",
+        error,
+        "GET_INVENTORY_DETAILS_ERROR",
+        { inventoryId: req.params.inventoryId }
+      );
     }
   },
 );
 
 /**
  * GET /api/fulfillment/:accountId/operations
- * Search stock operations for the seller
  */
 router.get(
   "/:accountId/operations",
   authenticateToken,
-  getMLAccount,
+  validateMLAccount,
   async (req, res) => {
     try {
       const { accessToken, mlUserId } = req.mlAccount;
-      const {
-        inventory_id,
-        date_from,
-        date_to,
-        type,
-        shipment_id,
-        limit = 50,
-        scroll,
-      } = req.query;
-
-      // Calculate default dates (last 15 days if not provided)
-      const today = new Date();
-      const fifteenDaysAgo = new Date(today);
-      fifteenDaysAgo.setDate(today.getDate() - 15);
-
-      const params = {
-        seller_id: mlUserId,
-        date_from: date_from || fifteenDaysAgo.toISOString().split("T")[0],
-        date_to: date_to || today.toISOString().split("T")[0],
-        limit,
-      };
-
-      if (inventory_id) params.inventory_id = inventory_id;
-      if (type) params.type = type;
-      if (shipment_id) params["external_references.shipment_id"] = shipment_id;
-      if (scroll) params.scroll = scroll;
+      const headers = buildHeaders(accessToken);
+      const params = buildOperationParams(req.query, mlUserId);
 
       const response = await axios.get(
         `${ML_API_BASE}/stock/fulfillment/operations/search`,
-        {
-          headers: { Authorization: `Bearer ${accessToken}` },
-          params,
-        },
+        { headers, params }
       );
 
-      res.json({
-        success: true,
-        data: response.data,
-      });
+      return sendSuccess(res, { data: response.data });
     } catch (error) {
-      logger.error("Error searching fulfillment operations:", {
-        error: error.message,
-        response: error.response?.data,
-      });
+      const statusCode = error.response?.status || 500;
+      const message = statusCode === 400 ? "Invalid search parameters" : "Failed to search operations";
 
-      if (error.response?.status === 400) {
-        return res.status(400).json({
-          success: false,
-          error: error.response?.data?.message || "Invalid search parameters",
-        });
-      }
-
-      res.status(error.response?.status || 500).json({
-        success: false,
-        error: error.response?.data?.message || error.message,
-      });
+      return handleError(
+        res,
+        statusCode,
+        message,
+        error,
+        "SEARCH_OPERATIONS_ERROR",
+        {}
+      );
     }
   },
 );
 
 /**
  * GET /api/fulfillment/:accountId/operations/:operationId
- * Get details of a specific stock operation
  */
 router.get(
   "/:accountId/operations/:operationId",
   authenticateToken,
-  getMLAccount,
+  validateMLAccount,
   async (req, res) => {
     try {
       const { operationId } = req.params;
       const { accessToken } = req.mlAccount;
+      const headers = buildHeaders(accessToken);
 
       const response = await axios.get(
         `${ML_API_BASE}/stock/fulfillment/operations/${operationId}`,
-        {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        },
+        { headers }
       );
 
-      res.json({
-        success: true,
-        data: response.data,
-      });
+      return sendSuccess(res, { data: response.data });
     } catch (error) {
-      logger.error("Error fetching operation details:", {
-        error: error.message,
-        operationId: req.params.operationId,
-      });
+      const statusCode = error.response?.status || 500;
+      const message = statusCode === 404 ? "Operation not found" : "Failed to fetch operation";
 
-      if (error.response?.status === 404) {
-        return res.status(404).json({
-          success: false,
-          error: "Operation not found",
-        });
-      }
-
-      res.status(error.response?.status || 500).json({
-        success: false,
-        error: error.response?.data?.message || error.message,
-      });
+      return handleError(
+        res,
+        statusCode,
+        message,
+        error,
+        "GET_OPERATION_ERROR",
+        { operationId: req.params.operationId }
+      );
     }
   },
 );
 
 /**
  * GET /api/fulfillment/:accountId/items
- * Get all items with fulfillment (inventory_id) for the seller
  */
 router.get(
   "/:accountId/items",
   authenticateToken,
-  getMLAccount,
+  validateMLAccount,
   async (req, res) => {
     try {
       const { accessToken, mlUserId } = req.mlAccount;
-      const { limit = 50, offset = 0, status = "active" } = req.query;
+      const { limit = 50, offset = 0 } = req.query;
+      const headers = buildHeaders(accessToken);
 
-      // First, get all active items
-      const itemsResponse = await axios.get(
+      const response = await axios.get(
         `${ML_API_BASE}/users/${mlUserId}/items/search`,
         {
-          headers: { Authorization: `Bearer ${accessToken}` },
-          params: {
-            status,
-            limit,
-            offset,
-          },
+          headers,
+          params: { status: "active", limit, offset },
         },
       );
 
-      const itemIds = itemsResponse.data.results || [];
-
+      const itemIds = response.data.results || [];
       if (itemIds.length === 0) {
-        return res.json({
-          success: true,
-          data: {
-            items: [],
-            paging: itemsResponse.data.paging,
-          },
+        return sendSuccess(res, {
+          items: [],
+          paging: response.data.paging,
         });
       }
 
-      // Get details for each item including inventory_id
-      const itemDetails = await Promise.all(
-        itemIds.map((id) =>
-          axios
-            .get(`${ML_API_BASE}/items/${id}`, {
-              headers: { Authorization: `Bearer ${accessToken}` },
-            })
-            .catch(() => null),
-        ),
-      );
+      const fulfillmentItems = await fetchFulfillmentItems(itemIds, headers);
 
-      // Filter items that have inventory_id (are in fulfillment)
-      const fulfillmentItems = itemDetails
-        .filter((r) => r !== null && r.data.inventory_id)
-        .map((r) => ({
-          id: r.data.id,
-          title: r.data.title,
-          price: r.data.price,
-          currencyId: r.data.currency_id,
-          thumbnail: r.data.thumbnail,
-          permalink: r.data.permalink,
-          status: r.data.status,
-          availableQuantity: r.data.available_quantity,
-          soldQuantity: r.data.sold_quantity,
-          inventoryId: r.data.inventory_id,
-          logisticType: r.data.shipping?.logistic_type,
-          variations: r.data.variations?.map((v) => ({
-            id: v.id,
-            inventoryId: v.inventory_id,
-            attributeCombinations: v.attribute_combinations,
-            availableQuantity: v.available_quantity,
-          })),
-        }));
-
-      res.json({
-        success: true,
-        data: {
-          items: fulfillmentItems,
-          totalItems: itemIds.length,
-          fulfillmentItems: fulfillmentItems.length,
-          paging: itemsResponse.data.paging,
-        },
+      return sendSuccess(res, {
+        items: fulfillmentItems,
+        totalItems: itemIds.length,
+        fulfillmentItems: fulfillmentItems.length,
+        paging: response.data.paging,
       });
     } catch (error) {
-      logger.error("Error fetching fulfillment items:", {
-        error: error.message,
-      });
-
-      res.status(error.response?.status || 500).json({
-        success: false,
-        error: error.response?.data?.message || error.message,
-      });
+      return handleError(
+        res,
+        error.response?.status || 500,
+        "Failed to fetch fulfillment items",
+        error,
+        "GET_FULFILLMENT_ITEMS_ERROR",
+        {}
+      );
     }
   },
 );
 
 /**
  * GET /api/fulfillment/:accountId/summary
- * Get fulfillment dashboard summary
  */
 router.get(
   "/:accountId/summary",
   authenticateToken,
-  getMLAccount,
+  validateMLAccount,
   async (req, res) => {
     try {
       const { accessToken, mlUserId } = req.mlAccount;
+      const headers = buildHeaders(accessToken);
 
-      // Get active items to find fulfillment items
+      // Get items
       const itemsResponse = await axios.get(
         `${ML_API_BASE}/users/${mlUserId}/items/search`,
         {
-          headers: { Authorization: `Bearer ${accessToken}` },
-          params: {
-            status: "active",
-            limit: 100,
-          },
+          headers,
+          params: { status: "active", limit: 100 },
         },
       );
 
       const itemIds = itemsResponse.data.results || [];
-
-      // Get item details
       const itemDetails = await Promise.all(
         itemIds.slice(0, 50).map((id) =>
-          axios
-            .get(`${ML_API_BASE}/items/${id}`, {
-              headers: { Authorization: `Bearer ${accessToken}` },
-            })
-            .catch(() => null),
-        ),
+          axios.get(`${ML_API_BASE}/items/${id}`, { headers }).catch(() => null)
+        )
       );
 
-      // Filter fulfillment items
       const fulfillmentItems = itemDetails
         .filter((r) => r !== null && r.data.inventory_id)
         .map((r) => r.data);
 
-      // Get stock info for each fulfillment item
+      // Get stock for fulfillment items
       const stockPromises = fulfillmentItems.slice(0, 20).map(async (item) => {
-        try {
-          const stockResponse = await axios.get(
-            `${ML_API_BASE}/inventories/${item.inventory_id}/stock/fulfillment`,
-            {
-              headers: { Authorization: `Bearer ${accessToken}` },
-            },
-          );
-          return {
-            itemId: item.id,
-            title: item.title,
-            inventoryId: item.inventory_id,
-            stock: stockResponse.data,
-          };
-        } catch (err) {
-          return {
-            itemId: item.id,
-            title: item.title,
-            inventoryId: item.inventory_id,
-            stock: null,
-            error: err.response?.data?.message || err.message,
-          };
-        }
+        const stock = await fetchInventoryStock(item.inventory_id, headers);
+        return {
+          itemId: item.id,
+          title: item.title,
+          inventoryId: item.inventory_id,
+          stock,
+        };
       });
 
       const stockInfo = await Promise.all(stockPromises);
-
-      // Calculate summary statistics
-      const validStockInfo = stockInfo.filter((s) => s.stock !== null);
-      const totalAvailable = validStockInfo.reduce(
-        (sum, s) => sum + (s.stock?.available_quantity || 0),
-        0,
-      );
-      const totalNotAvailable = validStockInfo.reduce(
-        (sum, s) => sum + (s.stock?.not_available_quantity || 0),
-        0,
-      );
-      const totalStock = validStockInfo.reduce(
-        (sum, s) => sum + (s.stock?.total || 0),
-        0,
-      );
-
-      // Aggregate not_available_detail
-      const notAvailableBreakdown = {};
-      validStockInfo.forEach((s) => {
-        if (s.stock?.not_available_detail) {
-          s.stock.not_available_detail.forEach((detail) => {
-            if (!notAvailableBreakdown[detail.status]) {
-              notAvailableBreakdown[detail.status] = 0;
-            }
-            notAvailableBreakdown[detail.status] += detail.quantity;
-          });
-        }
-      });
+      const aggregated = aggregateStockInfo(stockInfo);
 
       // Get recent operations
       const today = new Date();
@@ -462,7 +535,7 @@ router.get(
         const opsResponse = await axios.get(
           `${ML_API_BASE}/stock/fulfillment/operations/search`,
           {
-            headers: { Authorization: `Bearer ${accessToken}` },
+            headers,
             params: {
               seller_id: mlUserId,
               date_from: sevenDaysAgo.toISOString().split("T")[0],
@@ -473,282 +546,141 @@ router.get(
         );
         recentOperations = opsResponse.data.results || [];
       } catch (err) {
-        logger.warn("Error fetching recent operations for summary:", {
-          error: err.message,
-        });
+        logger.warn({ action: "FETCH_OPERATIONS_WARNING", error: err.message });
       }
 
-      // Count operations by type
-      const operationsByType = {};
-      recentOperations.forEach((op) => {
-        if (!operationsByType[op.type]) {
-          operationsByType[op.type] = 0;
-        }
-        operationsByType[op.type]++;
-      });
+      const operationsByType = countOperationsByType(recentOperations);
 
-      res.json({
-        success: true,
-        data: {
-          overview: {
-            totalFulfillmentItems: fulfillmentItems.length,
-            totalActiveItems:
-              itemsResponse.data.paging?.total || itemIds.length,
-            fulfillmentPercentage:
-              itemIds.length > 0
-                ? ((fulfillmentItems.length / itemIds.length) * 100).toFixed(1)
-                : 0,
-          },
-          stock: {
-            total: totalStock,
-            available: totalAvailable,
-            notAvailable: totalNotAvailable,
-            notAvailableBreakdown,
-          },
-          items: stockInfo.map((s) => ({
-            itemId: s.itemId,
-            title: s.title,
-            inventoryId: s.inventoryId,
-            available: s.stock?.available_quantity || 0,
-            notAvailable: s.stock?.not_available_quantity || 0,
-            total: s.stock?.total || 0,
-            hasError: !!s.error,
+      return sendSuccess(res, {
+        overview: {
+          totalFulfillmentItems: fulfillmentItems.length,
+          totalActiveItems: itemsResponse.data.paging?.total || itemIds.length,
+          fulfillmentPercentage:
+            itemIds.length > 0
+              ? ((fulfillmentItems.length / itemIds.length) * 100).toFixed(1)
+              : 0,
+        },
+        stock: aggregated,
+        items: stockInfo.map((s) => ({
+          itemId: s.itemId,
+          title: s.title,
+          inventoryId: s.inventoryId,
+          available: s.stock?.available_quantity || 0,
+          notAvailable: s.stock?.not_available_quantity || 0,
+          total: s.stock?.total || 0,
+          hasError: !s.stock,
+        })),
+        recentActivity: {
+          operationsCount: recentOperations.length,
+          operationsByType,
+          lastOperations: recentOperations.slice(0, 5).map((op) => ({
+            id: op.id,
+            type: op.type,
+            inventoryId: op.inventory_id,
+            dateCreated: op.date_created,
+            detail: op.detail,
           })),
-          recentActivity: {
-            operationsCount: recentOperations.length,
-            operationsByType,
-            lastOperations: recentOperations.slice(0, 5).map((op) => ({
-              id: op.id,
-              type: op.type,
-              inventoryId: op.inventory_id,
-              dateCreated: op.date_created,
-              detail: op.detail,
-            })),
-          },
         },
       });
     } catch (error) {
-      logger.error("Error fetching fulfillment summary:", {
-        error: error.message,
-      });
-
-      res.status(error.response?.status || 500).json({
-        success: false,
-        error: error.response?.data?.message || error.message,
-      });
+      return handleError(
+        res,
+        error.response?.status || 500,
+        "Failed to fetch fulfillment summary",
+        error,
+        "GET_SUMMARY_ERROR",
+        {}
+      );
     }
   },
 );
 
 /**
  * GET /api/fulfillment/:accountId/items/:itemId/stock
- * Get fulfillment stock for a specific item (by item ID, not inventory ID)
  */
 router.get(
   "/:accountId/items/:itemId/stock",
   authenticateToken,
-  getMLAccount,
+  validateMLAccount,
   async (req, res) => {
     try {
       const { itemId } = req.params;
       const { accessToken } = req.mlAccount;
+      const headers = buildHeaders(accessToken);
 
-      // First get the item to find inventory_id
-      const itemResponse = await axios.get(`${ML_API_BASE}/items/${itemId}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-
-      const inventoryId = itemResponse.data.inventory_id;
-
-      if (!inventoryId) {
-        return res.status(400).json({
-          success: false,
-          error: "This item is not in fulfillment (no inventory_id)",
-          data: {
-            itemId,
-            title: itemResponse.data.title,
-            logisticType: itemResponse.data.shipping?.logistic_type,
-          },
-        });
+      const item = await fetchItem(itemId, headers);
+      if (!item) {
+        return sendSuccess(res, null, "Item not found", 404);
       }
 
-      // Get fulfillment stock
-      const stockResponse = await axios.get(
-        `${ML_API_BASE}/inventories/${inventoryId}/stock/fulfillment`,
-        {
-          headers: { Authorization: `Bearer ${accessToken}` },
-          params: {
-            include_attributes: "conditions",
-          },
-        },
-      );
-
-      res.json({
-        success: true,
-        data: {
+      const inventoryId = item.inventory_id;
+      if (!inventoryId) {
+        return sendSuccess(res, {
           item: {
-            id: itemResponse.data.id,
-            title: itemResponse.data.title,
-            price: itemResponse.data.price,
-            thumbnail: itemResponse.data.thumbnail,
-            permalink: itemResponse.data.permalink,
+            id: item.id,
+            title: item.title,
+            logisticType: item.shipping?.logistic_type,
           },
-          inventoryId,
-          stock: stockResponse.data,
+        }, "This item is not in fulfillment", 400);
+      }
+
+      const stock = await fetchInventoryStock(inventoryId, headers, true);
+
+      return sendSuccess(res, {
+        item: {
+          id: item.id,
+          title: item.title,
+          price: item.price,
+          thumbnail: item.thumbnail,
+          permalink: item.permalink,
         },
+        inventoryId,
+        stock,
       });
     } catch (error) {
-      logger.error("Error fetching item fulfillment stock:", {
-        error: error.message,
-        itemId: req.params.itemId,
-      });
+      const statusCode = error.response?.status || 500;
+      const message = statusCode === 404 ? "Item not found" : "Failed to fetch stock";
 
-      if (error.response?.status === 404) {
-        return res.status(404).json({
-          success: false,
-          error: "Item not found",
-        });
-      }
-
-      res.status(error.response?.status || 500).json({
-        success: false,
-        error: error.response?.data?.message || error.message,
-      });
+      return handleError(
+        res,
+        statusCode,
+        message,
+        error,
+        "GET_ITEM_STOCK_ERROR",
+        { itemId: req.params.itemId }
+      );
     }
   },
 );
 
 /**
- * Operation types reference
- *
- * Inbound:
- * - INBOUND_RECEPTION: New stock received at fulfillment center
- * - FISCAL_COVERAGE_ADJUSTMENT: Tax coverage adjustment (Brazil only)
- *
- * Outbound (Sales):
- * - SALE_CONFIRMATION: Units reserved for sale
- * - SALE_CANCELATION: Sale reservation cancelled
- * - SALE_DELIVERY_CANCELATION: Delivery failed, returned to warehouse
- * - SALE_RETURN: Buyer returned the product
- *
- * Withdrawal (Seller):
- * - WITHDRAWAL_RESERVATION: Units reserved for withdrawal
- * - WITHDRAWAL_CANCELATION: Withdrawal cancelled
- * - WITHDRAWAL_DELIVERY: Seller picked up units
- * - WITHDRAWAL_REMOVAL: Units removed due to abandoned withdrawal
- * - WITHDRAWAL_DISCARDED: Withdrawal discarded by seller
- *
- * Transfer (Internal):
- * - TRANSFER_RESERVATION: Units reserved for transfer
- * - TRANSFER_ADJUSTMENT: Quality inspection completed
- * - TRANSFER_DELIVERY: Units transferred
- *
- * Quality/Quarantine:
- * - QUARANTINE_RESERVATION: Units reserved for inspection
- * - QUARANTINE_RESTOCK: Units returned after inspection
- * - LOST_REFUND: Lost units refunded
- * - DAMAGED_REMOVAL: Damaged units removed and refunded
- * - DISPOSED_TAINTED: Product disposed (contaminated)
- * - DISPOSED_EXPIRED: Product disposed (expired)
- *
- * Adjustments:
- * - ADJUSTMENT: Internal stock adjustments
- * - IDENTIFICATION_PROBLEM_REMOVE: SKU correction - remove
- * - IDENTIFICATION_PROBLEM_ADD: SKU correction - add
- */
-
-/**
  * GET /api/fulfillment/:accountId/inventory
- * Get all inventory items for the account (list view)
- * Query params:
- *   - all: If true, fetch ALL items with auto-pagination (default false)
- *   - limit: Items per page (default 100)
- *   - offset: Pagination offset (default 0)
  */
 router.get(
   "/:accountId/inventory",
   authenticateToken,
-  getMLAccount,
+  validateMLAccount,
   async (req, res) => {
     try {
       const { accessToken, mlUserId } = req.mlAccount;
       const { all, limit = 100, offset = 0 } = req.query;
+      const headers = buildHeaders(accessToken);
 
-      let itemIds = [];
-
-      // UNLIMITED MODE: Fetch ALL items
-      if (all === "true") {
-        let currentOffset = 0;
-        const batchSize = 50;
-
-        logger.info({
-          action: "FETCH_ALL_FULFILLMENT_INVENTORY_START",
-          mlUserId,
-        });
-
-        while (true) {
-          const itemsResponse = await axios.get(
-            `${ML_API_BASE}/users/${mlUserId}/items/search`,
-            {
-              headers: { Authorization: `Bearer ${accessToken}` },
-              params: {
-                status: "active",
-                limit: batchSize,
-                offset: currentOffset,
-              },
-            },
-          );
-
-          const batch = itemsResponse.data.results || [];
-          if (batch.length === 0) break;
-
-          itemIds.push(...batch);
-          currentOffset += batchSize;
-
-          const total = itemsResponse.data.paging?.total || 0;
-          if (currentOffset >= total) break;
-        }
-      } else {
-        // NORMAL MODE: Single request
-        const itemsResponse = await axios.get(
-          `${ML_API_BASE}/users/${mlUserId}/items/search`,
-          {
-            headers: { Authorization: `Bearer ${accessToken}` },
-            params: {
-              status: "active",
-              limit,
-              offset,
-            },
-          },
-        );
-
-        itemIds = itemsResponse.data.results || [];
-      }
+      const itemIds = await fetchAllItems(headers, mlUserId, all === "true");
 
       if (itemIds.length === 0) {
-        return res.json({
-          success: true,
+        return sendSuccess(res, {
           inventory: [],
-          paging: {
-            total: 0,
-            limit: parseInt(limit),
-            offset: parseInt(offset),
-          },
+          paging: { total: 0, limit: parseInt(limit), offset: parseInt(offset) },
         });
       }
 
-      // Get details for each item
       const itemDetails = await Promise.all(
         itemIds.slice(0, 100).map((id) =>
-          axios
-            .get(`${ML_API_BASE}/items/${id}`, {
-              headers: { Authorization: `Bearer ${accessToken}` },
-            })
-            .catch(() => null),
-        ),
+          axios.get(`${ML_API_BASE}/items/${id}`, { headers }).catch(() => null)
+        )
       );
 
-      // Build inventory list
       const inventory = itemDetails
         .filter((r) => r !== null)
         .map((r) => ({
@@ -765,36 +697,21 @@ router.get(
           in_fulfillment: !!r.data.inventory_id,
         }));
 
-      res.json({
-        success: true,
+      const summary = calculateInventorySummary(inventory);
+
+      return sendSuccess(res, {
         inventory,
-        paging: itemsResponse.data.paging,
-        summary: {
-          total: inventory.length,
-          in_fulfillment: inventory.filter((i) => i.in_fulfillment).length,
-          out_of_stock: inventory.filter((i) => i.available_quantity === 0)
-            .length,
-          low_stock: inventory.filter(
-            (i) => i.available_quantity > 0 && i.available_quantity <= 5,
-          ).length,
-        },
+        paging: { total: inventory.length, limit: parseInt(limit), offset: parseInt(offset) },
+        summary,
       });
     } catch (error) {
-      logger.error("Error fetching inventory:", {
-        error: error.message,
-      });
+      logger.warn({ action: "FETCH_INVENTORY_WARNING", error: error.message });
 
-      // Return fallback empty inventory
-      res.json({
-        success: true,
+      // Return fallback
+      return sendSuccess(res, {
         inventory: [],
         paging: { total: 0, offset: 0, limit: 100 },
-        summary: {
-          total: 0,
-          in_fulfillment: 0,
-          out_of_stock: 0,
-          low_stock: 0,
-        },
+        summary: { total: 0, in_fulfillment: 0, out_of_stock: 0, low_stock: 0 },
         fallback: true,
       });
     }
@@ -803,38 +720,31 @@ router.get(
 
 /**
  * GET /api/fulfillment/:accountId/shipments
- * Get recent shipments for the account
  */
 router.get(
   "/:accountId/shipments",
   authenticateToken,
-  getMLAccount,
+  validateMLAccount,
   async (req, res) => {
     try {
       const { accessToken, mlUserId } = req.mlAccount;
       const { limit = 100, offset = 0 } = req.query;
+      const headers = buildHeaders(accessToken);
 
-      // Get recent orders
       const ordersResponse = await axios.get(`${ML_API_BASE}/orders/search`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-        params: {
-          seller: mlUserId,
-          limit,
-          offset,
-          sort: "date_desc",
-        },
+        headers,
+        params: { seller: mlUserId, limit, offset, sort: "date_desc" },
       });
 
       const orders = ordersResponse.data.results || [];
 
-      // Get shipment info for each order
       const shipments = await Promise.all(
         orders.slice(0, 10).map(async (order) => {
+          if (!order.shipping?.id) return null;
           try {
-            if (!order.shipping?.id) return null;
             const shipRes = await axios.get(
               `${ML_API_BASE}/shipments/${order.shipping.id}`,
-              { headers: { Authorization: `Bearer ${accessToken}` } },
+              { headers }
             );
             return {
               id: shipRes.data.id,
@@ -848,22 +758,18 @@ router.get(
           } catch (e) {
             return null;
           }
-        }),
+        })
       );
 
-      res.json({
-        success: true,
+      return sendSuccess(res, {
         shipments: shipments.filter((s) => s !== null),
         paging: ordersResponse.data.paging,
       });
     } catch (error) {
-      logger.error("Error fetching shipments:", {
-        error: error.message,
-      });
+      logger.warn({ action: "FETCH_SHIPMENTS_WARNING", error: error.message });
 
-      // Return fallback empty shipments
-      res.json({
-        success: true,
+      // Return fallback
+      return sendSuccess(res, {
         shipments: [],
         paging: { total: 0, offset: 0, limit: 20 },
         fallback: true,
@@ -874,36 +780,30 @@ router.get(
 
 /**
  * GET /api/fulfillment/:accountId/stats
- * Get fulfillment stats for the account
  */
 router.get(
   "/:accountId/stats",
   authenticateToken,
-  getMLAccount,
+  validateMLAccount,
   async (req, res) => {
     try {
       const { accessToken, mlUserId } = req.mlAccount;
+      const headers = buildHeaders(accessToken);
 
-      // Get all active items
       const itemsResponse = await axios.get(
         `${ML_API_BASE}/users/${mlUserId}/items/search`,
         {
-          headers: { Authorization: `Bearer ${accessToken}` },
+          headers,
           params: { status: "active", limit: 100 },
         },
       );
 
       const itemIds = itemsResponse.data.results || [];
 
-      // Get item details
       const itemDetails = await Promise.all(
         itemIds.slice(0, 100).map((id) =>
-          axios
-            .get(`${ML_API_BASE}/items/${id}`, {
-              headers: { Authorization: `Bearer ${accessToken}` },
-            })
-            .catch(() => null),
-        ),
+          axios.get(`${ML_API_BASE}/items/${id}`, { headers }).catch(() => null)
+        )
       );
 
       const items = itemDetails.filter((r) => r !== null).map((r) => r.data);
@@ -921,18 +821,12 @@ router.get(
         ),
       };
 
-      res.json({
-        success: true,
-        stats,
-      });
+      return sendSuccess(res, { stats });
     } catch (error) {
-      logger.error("Error fetching fulfillment stats:", {
-        error: error.message,
-      });
+      logger.warn({ action: "FETCH_STATS_WARNING", error: error.message });
 
-      // Return fallback stats
-      res.json({
-        success: true,
+      // Return fallback
+      return sendSuccess(res, {
         stats: {
           totalItems: 0,
           inFulfillment: 0,
