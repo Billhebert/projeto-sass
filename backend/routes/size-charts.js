@@ -19,7 +19,6 @@
  */
 
 const express = require('express');
-const axios = require('axios');
 const logger = require('../logger');
 const sdkManager = require("../services/sdk-manager");
 const { authenticateToken } = require('../middleware/auth');
@@ -27,9 +26,6 @@ const { validateMLToken } = require('../middleware/ml-token-validation');
 const { handleError, sendSuccess } = require('../middleware/response-helpers');
 
 const router = express.Router();
-
-
-const ML_API_BASE = 'https://api.mercadolibre.com';
 
 /**
  * GET /api/size-charts/:accountId/catalog
@@ -39,20 +35,12 @@ router.get('/:accountId/catalog', authenticateToken, validateMLToken('accountId'
   try {
     const { accountId } = req.params;
     const { domain_id } = req.query;
-    const account = req.mlAccount;
 
-    const headers = {
-      'Authorization': `Bearer ${account.accessToken}`,
-      'Content-Type': 'application/json',
-    };
-
-    const params = {};
-    if (domain_id) params.domain_id = domain_id;
-
-    const response = await axios.get(
-      `${ML_API_BASE}/catalog/charts`,
-      { headers, params }
-    );
+    const response = await sdkManager.execute(accountId, async (sdk) => {
+      const params = {};
+      if (domain_id) params.domain_id = domain_id;
+      return await sdk.axiosInstance.get('/catalog/charts', { params });
+    });
 
     logger.info({
       action: 'LIST_SIZE_CHARTS_CATALOG',
@@ -61,22 +49,12 @@ router.get('/:accountId/catalog', authenticateToken, validateMLToken('accountId'
       chartsCount: response.data?.length || 0,
     });
 
-    res.json({
-      success: true,
-      data: response.data,
-    });
+    sendSuccess(res, { data: response.data });
   } catch (error) {
-    logger.error({
+    handleError(res, 500, 'Failed to list size charts catalog', error, {
       action: 'LIST_SIZE_CHARTS_CATALOG_ERROR',
       accountId: req.params.accountId,
-      userId: req.user.userId,
-      error: error.response?.data || error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      message: 'Failed to list size charts catalog',
-      error: error.response?.data?.message || error.message,
+      userId: req.user.userId
     });
   }
 });
@@ -88,17 +66,14 @@ router.get('/:accountId/catalog', authenticateToken, validateMLToken('accountId'
 router.get('/:accountId/category/:categoryId', authenticateToken, validateMLToken('accountId'), async (req, res) => {
   try {
     const { accountId, categoryId } = req.params;
-    const account = req.mlAccount;
 
-    const headers = {
-      'Authorization': `Bearer ${account.accessToken}`,
-      'Content-Type': 'application/json',
-    };
-
-    // Get category info and size chart requirements
     const [categoryRes, chartsRes] = await Promise.all([
-      axios.get(`${ML_API_BASE}/categories/${categoryId}`, { headers }),
-      axios.get(`${ML_API_BASE}/categories/${categoryId}/size_charts`, { headers }).catch(() => ({ data: null })),
+      sdkManager.execute(accountId, async (sdk) => {
+        return await sdk.axiosInstance.get(`/categories/${categoryId}`);
+      }),
+      sdkManager.execute(accountId, async (sdk) => {
+        return await sdk.axiosInstance.get(`/categories/${categoryId}/size_charts`).catch(() => ({ data: null }));
+      }),
     ]);
 
     logger.info({
@@ -108,8 +83,7 @@ router.get('/:accountId/category/:categoryId', authenticateToken, validateMLToke
       userId: req.user.userId,
     });
 
-    res.json({
-      success: true,
+    sendSuccess(res, {
       data: {
         category: {
           id: categoryRes.data.id,
@@ -120,18 +94,11 @@ router.get('/:accountId/category/:categoryId', authenticateToken, validateMLToke
       },
     });
   } catch (error) {
-    logger.error({
+    handleError(res, 500, 'Failed to get category size charts', error, {
       action: 'GET_CATEGORY_SIZE_CHARTS_ERROR',
       accountId: req.params.accountId,
       categoryId: req.params.categoryId,
-      userId: req.user.userId,
-      error: error.response?.data || error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      message: 'Failed to get category size charts',
-      error: error.response?.data?.message || error.message,
+      userId: req.user.userId
     });
   }
 });
@@ -143,17 +110,10 @@ router.get('/:accountId/category/:categoryId', authenticateToken, validateMLToke
 router.get('/:accountId/chart/:chartId', authenticateToken, validateMLToken('accountId'), async (req, res) => {
   try {
     const { accountId, chartId } = req.params;
-    const account = req.mlAccount;
 
-    const headers = {
-      'Authorization': `Bearer ${account.accessToken}`,
-      'Content-Type': 'application/json',
-    };
-
-    const response = await axios.get(
-      `${ML_API_BASE}/catalog/charts/${chartId}`,
-      { headers }
-    );
+    const response = await sdkManager.execute(accountId, async (sdk) => {
+      return await sdk.axiosInstance.get(`/catalog/charts/${chartId}`);
+    });
 
     logger.info({
       action: 'GET_SIZE_CHART_DETAILS',
@@ -162,23 +122,13 @@ router.get('/:accountId/chart/:chartId', authenticateToken, validateMLToken('acc
       userId: req.user.userId,
     });
 
-    res.json({
-      success: true,
-      data: response.data,
-    });
+    sendSuccess(res, { data: response.data });
   } catch (error) {
-    logger.error({
+    handleError(res, 500, 'Failed to get size chart details', error, {
       action: 'GET_SIZE_CHART_DETAILS_ERROR',
       accountId: req.params.accountId,
       chartId: req.params.chartId,
-      userId: req.user.userId,
-      error: error.response?.data || error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      message: 'Failed to get size chart details',
-      error: error.response?.data?.message || error.message,
+      userId: req.user.userId
     });
   }
 });
@@ -190,28 +140,16 @@ router.get('/:accountId/chart/:chartId', authenticateToken, validateMLToken('acc
 router.get('/:accountId/item/:itemId', authenticateToken, validateMLToken('accountId'), async (req, res) => {
   try {
     const { accountId, itemId } = req.params;
-    const account = req.mlAccount;
 
-    const headers = {
-      'Authorization': `Bearer ${account.accessToken}`,
-      'Content-Type': 'application/json',
-    };
-
-    // Get item to find size chart info
-    const itemResponse = await axios.get(
-      `${ML_API_BASE}/items/${itemId}`,
-      { headers }
-    );
-
-    const sizeChartId = itemResponse.data.size_chart_id;
+    const item = await sdkManager.getItem(accountId, itemId);
+    const sizeChartId = item.size_chart_id;
     let sizeChart = null;
 
     if (sizeChartId) {
       try {
-        const chartRes = await axios.get(
-          `${ML_API_BASE}/catalog/charts/${sizeChartId}`,
-          { headers }
-        );
+        const chartRes = await sdkManager.execute(accountId, async (sdk) => {
+          return await sdk.axiosInstance.get(`/catalog/charts/${sizeChartId}`);
+        });
         sizeChart = chartRes.data;
       } catch (err) {
         // Chart may not be accessible
@@ -226,28 +164,20 @@ router.get('/:accountId/item/:itemId', authenticateToken, validateMLToken('accou
       hasSizeChart: !!sizeChart,
     });
 
-    res.json({
-      success: true,
+    sendSuccess(res, {
       data: {
         item_id: itemId,
         size_chart_id: sizeChartId,
         size_chart: sizeChart,
-        category_id: itemResponse.data.category_id,
+        category_id: item.category_id,
       },
     });
   } catch (error) {
-    logger.error({
+    handleError(res, 500, 'Failed to get item size chart', error, {
       action: 'GET_ITEM_SIZE_CHART_ERROR',
       accountId: req.params.accountId,
       itemId: req.params.itemId,
-      userId: req.user.userId,
-      error: error.response?.data || error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      message: 'Failed to get item size chart',
-      error: error.response?.data?.message || error.message,
+      userId: req.user.userId
     });
   }
 });
@@ -260,7 +190,6 @@ router.post('/:accountId/item/:itemId', authenticateToken, validateMLToken('acco
   try {
     const { accountId, itemId } = req.params;
     const { chart_id } = req.body;
-    const account = req.mlAccount;
 
     if (!chart_id) {
       return res.status(400).json({
@@ -269,17 +198,9 @@ router.post('/:accountId/item/:itemId', authenticateToken, validateMLToken('acco
       });
     }
 
-    const headers = {
-      'Authorization': `Bearer ${account.accessToken}`,
-      'Content-Type': 'application/json',
-    };
-
-    // Update item with size chart
-    const response = await axios.put(
-      `${ML_API_BASE}/items/${itemId}`,
-      { size_chart_id: chart_id },
-      { headers }
-    );
+    const response = await sdkManager.updateItem(accountId, itemId, {
+      size_chart_id: chart_id
+    });
 
     logger.info({
       action: 'ASSOCIATE_SIZE_CHART',
@@ -289,28 +210,20 @@ router.post('/:accountId/item/:itemId', authenticateToken, validateMLToken('acco
       userId: req.user.userId,
     });
 
-    res.json({
-      success: true,
-      message: 'Size chart associated successfully',
+    sendSuccess(res, {
       data: {
         item_id: itemId,
         size_chart_id: chart_id,
-        item: response.data,
+        item: response,
       },
+      message: 'Size chart associated successfully',
     });
   } catch (error) {
-    logger.error({
+    handleError(res, 500, 'Failed to associate size chart', error, {
       action: 'ASSOCIATE_SIZE_CHART_ERROR',
       accountId: req.params.accountId,
       itemId: req.params.itemId,
-      userId: req.user.userId,
-      error: error.response?.data || error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      message: 'Failed to associate size chart',
-      error: error.response?.data?.message || error.message,
+      userId: req.user.userId
     });
   }
 });
@@ -322,19 +235,10 @@ router.post('/:accountId/item/:itemId', authenticateToken, validateMLToken('acco
 router.delete('/:accountId/item/:itemId', authenticateToken, validateMLToken('accountId'), async (req, res) => {
   try {
     const { accountId, itemId } = req.params;
-    const account = req.mlAccount;
 
-    const headers = {
-      'Authorization': `Bearer ${account.accessToken}`,
-      'Content-Type': 'application/json',
-    };
-
-    // Remove size chart by setting to null
-    const response = await axios.put(
-      `${ML_API_BASE}/items/${itemId}`,
-      { size_chart_id: null },
-      { headers }
-    );
+    const response = await sdkManager.updateItem(accountId, itemId, {
+      size_chart_id: null
+    });
 
     logger.info({
       action: 'REMOVE_SIZE_CHART',
@@ -343,27 +247,19 @@ router.delete('/:accountId/item/:itemId', authenticateToken, validateMLToken('ac
       userId: req.user.userId,
     });
 
-    res.json({
-      success: true,
-      message: 'Size chart removed successfully',
+    sendSuccess(res, {
       data: {
         item_id: itemId,
-        item: response.data,
+        item: response,
       },
+      message: 'Size chart removed successfully',
     });
   } catch (error) {
-    logger.error({
+    handleError(res, 500, 'Failed to remove size chart', error, {
       action: 'REMOVE_SIZE_CHART_ERROR',
       accountId: req.params.accountId,
       itemId: req.params.itemId,
-      userId: req.user.userId,
-      error: error.response?.data || error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      message: 'Failed to remove size chart',
-      error: error.response?.data?.message || error.message,
+      userId: req.user.userId
     });
   }
 });
@@ -375,21 +271,11 @@ router.delete('/:accountId/item/:itemId', authenticateToken, validateMLToken('ac
 router.get('/:accountId/domains', authenticateToken, validateMLToken('accountId'), async (req, res) => {
   try {
     const { accountId } = req.params;
-    const account = req.mlAccount;
 
-    const headers = {
-      'Authorization': `Bearer ${account.accessToken}`,
-      'Content-Type': 'application/json',
-    };
+    const response = await sdkManager.execute(accountId, async (sdk) => {
+      return await sdk.axiosInstance.get('/sites/MLB/domains');
+    });
 
-    // Get site info for Brazil
-    const siteId = 'MLB';
-    const response = await axios.get(
-      `${ML_API_BASE}/sites/${siteId}/domains`,
-      { headers }
-    );
-
-    // Filter domains that typically require size charts (fashion categories)
     const fashionDomains = response.data.filter(domain => 
       domain.id.includes('CLOTH') || 
       domain.id.includes('SHOES') || 
@@ -403,25 +289,17 @@ router.get('/:accountId/domains', authenticateToken, validateMLToken('accountId'
       domainsCount: fashionDomains.length,
     });
 
-    res.json({
-      success: true,
+    sendSuccess(res, {
       data: {
         fashion_domains: fashionDomains,
         all_domains: response.data,
       },
     });
   } catch (error) {
-    logger.error({
+    handleError(res, 500, 'Failed to list domains', error, {
       action: 'LIST_SIZE_CHART_DOMAINS_ERROR',
       accountId: req.params.accountId,
-      userId: req.user.userId,
-      error: error.response?.data || error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      message: 'Failed to list domains',
-      error: error.response?.data?.message || error.message,
+      userId: req.user.userId
     });
   }
 });
