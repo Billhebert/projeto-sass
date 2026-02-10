@@ -12,7 +12,6 @@
 
 const express = require("express");
 const crypto = require("crypto");
-const axios = require("axios");
 const { clearCachePattern } = require("../middleware/cache");
 const logger = require("../logger");
 const sdkManager = require("../services/sdk-manager");
@@ -265,8 +264,8 @@ async function handleOrderEvent(account, orderId) {
   try {
     console.log(`Processing order event - Order ID: ${orderId}`);
 
-    // Fetch order details from ML API
-    const orderData = await fetchOrderDetails(account.accessToken, orderId);
+    // Fetch order details from ML API using SDK
+    const orderData = await sdkManager.getOrder(account.id, orderId);
 
     if (orderData) {
       // Update account last sync time
@@ -298,8 +297,8 @@ async function handleItemEvent(account, itemId) {
   try {
     console.log(`Processing item event - Item ID: ${itemId}`);
 
-    // Fetch item details from ML API
-    const itemData = await fetchItemDetails(account.accessToken, itemId);
+    // Fetch item details from ML API using SDK
+    const itemData = await sdkManager.getItem(account.id, itemId);
 
     if (itemData) {
       account.lastSyncTime = new Date().toISOString();
@@ -357,52 +356,6 @@ async function handleQuestionEvent(account, questionId) {
     });
   } catch (error) {
     console.error("Error handling question event:", error.message);
-  }
-}
-
-// ============================================
-// HELPER FUNCTIONS
-// ============================================
-
-/**
- * Fetch order details from Mercado Livre API
- */
-async function fetchOrderDetails(accessToken, orderId) {
-  try {
-    const response = await axios.get(
-      `https://api.mercadolibre.com/orders/${orderId}`,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-        timeout: 15000,
-      },
-    );
-    return response.data;
-  } catch (error) {
-    console.error(`Failed to fetch order ${orderId}:`, error.message);
-    return null;
-  }
-}
-
-/**
- * Fetch item details from Mercado Livre API
- */
-async function fetchItemDetails(accessToken, itemId) {
-  try {
-    const response = await axios.get(
-      `https://api.mercadolibre.com/items/${itemId}`,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-        timeout: 15000,
-      },
-    );
-    return response.data;
-  } catch (error) {
-    console.error(`Failed to fetch item ${itemId}:`, error.message);
-    return null;
   }
 }
 
