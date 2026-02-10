@@ -9,7 +9,6 @@
  */
 
 const express = require("express");
-const axios = require("axios");
 const crypto = require("crypto");
 const path = require("path");
 const jwt = require("jsonwebtoken");
@@ -470,10 +469,12 @@ router.get("/ml-app-token", async (req, res) => {
       });
     }
 
-    const response = await axios.post(ML_TOKEN_URL, {
-      grant_type: "client_credentials",
-      client_id: CLIENT_ID,
-      client_secret: CLIENT_SECRET,
+    const response = await sdkManager.execute(null, async (sdk) => {
+      return sdk.axiosInstance.post(ML_TOKEN_URL, {
+        grant_type: "client_credentials",
+        client_id: CLIENT_ID,
+        client_secret: CLIENT_SECRET,
+      });
     });
 
     const { access_token, expires_in, token_type } = response.data;
@@ -739,8 +740,10 @@ router.post("/ml-add-token", authenticateToken, async (req, res, next) => {
 
     let mlUserData;
     try {
-      const mlResponse = await axios.get("https://api.mercadolibre.com/users/me", {
-        headers: { Authorization: `Bearer ${accessToken}` },
+      const mlResponse = await sdkManager.execute(null, async (sdk) => {
+        return sdk.axiosInstance.get("https://api.mercadolibre.com/users/me", {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
       });
       mlUserData = mlResponse.data;
     } catch (error) {
@@ -2119,10 +2122,12 @@ router.get("/ml-app-token", async (req, res) => {
     }
 
     // Request token using Client Credentials flow
-    const response = await axios.post(ML_TOKEN_URL, {
-      grant_type: "client_credentials",
-      client_id: CLIENT_ID,
-      client_secret: CLIENT_SECRET,
+    const response = await sdkManager.execute(null, async (sdk) => {
+      return sdk.axiosInstance.post(ML_TOKEN_URL, {
+        grant_type: "client_credentials",
+        client_id: CLIENT_ID,
+        client_secret: CLIENT_SECRET,
+      });
     });
 
     const { access_token, expires_in, token_type } = response.data;
@@ -2488,14 +2493,16 @@ router.post("/ml-add-token", authenticateToken, async (req, res, next) => {
     // Step 1: Validate token by fetching user info from ML
     let mlUserData;
     try {
-      const mlResponse = await axios.get(
-        "https://api.mercadolibre.com/users/me",
-        {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
+      const mlResponse = await sdkManager.execute(null, async (sdk) => {
+        return sdk.axiosInstance.get(
+          "https://api.mercadolibre.com/users/me",
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
           },
-        },
-      );
+        );
+      });
       mlUserData = mlResponse.data;
     } catch (error) {
       console.error("Failed to validate access token:", error.message);
@@ -2650,21 +2657,23 @@ router.post("/ml-logout", async (req, res, next) => {
  */
 async function exchangeCodeForToken(code) {
   try {
-    const response = await axios.post(
-      ML_TOKEN_URL,
-      {
-        grant_type: "authorization_code",
-        client_id: process.env.ML_CLIENT_ID,
-        client_secret: process.env.ML_CLIENT_SECRET,
-        code: code,
-        redirect_uri: process.env.ML_REDIRECT_URI,
-      },
-      {
-        headers: {
-          Accept: "application/json",
+    const response = await sdkManager.execute(null, async (sdk) => {
+      return sdk.axiosInstance.post(
+        ML_TOKEN_URL,
+        {
+          grant_type: "authorization_code",
+          client_id: process.env.ML_CLIENT_ID,
+          client_secret: process.env.ML_CLIENT_SECRET,
+          code: code,
+          redirect_uri: process.env.ML_REDIRECT_URI,
         },
-      },
-    );
+        {
+          headers: {
+            Accept: "application/json",
+          },
+        },
+      );
+    });
 
     return response.data;
   } catch (error) {
@@ -2694,23 +2703,25 @@ async function exchangeCodeForTokenWithCredentials(
       redirectUri: redirectUri,
     });
 
-    const response = await axios.post(
-      ML_TOKEN_URL,
-      {
-        grant_type: "authorization_code",
-        client_id: clientId,
-        client_secret: clientSecret,
-        code: code,
-        redirect_uri: redirectUri,
-      },
-      {
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/x-www-form-urlencoded",
+    const response = await sdkManager.execute(null, async (sdk) => {
+      return sdk.axiosInstance.post(
+        ML_TOKEN_URL,
+        {
+          grant_type: "authorization_code",
+          client_id: clientId,
+          client_secret: clientSecret,
+          code: code,
+          redirect_uri: redirectUri,
         },
-        timeout: 10000,
-      },
-    );
+        {
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          timeout: 10000,
+        },
+      );
+    });
 
     logger.info({
       action: "EXCHANGE_CODE_SUCCESS",
@@ -2759,22 +2770,24 @@ async function refreshToken(
       usingAccountCredentials: !!(clientId && clientSecret),
     });
 
-    const response = await axios.post(
-      ML_TOKEN_URL,
-      {
-        grant_type: "refresh_token",
-        client_id: CLIENT_ID,
-        client_secret: CLIENT_SECRET,
-        refresh_token: refreshTokenValue,
-      },
-      {
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/x-www-form-urlencoded",
+    const response = await sdkManager.execute(null, async (sdk) => {
+      return sdk.axiosInstance.post(
+        ML_TOKEN_URL,
+        {
+          grant_type: "refresh_token",
+          client_id: CLIENT_ID,
+          client_secret: CLIENT_SECRET,
+          refresh_token: refreshTokenValue,
         },
-        timeout: 10000,
-      },
-    );
+        {
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          timeout: 10000,
+        },
+      );
+    });
 
     logger.info({
       action: "REFRESH_TOKEN_SUCCESS",
@@ -2801,11 +2814,13 @@ async function refreshToken(
  */
 async function getUserInfo(accessToken) {
   try {
-    const response = await axios.get(`${ML_API_BASE}/users/me`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-      timeout: 15000,
+    const response = await sdkManager.execute(null, async (sdk) => {
+      return sdk.axiosInstance.get(`${ML_API_BASE}/users/me`, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+        timeout: 15000,
+      });
     });
 
     return response.data;

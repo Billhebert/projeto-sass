@@ -20,7 +20,6 @@
  */
 
 const express = require("express");
-const axios = require("axios");
 const logger = require("../logger");
 const sdkManager = require("../services/sdk-manager");
 const { authenticateToken } = require("../middleware/auth");
@@ -29,8 +28,6 @@ const Claim = require("../db/models/Claim");
 const MLAccount = require("../db/models/MLAccount");
 
 const router = express.Router();
-
-const ML_API_BASE = "https://api.mercadolibre.com";
 
 // ============================================
 // HELPER FUNCTIONS - Core error & response handling
@@ -131,43 +128,45 @@ async function fetchAccount(accountId, userId) {
 /**
  * Get ML headers for authenticated requests
  */
-function getMLHeaders(accessToken) {
+function getMLHeaders(additionalHeaders = {}) {
   return {
-    'Authorization': `Bearer ${accessToken}`,
     'Content-Type': 'application/json',
+    ...additionalHeaders,
   };
 }
 
 /**
  * Make ML API request with error handling
  */
-async function makeMLRequest(method, endpoint, data = null, headers = {}, params = {}) {
-  try {
+async function makeMLRequest(accountId, method, endpoint, data = null, additionalHeaders = {}, params = {}) {
+  return sdkManager.execute(accountId, async (sdk) => {
     const config = {
-      headers,
+      headers: {
+        ...additionalHeaders,
+      },
       params,
     };
 
     let response;
     switch (method.toLowerCase()) {
       case 'get':
-        response = await axios.get(`${ML_API_BASE}${endpoint}`, config);
+        response = await sdk.axiosInstance.get(endpoint, config);
         break;
       case 'post':
-        response = await axios.post(`${ML_API_BASE}${endpoint}`, data, config);
+        response = await sdk.axiosInstance.post(endpoint, data, config);
         break;
       case 'put':
-        response = await axios.put(`${ML_API_BASE}${endpoint}`, data, config);
+        response = await sdk.axiosInstance.put(endpoint, data, config);
         break;
       case 'delete':
-        response = await axios.delete(`${ML_API_BASE}${endpoint}`, config);
+        response = await sdk.axiosInstance.delete(endpoint, config);
         break;
       default:
         throw new Error(`Unsupported method: ${method}`);
     }
 
     return { success: true, data: response.data };
-  } catch (error) {
+  }).catch((error) => {
     logger.warn({
       action: 'ML_API_ERROR',
       method,
@@ -180,7 +179,7 @@ async function makeMLRequest(method, endpoint, data = null, headers = {}, params
       error,
       data: error.response?.data,
     };
-  }
+  });
 }
 
 /**
@@ -491,7 +490,6 @@ router.get(
   async (req, res) => {
     try {
       const { accountId, claimId } = req.params;
-      const account = req.mlAccount;
 
       // Try to find in local DB first
       let claim = await Claim.findOne({
@@ -501,14 +499,14 @@ router.get(
       });
 
       // Fetch fresh data from ML API
-      const headers = getMLHeaders(account.accessToken);
       const mlClaimId = claim?.mlClaimId || claimId;
 
       const { success, data: mlData } = await makeMLRequest(
+        accountId,
         'get',
         `/claims/${mlClaimId}`,
         null,
-        headers
+        {}
       );
 
       if (!claim && !success) {
@@ -568,17 +566,22 @@ router.post(
         });
       }
 
-      const headers = getMLHeaders(account.accessToken);
-
       // Send message to ML
-      const response = await axios.post(
-        `${ML_API_BASE}/claims/${claim.mlClaimId}/messages`,
-        {
-          message: text.trim(),
-          role,
-        },
-        { headers },
-      );
+      const response = await sdkManager.execute(accountId, async (sdk) => {
+        return sdk.axiosInstance.post(
+          `/claims/${claim.mlClaimId}/messages`,
+          {
+            message: text.trim(),
+            role,
+          },
+          {
+            headers: {
+              Authorization: sdk.authHeaders.Authorization,
+              'Content-Type': 'application/json',
+            },
+          },
+        );
+      });
 
       // Update local claim with new message
       claim.messages.push({
@@ -636,8 +639,6 @@ router.post(
         timestamp: new Date().toISOString(),
       });
 
-      const headers = getMLHeaders(account.accessToken);
-
       // Get claims with pagination support
       let mlClaims = [];
       let offset = 0;
@@ -653,10 +654,11 @@ router.post(
 
         while (true) {
           const { success, data } = await makeMLRequest(
+            accountId,
             'get',
             '/claims/search',
             null,
-            headers,
+            {},
             {
               seller_id: account.mlUserId,
               status: "opened,pending,waiting_seller",
@@ -693,10 +695,11 @@ router.post(
       } else {
         // Normal mode - single request
         const { success, data } = await makeMLRequest(
+          accountId,
           'get',
           '/claims/search',
           null,
-          headers,
+          {},
           {
             seller_id: account.mlUserId,
             status: "opened,pending,waiting_seller",
@@ -756,16 +759,14 @@ router.get(
   async (req, res) => {
     try {
       const { accountId, claimId } = req.params;
-      const account = req.mlAccount;
-
-      const headers = getMLHeaders(account.accessToken);
 
       // Get claim details
       const { success, data: claim } = await makeMLRequest(
+        accountId,
         'get',
         `/claims/${claimId}`,
         null,
-        headers
+        {}
       );
 
       if (!success) {
@@ -796,10 +797,11 @@ router.get(
       let exchangeShipment = null;
       if (claim.exchange_shipment_id) {
         const { success: shipmentSuccess, data: shipmentData } = await makeMLRequest(
+          accountId,
           'get',
           `/shipments/${claim.exchange_shipment_id}`,
           null,
-          headers
+          {}
         );
         if (shipmentSuccess) {
           exchangeShipment = shipmentData;
@@ -846,9 +848,6 @@ router.post(
     try {
       const { accountId, claimId } = req.params;
       const { shipping_option } = req.body;
-      const account = req.mlAccount;
-
-      const headers = getMLHeaders(account.accessToken);
 
       const payload = {
         action: "accept_change",
@@ -858,10 +857,11 @@ router.post(
       }
 
       const { success, data, error } = await makeMLRequest(
+        accountId,
         'post',
         `/claims/${claimId}/actions`,
         payload,
-        headers
+        {}
       );
 
       if (!success) {
@@ -913,9 +913,6 @@ router.post(
     try {
       const { accountId, claimId } = req.params;
       const { reason } = req.body;
-      const account = req.mlAccount;
-
-      const headers = getMLHeaders(account.accessToken);
 
       const payload = {
         action: "reject_change",
@@ -925,10 +922,11 @@ router.post(
       }
 
       const { success, data, error } = await makeMLRequest(
+        accountId,
         'post',
         `/claims/${claimId}/actions`,
         payload,
-        headers
+        {}
       );
 
       if (!success) {
@@ -980,15 +978,13 @@ router.get(
   async (req, res) => {
     try {
       const { accountId, claimId } = req.params;
-      const account = req.mlAccount;
-
-      const headers = getMLHeaders(account.accessToken);
 
       const { success, data, error } = await makeMLRequest(
+        accountId,
         'get',
         `/claims/${claimId}/evidences`,
         null,
-        headers
+        {}
       );
 
       if (!success) {
@@ -1030,7 +1026,6 @@ router.post(
     try {
       const { accountId, claimId } = req.params;
       const { evidence_type, description, files } = req.body;
-      const account = req.mlAccount;
 
       if (!evidence_type) {
         return res.status(400).json({
@@ -1038,8 +1033,6 @@ router.post(
           message: "evidence_type is required",
         });
       }
-
-      const headers = getMLHeaders(account.accessToken);
 
       const payload = {
         evidence_type,
@@ -1051,10 +1044,11 @@ router.post(
       }
 
       const { success, data, error } = await makeMLRequest(
+        accountId,
         'post',
         `/claims/${claimId}/evidences`,
         payload,
-        headers
+        {}
       );
 
       if (!success) {
@@ -1105,7 +1099,6 @@ router.post(
     try {
       const { accountId, claimId } = req.params;
       const { resolution, reason } = req.body;
-      const account = req.mlAccount;
 
       // Valid resolutions: 'refund', 'reship', 'close_without_refund'
       const validResolutions = [
@@ -1121,8 +1114,6 @@ router.post(
         });
       }
 
-      const headers = getMLHeaders(account.accessToken);
-
       const payload = {
         action: resolution,
       };
@@ -1131,10 +1122,11 @@ router.post(
       }
 
       const { success, data, error } = await makeMLRequest(
+        accountId,
         'post',
         `/claims/${claimId}/actions`,
         payload,
-        headers
+        {}
       );
 
       if (!success) {
@@ -1193,15 +1185,13 @@ router.get(
   async (req, res) => {
     try {
       const { accountId, claimId } = req.params;
-      const account = req.mlAccount;
-
-      const headers = getMLHeaders(account.accessToken);
 
       const { success, data, error } = await makeMLRequest(
+        accountId,
         'get',
         `/claims/${claimId}/actions`,
         null,
-        headers
+        {}
       );
 
       if (!success) {
@@ -1242,15 +1232,13 @@ router.get(
   async (req, res) => {
     try {
       const { accountId, claimId } = req.params;
-      const account = req.mlAccount;
-
-      const headers = getMLHeaders(account.accessToken);
 
       const { success, data, error } = await makeMLRequest(
+        accountId,
         'get',
         `/claims/${claimId}/timeline`,
         null,
-        headers
+        {}
       );
 
       // Timeline may not be available for all claims

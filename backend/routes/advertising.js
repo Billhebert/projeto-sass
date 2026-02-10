@@ -18,13 +18,6 @@
 
 const express = require('express');
 const router = express.Router();
-const axios = require('axios');
-const logger = require('../logger');
-const sdkManager = require("../services/sdk-manager");
-const MLAccount = require('../db/models/MLAccount');
-const { authenticateToken } = require('../middleware/auth');
-
-const ML_API_BASE = 'https://api.mercadolibre.com';
 
 // ============================================
 // HELPER FUNCTIONS
@@ -65,33 +58,34 @@ function sendSuccess(res, data, message = null, statusCode = 200) {
 /**
  * Make ML API request with consistent headers
  */
-async function makeMLRequest(method, endpoint, data = null, headers = {}, params = {}) {
-  const config = {
-    method,
-    url: endpoint,
-    headers: {
-      'Content-Type': 'application/json',
-      ...headers,
-    },
-  };
+async function makeMLRequest(accountId, method, endpoint, data = null, additionalHeaders = {}, params = {}) {
+  return sdkManager.execute(accountId, async (sdk) => {
+    const config = {
+      method,
+      url: endpoint,
+      headers: {
+        'Content-Type': 'application/json',
+        ...additionalHeaders,
+      },
+    };
 
-  if (params && Object.keys(params).length > 0) {
-    config.params = params;
-  }
+    if (params && Object.keys(params).length > 0) {
+      config.params = params;
+    }
 
-  if (data && (method === 'post' || method === 'put' || method === 'patch')) {
-    config.data = data;
-  }
+    if (data && (method === 'post' || method === 'put' || method === 'patch')) {
+      config.data = data;
+    }
 
-  return axios(config);
+    return sdk.axiosInstance(config);
+  });
 }
 
 /**
  * Get ML headers with authorization
  */
-function getMLHeaders(accessToken, additionalHeaders = {}) {
+function getMLHeaders(additionalHeaders = {}) {
   return {
-    Authorization: `Bearer ${accessToken}`,
     'Content-Type': 'application/json',
     ...additionalHeaders,
   };
@@ -100,13 +94,14 @@ function getMLHeaders(accessToken, additionalHeaders = {}) {
 /**
  * Get advertiser info from ML API
  */
-async function getAdvertiserInfo(accessToken, productId = 'PADS', siteId = 'MLB') {
+async function getAdvertiserInfo(accountId, productId = 'PADS', siteId = 'MLB') {
   try {
     const response = await makeMLRequest(
+      accountId,
       'get',
-      `${ML_API_BASE}/advertising/advertisers`,
+      `/advertising/advertisers`,
       null,
-      getMLHeaders(accessToken, { 'Api-Version': '1' }),
+      { 'Api-Version': '1' },
       { product_id: productId }
     );
 
@@ -230,12 +225,13 @@ function generatePerformanceData(stats, days = 30) {
 /**
  * Fetch campaigns from legacy ads API
  */
-async function fetchLegacyCampaigns(accessToken, mlUserId, params = {}) {
+async function fetchLegacyCampaigns(accountId, mlUserId, params = {}) {
   const response = await makeMLRequest(
+    accountId,
     'get',
-    `${ML_API_BASE}/users/${mlUserId}/ads/campaigns`,
+    `/users/${mlUserId}/ads/campaigns`,
     null,
-    getMLHeaders(accessToken),
+    {},
     params
   );
 
@@ -245,16 +241,17 @@ async function fetchLegacyCampaigns(accessToken, mlUserId, params = {}) {
 /**
  * Fetch campaigns from Product Ads v2 API
  */
-async function fetchProductAdsCampaigns(accessToken, advertiser, params = {}) {
+async function fetchProductAdsCampaigns(accountId, advertiser, params = {}) {
   if (!advertiser) {
     return [];
   }
 
   const response = await makeMLRequest(
+    accountId,
     'get',
-    `${ML_API_BASE}/advertising/${advertiser.site_id}/advertisers/${advertiser.advertiser_id}/product_ads/campaigns/search`,
+    `/advertising/${advertiser.site_id}/advertisers/${advertiser.advertiser_id}/product_ads/campaigns/search`,
     null,
-    getMLHeaders(accessToken, { 'api-version': '2' }),
+    { 'api-version': '2' },
     params
   );
 
@@ -302,7 +299,7 @@ async function getMLAccount(req, res, next) {
  */
 router.get('/:accountId', authenticateToken, getMLAccount, async (req, res) => {
   try {
-    const { accessToken, mlUserId } = req.mlAccount;
+    const { accountId } = req.params;
     const { days = 30 } = req.query;
 
     const dateRange = calculateDateRange(days);
@@ -320,10 +317,10 @@ router.get('/:accountId', authenticateToken, getMLAccount, async (req, res) => {
 
     // Try to get Product Ads data first (newer API)
     try {
-      const advertiser = await getAdvertiserInfo(accessToken);
+      const advertiser = await getAdvertiserInfo(accountId);
 
       if (advertiser) {
-        const result = await fetchProductAdsCampaigns(accessToken, advertiser, {
+        const result = await fetchProductAdsCampaigns(accountId, advertiser, {
           limit: 50,
           date_from: dateRange.from,
           date_to: dateRange.to,
@@ -339,7 +336,8 @@ router.get('/:accountId', authenticateToken, getMLAccount, async (req, res) => {
 
       // Fallback to legacy campaigns API
       try {
-        campaigns = await fetchLegacyCampaigns(accessToken, mlUserId, {
+        const mlUserId = req.mlAccount.mlUserId;
+        campaigns = await fetchLegacyCampaigns(accountId, mlUserId, {
           limit: 50,
         });
         stats = calculateStats(campaigns);
@@ -385,17 +383,19 @@ router.get('/:accountId', authenticateToken, getMLAccount, async (req, res) => {
  */
 router.get('/:accountId/campaigns', authenticateToken, getMLAccount, async (req, res) => {
   try {
-    const { accessToken, mlUserId } = req.mlAccount;
+    const { accountId } = req.params;
+    const { mlUserId } = req.mlAccount;
     const { offset = 0, limit = 50, status } = req.query;
 
     const params = { offset, limit };
     if (status) params.status = status;
 
     const response = await makeMLRequest(
+      accountId,
       'get',
-      `${ML_API_BASE}/users/${mlUserId}/ads/campaigns`,
+      `/users/${mlUserId}/ads/campaigns`,
       null,
-      getMLHeaders(accessToken),
+      {},
       params
     );
 
@@ -416,7 +416,8 @@ router.get('/:accountId/campaigns', authenticateToken, getMLAccount, async (req,
  */
 router.post('/:accountId/campaigns', authenticateToken, getMLAccount, async (req, res) => {
   try {
-    const { accessToken, mlUserId } = req.mlAccount;
+    const { accountId } = req.params;
+    const { mlUserId } = req.mlAccount;
     const { name, daily_budget, item_id, target_type = 'product_ads', status = 'active' } = req.body;
 
     // Validate required fields
@@ -436,10 +437,11 @@ router.post('/:accountId/campaigns', authenticateToken, getMLAccount, async (req
     };
 
     const response = await makeMLRequest(
+      accountId,
       'post',
-      `${ML_API_BASE}/users/${mlUserId}/ads/campaigns`,
+      `/users/${mlUserId}/ads/campaigns`,
       campaignData,
-      getMLHeaders(accessToken)
+      {}
     );
 
     logger.info('Campaign created:', {
@@ -460,13 +462,15 @@ router.post('/:accountId/campaigns', authenticateToken, getMLAccount, async (req
 router.get('/:accountId/campaigns/:campaignId', authenticateToken, getMLAccount, async (req, res) => {
   try {
     const { campaignId } = req.params;
-    const { accessToken, mlUserId } = req.mlAccount;
+    const { accountId } = req.params;
+    const { mlUserId } = req.mlAccount;
 
     const response = await makeMLRequest(
+      accountId,
       'get',
-      `${ML_API_BASE}/users/${mlUserId}/ads/campaigns/${campaignId}`,
+      `/users/${mlUserId}/ads/campaigns/${campaignId}`,
       null,
-      getMLHeaders(accessToken)
+      {}
     );
 
     return sendSuccess(res, response.data);
@@ -484,14 +488,15 @@ router.get('/:accountId/campaigns/:campaignId', authenticateToken, getMLAccount,
 router.put('/:accountId/campaigns/:campaignId', authenticateToken, getMLAccount, async (req, res) => {
   try {
     const { campaignId } = req.params;
-    const { accessToken, mlUserId } = req.mlAccount;
-    const updates = req.body;
+    const { accountId } = req.params;
+    const { updates } = req.body;
 
     const response = await makeMLRequest(
+      accountId,
       'put',
-      `${ML_API_BASE}/users/${mlUserId}/ads/campaigns/${campaignId}`,
+      `/users/${req.mlAccount.mlUserId}/ads/campaigns/${campaignId}`,
       updates,
-      getMLHeaders(accessToken)
+      {}
     );
 
     logger.info('Campaign updated:', {
@@ -514,14 +519,15 @@ router.put('/:accountId/campaigns/:campaignId', authenticateToken, getMLAccount,
 router.delete('/:accountId/campaigns/:campaignId', authenticateToken, getMLAccount, async (req, res) => {
   try {
     const { campaignId } = req.params;
-    const { accessToken, mlUserId } = req.mlAccount;
+    const { accountId } = req.params;
 
     // ML typically pauses campaigns rather than deleting
     await makeMLRequest(
+      accountId,
       'put',
-      `${ML_API_BASE}/users/${mlUserId}/ads/campaigns/${campaignId}`,
+      `/users/${req.mlAccount.mlUserId}/ads/campaigns/${campaignId}`,
       { status: 'paused' },
-      getMLHeaders(accessToken)
+      {}
     );
 
     logger.info('Campaign paused:', {
@@ -544,7 +550,7 @@ router.delete('/:accountId/campaigns/:campaignId', authenticateToken, getMLAccou
 router.get('/:accountId/campaigns/:campaignId/metrics', authenticateToken, getMLAccount, async (req, res) => {
   try {
     const { campaignId } = req.params;
-    const { accessToken, mlUserId } = req.mlAccount;
+    const { accountId } = req.params;
     const { date_from, date_to } = req.query;
 
     const params = {};
@@ -552,10 +558,11 @@ router.get('/:accountId/campaigns/:campaignId/metrics', authenticateToken, getML
     if (date_to) params.date_to = date_to;
 
     const response = await makeMLRequest(
+      accountId,
       'get',
-      `${ML_API_BASE}/users/${mlUserId}/ads/campaigns/${campaignId}/metrics`,
+      `/users/${req.mlAccount.mlUserId}/ads/campaigns/${campaignId}/metrics`,
       null,
-      getMLHeaders(accessToken),
+      {},
       params
     );
 
@@ -571,13 +578,15 @@ router.get('/:accountId/campaigns/:campaignId/metrics', authenticateToken, getML
  */
 router.get('/:accountId/budget', authenticateToken, getMLAccount, async (req, res) => {
   try {
-    const { accessToken, mlUserId } = req.mlAccount;
+    const { accountId } = req.params;
+    const { mlUserId } = req.mlAccount;
 
     const response = await makeMLRequest(
+      accountId,
       'get',
-      `${ML_API_BASE}/users/${mlUserId}/ads/budgets`,
+      `/users/${mlUserId}/ads/budgets`,
       null,
-      getMLHeaders(accessToken)
+      {}
     );
 
     return sendSuccess(res, response.data);
@@ -596,7 +605,8 @@ router.get('/:accountId/budget', authenticateToken, getMLAccount, async (req, re
  */
 router.get('/:accountId/stats', authenticateToken, getMLAccount, async (req, res) => {
   try {
-    const { accessToken, mlUserId } = req.mlAccount;
+    const { accountId } = req.params;
+    const { mlUserId } = req.mlAccount;
     const { date_from, date_to } = req.query;
 
     const params = {};
@@ -604,10 +614,11 @@ router.get('/:accountId/stats', authenticateToken, getMLAccount, async (req, res
     if (date_to) params.date_to = date_to;
 
     const response = await makeMLRequest(
+      accountId,
       'get',
-      `${ML_API_BASE}/users/${mlUserId}/ads/metrics`,
+      `/users/${mlUserId}/ads/metrics`,
       null,
-      getMLHeaders(accessToken),
+      {},
       params
     );
 
@@ -623,15 +634,17 @@ router.get('/:accountId/stats', authenticateToken, getMLAccount, async (req, res
  */
 router.get('/:accountId/suggested-items', authenticateToken, getMLAccount, async (req, res) => {
   try {
-    const { accessToken, mlUserId } = req.mlAccount;
+    const { accountId } = req.params;
+    const { mlUserId } = req.mlAccount;
     const { limit = 20 } = req.query;
 
     // Get active items that could benefit from ads
     const response = await makeMLRequest(
+      accountId,
       'get',
-      `${ML_API_BASE}/users/${mlUserId}/items/search`,
+      `/users/${mlUserId}/items/search`,
       null,
-      getMLHeaders(accessToken),
+      {},
       { status: 'active', limit }
     );
 
@@ -641,7 +654,7 @@ router.get('/:accountId/suggested-items', authenticateToken, getMLAccount, async
     if (itemIds.length > 0) {
       const itemDetails = await Promise.all(
         itemIds.slice(0, 10).map(id =>
-          makeMLRequest('get', `${ML_API_BASE}/items/${id}`, null, getMLHeaders(accessToken))
+          makeMLRequest(accountId, 'get', `/items/${id}`, null, {})
             .catch(() => null)
         )
       );
@@ -675,9 +688,9 @@ router.get('/:accountId/suggested-items', authenticateToken, getMLAccount, async
  */
 router.get('/:accountId/product-ads/advertiser', authenticateToken, getMLAccount, async (req, res) => {
   try {
-    const { accessToken } = req.mlAccount;
+    const { accountId } = req.params;
 
-    const advertiser = await getAdvertiserInfo(accessToken);
+    const advertiser = await getAdvertiserInfo(accountId);
 
     if (!advertiser) {
       return sendSuccess(res, { advertisers: [] }, 'Product Ads not enabled for this account. User needs to enable it in ML > My Profile > Advertising');
@@ -695,10 +708,10 @@ router.get('/:accountId/product-ads/advertiser', authenticateToken, getMLAccount
  */
 router.get('/:accountId/product-ads/campaigns', authenticateToken, getMLAccount, async (req, res) => {
   try {
-    const { accessToken } = req.mlAccount;
+    const { accountId } = req.params;
     const { limit = 50, offset = 0, date_from, date_to, status, metrics_summary = 'true' } = req.query;
 
-    const advertiser = await getAdvertiserInfo(accessToken);
+    const advertiser = await getAdvertiserInfo(accountId);
 
     if (!advertiser) {
       return sendSuccess(res, { campaigns: [], paging: { total: 0 } }, 'No Product Ads advertiser found for this account');
@@ -719,10 +732,11 @@ router.get('/:accountId/product-ads/campaigns', authenticateToken, getMLAccount,
     }
 
     const response = await makeMLRequest(
+      accountId,
       'get',
-      `${ML_API_BASE}/advertising/${advertiser.site_id}/advertisers/${advertiser.advertiser_id}/product_ads/campaigns/search`,
+      `/advertising/${advertiser.site_id}/advertisers/${advertiser.advertiser_id}/product_ads/campaigns/search`,
       null,
-      getMLHeaders(accessToken, { 'api-version': '2' }),
+      { 'api-version': '2' },
       params
     );
 
@@ -742,10 +756,10 @@ router.get('/:accountId/product-ads/campaigns', authenticateToken, getMLAccount,
 router.get('/:accountId/product-ads/campaigns/:campaignId', authenticateToken, getMLAccount, async (req, res) => {
   try {
     const { campaignId } = req.params;
-    const { accessToken } = req.mlAccount;
+    const { accountId } = req.params;
     const { date_from, date_to, aggregation_type } = req.query;
 
-    const advertiser = await getAdvertiserInfo(accessToken);
+    const advertiser = await getAdvertiserInfo(accountId);
 
     if (!advertiser) {
       return res.status(404).json({
@@ -766,10 +780,11 @@ router.get('/:accountId/product-ads/campaigns/:campaignId', authenticateToken, g
     }
 
     const response = await makeMLRequest(
+      accountId,
       'get',
-      `${ML_API_BASE}/advertising/${advertiser.site_id}/product_ads/campaigns/${campaignId}`,
+      `/advertising/${advertiser.site_id}/product_ads/campaigns/${campaignId}`,
       null,
-      getMLHeaders(accessToken, { 'api-version': '2' }),
+      { 'api-version': '2' },
       params
     );
 
@@ -788,10 +803,10 @@ router.get('/:accountId/product-ads/campaigns/:campaignId', authenticateToken, g
 router.get('/:accountId/product-ads/campaigns/:campaignId/daily', authenticateToken, getMLAccount, async (req, res) => {
   try {
     const { campaignId } = req.params;
-    const { accessToken } = req.mlAccount;
+    const { accountId } = req.params;
     const { date_from, date_to } = req.query;
 
-    const advertiser = await getAdvertiserInfo(accessToken);
+    const advertiser = await getAdvertiserInfo(accountId);
 
     if (!advertiser) {
       return res.status(404).json({
@@ -802,10 +817,11 @@ router.get('/:accountId/product-ads/campaigns/:campaignId/daily', authenticateTo
 
     const dateRange = calculateDateRange(30);
     const response = await makeMLRequest(
+      accountId,
       'get',
-      `${ML_API_BASE}/advertising/${advertiser.site_id}/product_ads/campaigns/${campaignId}`,
+      `/advertising/${advertiser.site_id}/product_ads/campaigns/${campaignId}`,
       null,
-      getMLHeaders(accessToken, { 'api-version': '2' }),
+      { 'api-version': '2' },
       {
         date_from: date_from || dateRange.from,
         date_to: date_to || dateRange.to,
@@ -826,10 +842,10 @@ router.get('/:accountId/product-ads/campaigns/:campaignId/daily', authenticateTo
  */
 router.get('/:accountId/product-ads/ads', authenticateToken, getMLAccount, async (req, res) => {
   try {
-    const { accessToken } = req.mlAccount;
+    const { accountId } = req.params;
     const { limit = 50, offset = 0, date_from, date_to, status, campaign_id, metrics_summary = 'true' } = req.query;
 
-    const advertiser = await getAdvertiserInfo(accessToken);
+    const advertiser = await getAdvertiserInfo(accountId);
 
     if (!advertiser) {
       return sendSuccess(res, { ads: [], paging: { total: 0 } }, 'No Product Ads advertiser found');
@@ -853,10 +869,11 @@ router.get('/:accountId/product-ads/ads', authenticateToken, getMLAccount, async
     }
 
     const response = await makeMLRequest(
+      accountId,
       'get',
-      `${ML_API_BASE}/advertising/${advertiser.site_id}/advertisers/${advertiser.advertiser_id}/product_ads/ads/search`,
+      `/advertising/${advertiser.site_id}/advertisers/${advertiser.advertiser_id}/product_ads/ads/search`,
       null,
-      getMLHeaders(accessToken, { 'api-version': '2' }),
+      { 'api-version': '2' },
       params
     );
 
@@ -876,10 +893,10 @@ router.get('/:accountId/product-ads/ads', authenticateToken, getMLAccount, async
 router.get('/:accountId/product-ads/ads/:itemId', authenticateToken, getMLAccount, async (req, res) => {
   try {
     const { itemId } = req.params;
-    const { accessToken } = req.mlAccount;
+    const { accountId } = req.params;
     const { date_from, date_to } = req.query;
 
-    const advertiser = await getAdvertiserInfo(accessToken);
+    const advertiser = await getAdvertiserInfo(accountId);
 
     if (!advertiser) {
       return res.status(404).json({
@@ -890,10 +907,11 @@ router.get('/:accountId/product-ads/ads/:itemId', authenticateToken, getMLAccoun
 
     const dateRange = calculateDateRange(30);
     const response = await makeMLRequest(
+      accountId,
       'get',
-      `${ML_API_BASE}/advertising/${advertiser.site_id}/product_ads/ads/${itemId}`,
+      `/advertising/${advertiser.site_id}/product_ads/ads/${itemId}`,
       null,
-      getMLHeaders(accessToken, { 'api-version': '2' }),
+      { 'api-version': '2' },
       {
         date_from: date_from || dateRange.from,
         date_to: date_to || dateRange.to,
@@ -915,10 +933,10 @@ router.get('/:accountId/product-ads/ads/:itemId', authenticateToken, getMLAccoun
  */
 router.get('/:accountId/product-ads/summary', authenticateToken, getMLAccount, async (req, res) => {
   try {
-    const { accessToken } = req.mlAccount;
+    const { accountId } = req.params;
     const { date_from, date_to } = req.query;
 
-    const advertiser = await getAdvertiserInfo(accessToken);
+    const advertiser = await getAdvertiserInfo(accountId);
 
     if (!advertiser) {
       return sendSuccess(res, {
@@ -933,10 +951,11 @@ router.get('/:accountId/product-ads/summary', authenticateToken, getMLAccount, a
 
     // Get campaigns with summary
     const campaignsResponse = await makeMLRequest(
+      accountId,
       'get',
-      `${ML_API_BASE}/advertising/${advertiser.site_id}/advertisers/${advertiser.advertiser_id}/product_ads/campaigns/search`,
+      `/advertising/${advertiser.site_id}/advertisers/${advertiser.advertiser_id}/product_ads/campaigns/search`,
       null,
-      getMLHeaders(accessToken, { 'api-version': '2' }),
+      { 'api-version': '2' },
       {
         limit: 100,
         date_from: dateFrom,
@@ -948,10 +967,11 @@ router.get('/:accountId/product-ads/summary', authenticateToken, getMLAccount, a
 
     // Get ads summary
     const adsResponse = await makeMLRequest(
+      accountId,
       'get',
-      `${ML_API_BASE}/advertising/${advertiser.site_id}/advertisers/${advertiser.advertiser_id}/product_ads/ads/search`,
+      `/advertising/${advertiser.site_id}/advertisers/${advertiser.advertiser_id}/product_ads/ads/search`,
       null,
-      getMLHeaders(accessToken, { 'api-version': '2' }),
+      { 'api-version': '2' },
       {
         limit: 10,
         date_from: dateFrom,

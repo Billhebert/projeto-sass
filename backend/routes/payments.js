@@ -11,7 +11,6 @@
  */
 
 const express = require('express');
-const axios = require('axios');
 const logger = require('../logger');
 const sdkManager = require("../services/sdk-manager");
 const { authenticateToken } = require('../middleware/auth');
@@ -21,8 +20,6 @@ const Order = require('../db/models/Order');
 const MLAccount = require('../db/models/MLAccount');
 
 const router = express.Router();
-
-const ML_API_BASE = 'https://api.mercadolibre.com';
 
 // ============================================
 // HELPER FUNCTIONS
@@ -193,16 +190,18 @@ async function processOrderPayments(order, accountId, userId) {
 /**
  * Make ML API refund request
  */
-async function requestMLRefund(paymentId, mlToken) {
-  return axios.post(
-    `${ML_API_BASE}/collections/${paymentId}/refunds`,
-    {},
-    {
-      headers: {
-        Authorization: `Bearer ${mlToken}`,
-      },
-    }
-  );
+async function requestMLRefund(paymentId, accountId) {
+  return sdkManager.execute(accountId, async (sdk) => {
+    return sdk.axiosInstance.post(
+      `/collections/${paymentId}/refunds`,
+      {},
+      {
+        headers: {
+          Authorization: sdk.authHeaders.Authorization,
+        },
+      }
+    );
+  });
 }
 
 /**
@@ -455,7 +454,6 @@ router.post('/:accountId/:paymentId/refund', authenticateToken, validateMLToken,
   try {
     const { accountId, paymentId } = req.params;
     const { reason, amount } = req.body;
-    const mlToken = req.mlToken;
 
     // Verify account exists
     const account = await fetchAndVerifyAccount(accountId, req.user.userId);
@@ -493,8 +491,8 @@ router.post('/:accountId/:paymentId/refund', authenticateToken, validateMLToken,
     }
 
     try {
-      // Call Mercado Libre API to request refund
-      const mlResponse = await requestMLRefund(payment.mlPaymentId, mlToken);
+      // Call Mercado Livre API to request refund
+      const mlResponse = await requestMLRefund(payment.mlPaymentId, accountId);
 
       // Update payment with refund information
       const updatedPayment = await updatePaymentWithRefund(payment, reason, amount);
