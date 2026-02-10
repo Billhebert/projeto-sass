@@ -233,9 +233,16 @@ export const useAuthStore = create((set) => ({
   },
 
   logout: () => {
+    console.log("[LOGOUT] Iniciando logout...");
+    console.log("[LOGOUT] Limpando localStorage: token, user, mlAccounts");
     localStorage.removeItem("token");
     localStorage.removeItem("user");
-    set({ token: null, user: null, error: null });
+    localStorage.removeItem("mlAccounts");
+    console.log("[LOGOUT] Atualizando state do Zustand");
+    set({ token: null, user: null, mlAccounts: [], error: null });
+    console.log(
+      "[LOGOUT] Logout concluído. Não foi feita nenhuma chamada à API.",
+    );
   },
 
   updateUser: (userData) => {

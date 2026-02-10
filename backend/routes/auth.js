@@ -16,11 +16,13 @@ const bcrypt = require("bcryptjs");
 const rateLimit = require("express-rate-limit");
 const speakeasy = require("speakeasy");
 const QRCode = require("qrcode");
+const axios = require("axios");
 
 const router = express.Router();
 
 // Models
 const User = require("../db/models/User");
+const MLAccount = require("../db/models/MLAccount");
 const logger = require("../logger");
 const sdkManager = require("../services/sdk-manager");
 
@@ -104,7 +106,10 @@ function getTokenFromHeader(req) {
  */
 function verifyJWT(token, errorIfInvalid = true) {
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || "your-secret-key");
+    const decoded = jwt.verify(
+      token,
+      process.env.JWT_SECRET || "your-secret-key",
+    );
     return { valid: true, decoded, error: null };
   } catch (error) {
     if (!errorIfInvalid) {
@@ -123,7 +128,10 @@ function verifyJWT(token, errorIfInvalid = true) {
  */
 function validateRequired(req, fields) {
   const missingFields = fields.filter(
-    (field) => req.body[field] === undefined || req.body[field] === null || req.body[field] === ""
+    (field) =>
+      req.body[field] === undefined ||
+      req.body[field] === null ||
+      req.body[field] === "",
   );
   return {
     valid: missingFields.length === 0,
@@ -138,26 +146,49 @@ function validateRequired(req, fields) {
  */
 router.post("/register", registerLimiter, async (req, res) => {
   try {
-    const validation = validateRequired(req, ["email", "password", "firstName", "lastName"]);
+    const validation = validateRequired(req, [
+      "email",
+      "password",
+      "firstName",
+      "lastName",
+    ]);
     if (!validation.valid) {
-      return handleError(res, 400, "Missing required fields: " + validation.missingFields.join(", "), null, {
-        action: "REGISTER_INVALID_REQUEST",
-      });
+      return handleError(
+        res,
+        400,
+        "Missing required fields: " + validation.missingFields.join(", "),
+        null,
+        {
+          action: "REGISTER_INVALID_REQUEST",
+        },
+      );
     }
 
     const { email, password, firstName, lastName } = req.body;
 
     if (password.length < 8) {
-      return handleError(res, 400, "Password must be at least 8 characters", null, {
-        action: "REGISTER_WEAK_PASSWORD",
-      });
+      return handleError(
+        res,
+        400,
+        "Password must be at least 8 characters",
+        null,
+        {
+          action: "REGISTER_WEAK_PASSWORD",
+        },
+      );
     }
 
     const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {
-      return handleError(res, 409, "User with this email already exists", null, {
-        action: "REGISTER_EMAIL_EXISTS",
-      });
+      return handleError(
+        res,
+        409,
+        "User with this email already exists",
+        null,
+        {
+          action: "REGISTER_EMAIL_EXISTS",
+        },
+      );
     }
 
     const user = new User({
@@ -183,7 +214,7 @@ router.post("/register", registerLimiter, async (req, res) => {
         },
       },
       "Registro realizado! Aguarde a aprovação do administrador para fazer login.",
-      201
+      201,
     );
   } catch (error) {
     return handleError(res, 500, "Failed to register user", error, {
@@ -207,7 +238,9 @@ router.post("/login", loginLimiter, async (req, res) => {
     }
 
     const { email, password } = req.body;
-    const user = await User.findOne({ email: email.toLowerCase() }).select("+password");
+    const user = await User.findOne({ email: email.toLowerCase() }).select(
+      "+password",
+    );
 
     if (!user) {
       return handleError(res, 401, "Email ou senha inválidos", null, {
@@ -221,7 +254,7 @@ router.post("/login", loginLimiter, async (req, res) => {
         403,
         "Sua conta está aguardando aprovação. Entre em contato com o administrador.",
         null,
-        { action: "LOGIN_USER_NOT_APPROVED" }
+        { action: "LOGIN_USER_NOT_APPROVED" },
       );
     }
 
@@ -231,7 +264,7 @@ router.post("/login", loginLimiter, async (req, res) => {
         403,
         "Sua conta está desativada. Entre em contato com o administrador.",
         null,
-        { action: "LOGIN_USER_INACTIVE" }
+        { action: "LOGIN_USER_INACTIVE" },
       );
     }
 
@@ -242,9 +275,13 @@ router.post("/login", loginLimiter, async (req, res) => {
       });
     }
 
-    const token = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET || "your-secret-key", {
-      expiresIn: "7d",
-    });
+    const token = jwt.sign(
+      { userId: user.id, email: user.email },
+      process.env.JWT_SECRET || "your-secret-key",
+      {
+        expiresIn: "7d",
+      },
+    );
 
     const userResponse = user.toObject();
     delete userResponse.password;
@@ -253,7 +290,10 @@ router.post("/login", loginLimiter, async (req, res) => {
     try {
       mlAccounts = await getAccountsByUserId(user.id);
     } catch (e) {
-      logger.error({ action: "LOGIN_ML_ACCOUNTS_FETCH_ERROR", error: e.message });
+      logger.error({
+        action: "LOGIN_ML_ACCOUNTS_FETCH_ERROR",
+        error: e.message,
+      });
     }
 
     return sendSuccess(
@@ -264,7 +304,7 @@ router.post("/login", loginLimiter, async (req, res) => {
         mlAccounts: mlAccounts || [],
       },
       "Login successful",
-      200
+      200,
     );
   } catch (error) {
     return handleError(res, 500, "Failed to login", error, {
@@ -302,9 +342,15 @@ router.get("/ml-login-url", (req, res) => {
 
     return sendSuccess(res, { authUrl }, "Authorization URL generated");
   } catch (error) {
-    return handleError(res, 500, "Failed to generate authorization URL", error, {
-      action: "ML_LOGIN_URL_ERROR",
-    });
+    return handleError(
+      res,
+      500,
+      "Failed to generate authorization URL",
+      error,
+      {
+        action: "ML_LOGIN_URL_ERROR",
+      },
+    );
   }
 });
 
@@ -323,11 +369,21 @@ router.get("/ml-login-url", (req, res) => {
  */
 router.post("/ml-oauth-url", (req, res) => {
   try {
-    const validation = validateRequired(req, ["clientId", "clientSecret", "redirectUri"]);
+    const validation = validateRequired(req, [
+      "clientId",
+      "clientSecret",
+      "redirectUri",
+    ]);
     if (!validation.valid) {
-      return handleError(res, 400, "clientId, clientSecret, and redirectUri are required", null, {
-        action: "ML_OAUTH_URL_INVALID_REQUEST",
-      });
+      return handleError(
+        res,
+        400,
+        "clientId, clientSecret, and redirectUri are required",
+        null,
+        {
+          action: "ML_OAUTH_URL_INVALID_REQUEST",
+        },
+      );
     }
 
     const { clientId, clientSecret, redirectUri } = req.body;
@@ -336,9 +392,15 @@ router.post("/ml-oauth-url", (req, res) => {
 
     return sendSuccess(res, { authUrl, state }, "Authorization URL generated");
   } catch (error) {
-    return handleError(res, 500, "Failed to generate authorization URL", error, {
-      action: "ML_OAUTH_URL_ERROR",
-    });
+    return handleError(
+      res,
+      500,
+      "Failed to generate authorization URL",
+      error,
+      {
+        action: "ML_OAUTH_URL_ERROR",
+      },
+    );
   }
 });
 
@@ -360,7 +422,7 @@ router.get("/ml-auth/url", (req, res) => {
         400,
         "ML_CLIENT_ID, ML_CLIENT_SECRET, and ML_REDIRECT_URI environment variables are not configured",
         null,
-        { action: "ML_AUTH_URL_MISSING_CONFIG" }
+        { action: "ML_AUTH_URL_MISSING_CONFIG" },
       );
     }
 
@@ -376,12 +438,18 @@ router.get("/ml-auth/url", (req, res) => {
         clientSecret: CLIENT_SECRET,
         redirectUri: REDIRECT_URI,
       },
-      "Authorization URL generated"
+      "Authorization URL generated",
     );
   } catch (error) {
-    return handleError(res, 500, "Failed to generate authorization URL", error, {
-      action: "ML_AUTH_URL_ERROR",
-    });
+    return handleError(
+      res,
+      500,
+      "Failed to generate authorization URL",
+      error,
+      {
+        action: "ML_AUTH_URL_ERROR",
+      },
+    );
   }
 });
 
@@ -393,12 +461,23 @@ router.get("/ml-auth/url", (req, res) => {
  */
 router.post("/ml-token-exchange", async (req, res) => {
   try {
-    const validation = validateRequired(req, ["code", "clientId", "clientSecret", "redirectUri"]);
+    const validation = validateRequired(req, [
+      "code",
+      "clientId",
+      "clientSecret",
+      "redirectUri",
+    ]);
     if (!validation.valid) {
-      return handleError(res, 400, "code, clientId, clientSecret, and redirectUri are required", null, {
-        action: "TOKEN_EXCHANGE_INVALID_REQUEST",
-        missingFields: validation.missingFields,
-      });
+      return handleError(
+        res,
+        400,
+        "code, clientId, clientSecret, and redirectUri are required",
+        null,
+        {
+          action: "TOKEN_EXCHANGE_INVALID_REQUEST",
+          missingFields: validation.missingFields,
+        },
+      );
     }
 
     const { code, clientId, clientSecret, redirectUri } = req.body;
@@ -414,7 +493,7 @@ router.post("/ml-token-exchange", async (req, res) => {
       code,
       clientId,
       clientSecret,
-      redirectUri
+      redirectUri,
     );
 
     if (!tokenResponse.access_token) {
@@ -442,14 +521,20 @@ router.post("/ml-token-exchange", async (req, res) => {
         scope: tokenResponse.scope,
         obtainedAt: new Date().toISOString(),
       },
-      "Token exchange completed successfully"
+      "Token exchange completed successfully",
     );
   } catch (error) {
-    return handleError(res, error.response?.status || 500, "Failed to exchange code for token", error, {
-      action: "TOKEN_EXCHANGE_ERROR",
-      statusCode: error.response?.status,
-      mlErrorData: error.response?.data,
-    });
+    return handleError(
+      res,
+      error.response?.status || 500,
+      "Failed to exchange code for token",
+      error,
+      {
+        action: "TOKEN_EXCHANGE_ERROR",
+        statusCode: error.response?.status,
+        mlErrorData: error.response?.data,
+      },
+    );
   }
 });
 
@@ -464,9 +549,15 @@ router.get("/ml-app-token", async (req, res) => {
     const CLIENT_SECRET = process.env.ML_CLIENT_SECRET;
 
     if (!CLIENT_ID || !CLIENT_SECRET) {
-      return handleError(res, 500, "ML_CLIENT_ID or ML_CLIENT_SECRET not configured", null, {
-        action: "ML_APP_TOKEN_MISSING_CONFIG",
-      });
+      return handleError(
+        res,
+        500,
+        "ML_CLIENT_ID or ML_CLIENT_SECRET not configured",
+        null,
+        {
+          action: "ML_APP_TOKEN_MISSING_CONFIG",
+        },
+      );
     }
 
     const response = await sdkManager.execute(null, async (sdk) => {
@@ -480,9 +571,15 @@ router.get("/ml-app-token", async (req, res) => {
     const { access_token, expires_in, token_type } = response.data;
 
     if (!access_token) {
-      return handleError(res, 400, "Failed to obtain access token from Mercado Livre", null, {
-        action: "ML_APP_TOKEN_FAILED",
-      });
+      return handleError(
+        res,
+        400,
+        "Failed to obtain access token from Mercado Livre",
+        null,
+        {
+          action: "ML_APP_TOKEN_FAILED",
+        },
+      );
     }
 
     return sendSuccess(
@@ -493,44 +590,22 @@ router.get("/ml-app-token", async (req, res) => {
         tokenType: token_type,
         obtainedAt: new Date().toISOString(),
       },
-      "Access token obtained successfully"
+      "Access token obtained successfully",
     );
   } catch (error) {
-    return handleError(res, 500, "Failed to get access token from Mercado Livre", error, {
-      action: "ML_APP_TOKEN_ERROR",
-    });
+    return handleError(
+      res,
+      500,
+      "Failed to get access token from Mercado Livre",
+      error,
+      {
+        action: "ML_APP_TOKEN_ERROR",
+      },
+    );
   }
 });
 
-/**
- * GET /api/auth/ml-auth/status
- *
- * Get ML OAuth status and connected accounts.
- */
-router.get("/ml-auth/status", async (req, res) => {
-  try {
-    const token = getTokenFromHeader(req);
-
-    let userId = null;
-    if (token) {
-      const verification = verifyJWT(token, false);
-      if (verification.decoded) {
-        userId = verification.decoded.userId;
-      }
-    }
-
-    if (!userId) {
-      return sendSuccess(res, { accounts: [] }, "No authenticated user");
-    }
-
-    const accounts = await getAccountsByUserId(userId);
-    return sendSuccess(res, { accounts: accounts || [] }, "ML accounts retrieved");
-  } catch (error) {
-    return handleError(res, 500, "Failed to get ML accounts status", error, {
-      action: "ML_AUTH_STATUS_ERROR",
-    });
-  }
-});
+// Endpoint ml-auth/status movido para linha 2482 (versão MongoDB)
 
 /**
  * POST /api/auth/ml-callback
@@ -540,39 +615,68 @@ router.get("/ml-auth/status", async (req, res) => {
 router.post("/ml-callback", async (req, res, next) => {
   try {
     if (!req.body.code) {
-      return handleError(res, 400, 'Missing authorization code. The "code" parameter is required', null, {
-        action: "ML_CALLBACK_MISSING_CODE",
-      });
+      return handleError(
+        res,
+        400,
+        'Missing authorization code. The "code" parameter is required',
+        null,
+        {
+          action: "ML_CALLBACK_MISSING_CODE",
+        },
+      );
     }
 
     const token = getTokenFromHeader(req);
     if (!token) {
-      return handleError(res, 401, "User not authenticated. JWT token is required to link ML account to user", null, {
-        action: "ML_CALLBACK_NOT_AUTHENTICATED",
-      });
+      return handleError(
+        res,
+        401,
+        "User not authenticated. JWT token is required to link ML account to user",
+        null,
+        {
+          action: "ML_CALLBACK_NOT_AUTHENTICATED",
+        },
+      );
     }
 
     const verification = verifyJWT(token);
     if (!verification.valid) {
-      return handleError(res, 401, "Invalid or expired token", verification.error, {
-        action: "ML_CALLBACK_INVALID_TOKEN",
-      });
+      return handleError(
+        res,
+        401,
+        "Invalid or expired token",
+        verification.error,
+        {
+          action: "ML_CALLBACK_INVALID_TOKEN",
+        },
+      );
     }
 
     const jwtUserId = verification.decoded.userId;
     const user = await User.findById(jwtUserId);
 
     if (!user) {
-      return handleError(res, 404, "User not found. The authenticated user does not exist", null, {
-        action: "ML_CALLBACK_USER_NOT_FOUND",
-      });
+      return handleError(
+        res,
+        404,
+        "User not found. The authenticated user does not exist",
+        null,
+        {
+          action: "ML_CALLBACK_USER_NOT_FOUND",
+        },
+      );
     }
 
     const { code, state, clientId, clientSecret, redirectUri } = req.body;
 
     let tokenResponse;
     if (clientId && clientSecret && redirectUri) {
-      tokenResponse = await exchangeCodeForTokenWithCredentials(code, clientId, clientSecret, redirectUri);
+      tokenResponse = await exchangeCodeForTokenWithCredentials(
+        code,
+        clientId,
+        clientSecret,
+        redirectUri,
+      );
     } else {
       tokenResponse = await exchangeCodeForToken(code);
     }
@@ -626,7 +730,9 @@ router.post("/ml-callback", async (req, res, next) => {
       connectedAt: new Date().toISOString(),
     };
 
-    const accountAlreadyLinked = user.mlAccounts.some((acc) => acc.accountId === accountId);
+    const accountAlreadyLinked = user.mlAccounts.some(
+      (acc) => acc.accountId === accountId,
+    );
 
     if (!accountAlreadyLinked) {
       user.mlAccounts.push(mlAccountInfo);
@@ -647,7 +753,7 @@ router.post("/ml-callback", async (req, res, next) => {
           status: account.status,
         },
       },
-      "OAuth token exchange completed successfully"
+      "OAuth token exchange completed successfully",
     );
   } catch (error) {
     return handleError(res, 500, "OAuth callback error", error, {
@@ -664,9 +770,15 @@ router.post("/ml-callback", async (req, res, next) => {
 router.post("/ml-refresh", async (req, res, next) => {
   try {
     if (!req.body.accountId) {
-      return handleError(res, 400, 'Missing accountId. The "accountId" parameter is required', null, {
-        action: "ML_REFRESH_MISSING_ID",
-      });
+      return handleError(
+        res,
+        400,
+        'Missing accountId. The "accountId" parameter is required',
+        null,
+        {
+          action: "ML_REFRESH_MISSING_ID",
+        },
+      );
     }
 
     const { accountId } = req.body;
@@ -680,15 +792,25 @@ router.post("/ml-refresh", async (req, res, next) => {
     }
 
     if (!account.refreshToken) {
-      return handleError(res, 400, "No refresh token available. Account needs to be re-authenticated", null, {
-        action: "ML_REFRESH_NO_TOKEN",
-      });
+      return handleError(
+        res,
+        400,
+        "No refresh token available. Account needs to be re-authenticated",
+        null,
+        {
+          action: "ML_REFRESH_NO_TOKEN",
+        },
+      );
     }
 
     const clientId = account.clientId || null;
     const clientSecret = account.clientSecret || null;
 
-    const tokenResponse = await refreshToken(account.refreshToken, clientId, clientSecret);
+    const tokenResponse = await refreshToken(
+      account.refreshToken,
+      clientId,
+      clientSecret,
+    );
 
     if (!tokenResponse.access_token) {
       return handleError(res, 400, "Failed to refresh token", null, {
@@ -713,7 +835,7 @@ router.post("/ml-refresh", async (req, res, next) => {
         accessToken: tokenResponse.access_token,
         tokenExpiry: tokenExpiry,
       },
-      "Token refreshed successfully"
+      "Token refreshed successfully",
     );
   } catch (error) {
     return handleError(res, 500, "Token refresh error", error, {
@@ -793,7 +915,9 @@ router.post("/ml-add-token", authenticateToken, async (req, res, next) => {
       addedAt: new Date().toISOString(),
     };
 
-    const accountAlreadyLinked = user.mlAccounts.some((acc) => acc.accountId === accountId);
+    const accountAlreadyLinked = user.mlAccounts.some(
+      (acc) => acc.accountId === accountId,
+    );
 
     if (!accountAlreadyLinked) {
       user.mlAccounts.push(mlAccountInfo);
@@ -813,7 +937,7 @@ router.post("/ml-add-token", authenticateToken, async (req, res, next) => {
         },
       },
       "Account added successfully via tokens",
-      200
+      200,
     );
   } catch (error) {
     return handleError(res, 500, "Failed to add ML account", error, {
@@ -881,9 +1005,15 @@ router.post("/verify-email", async (req, res) => {
     });
 
     if (!user) {
-      return handleError(res, 404, "Invalid or expired verification token", null, {
-        action: "VERIFY_EMAIL_INVALID_TOKEN",
-      });
+      return handleError(
+        res,
+        404,
+        "Invalid or expired verification token",
+        null,
+        {
+          action: "VERIFY_EMAIL_INVALID_TOKEN",
+        },
+      );
     }
 
     user.emailVerified = true;
@@ -905,7 +1035,7 @@ router.post("/verify-email", async (req, res) => {
     const jwtToken = jwt.sign(
       { userId: user.id, email: user.email },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: "7d" },
     );
 
     return sendSuccess(
@@ -921,7 +1051,7 @@ router.post("/verify-email", async (req, res) => {
         token: jwtToken,
       },
       "Email verified successfully!",
-      200
+      200,
     );
   } catch (error) {
     return handleError(res, 500, "Failed to verify email", error, {
@@ -950,7 +1080,7 @@ router.post("/resend-verification-email", async (req, res) => {
         res,
         {},
         "If this email is registered, you will receive a verification link shortly",
-        200
+        200,
       );
     }
 
@@ -965,7 +1095,11 @@ router.post("/resend-verification-email", async (req, res) => {
 
     try {
       const emailService = require("../services/email");
-      await emailService.sendVerificationEmail(email, verificationToken, user.firstName);
+      await emailService.sendVerificationEmail(
+        email,
+        verificationToken,
+        user.firstName,
+      );
 
       logger.info({
         action: "VERIFICATION_EMAIL_RESENT",
@@ -974,12 +1108,23 @@ router.post("/resend-verification-email", async (req, res) => {
         timestamp: new Date().toISOString(),
       });
 
-      return sendSuccess(res, {}, "Verification email sent! Please check your inbox.", 200);
+      return sendSuccess(
+        res,
+        {},
+        "Verification email sent! Please check your inbox.",
+        200,
+      );
     } catch (emailError) {
-      return handleError(res, 500, "Failed to send verification email. Please try again later.", emailError, {
-        action: "RESEND_VERIFICATION_EMAIL_FAILED",
-        email: user.email,
-      });
+      return handleError(
+        res,
+        500,
+        "Failed to send verification email. Please try again later.",
+        emailError,
+        {
+          action: "RESEND_VERIFICATION_EMAIL_FAILED",
+          email: user.email,
+        },
+      );
     }
   } catch (error) {
     return handleError(res, 500, "Failed to resend verification email", error, {
@@ -1010,7 +1155,7 @@ router.get("/email-status/:email", async (req, res) => {
         emailVerificationExpires: user.emailVerificationExpires,
       },
       "Email status retrieved",
-      200
+      200,
     );
   } catch (error) {
     return handleError(res, 500, "Failed to check email status", error, {
@@ -1026,14 +1171,19 @@ router.get("/email-status/:email", async (req, res) => {
  */
 router.post("/ml-compressed-callback", async (req, res) => {
   try {
-    const validation = validateRequired(req, ["compressedData", "clientId", "clientSecret", "redirectUri"]);
+    const validation = validateRequired(req, [
+      "compressedData",
+      "clientId",
+      "clientSecret",
+      "redirectUri",
+    ]);
     if (!validation.valid) {
       return handleError(
         res,
         400,
         "compressedData, clientId, clientSecret, and redirectUri are required",
         null,
-        { action: "ML_COMPRESSED_CALLBACK_INVALID_REQUEST" }
+        { action: "ML_COMPRESSED_CALLBACK_INVALID_REQUEST" },
       );
     }
 
@@ -1060,9 +1210,15 @@ router.post("/ml-compressed-callback", async (req, res) => {
         const zlib = require("zlib");
         decoded = JSON.parse(zlib.gunzipSync(bytes).toString("utf8"));
       } catch (altError) {
-        return handleError(res, 400, "Failed to decode compressed data", decodeError, {
-          action: "ML_COMPRESSED_DECODE_ERROR",
-        });
+        return handleError(
+          res,
+          400,
+          "Failed to decode compressed data",
+          decodeError,
+          {
+            action: "ML_COMPRESSED_DECODE_ERROR",
+          },
+        );
       }
     }
 
@@ -1082,7 +1238,7 @@ router.post("/ml-compressed-callback", async (req, res) => {
           expiresIn: decoded.expires_in,
           userId: decoded.user_id,
         },
-        "Compressed callback processed successfully"
+        "Compressed callback processed successfully",
       );
     }
 
@@ -1091,7 +1247,7 @@ router.post("/ml-compressed-callback", async (req, res) => {
         decoded.code,
         clientId,
         clientSecret,
-        redirectUri
+        redirectUri,
       );
 
       return sendSuccess(
@@ -1102,17 +1258,29 @@ router.post("/ml-compressed-callback", async (req, res) => {
           expiresIn: tokenResponse.expires_in,
           userId: tokenResponse.user_id,
         },
-        "Compressed callback processed successfully"
+        "Compressed callback processed successfully",
       );
     }
 
-    return handleError(res, 400, "No authorization code or access token in compressed data", null, {
-      action: "ML_COMPRESSED_CALLBACK_NO_DATA",
-    });
+    return handleError(
+      res,
+      400,
+      "No authorization code or access token in compressed data",
+      null,
+      {
+        action: "ML_COMPRESSED_CALLBACK_NO_DATA",
+      },
+    );
   } catch (error) {
-    return handleError(res, 500, "Failed to process compressed callback", error, {
-      action: "ML_COMPRESSED_CALLBACK_ERROR",
-    });
+    return handleError(
+      res,
+      500,
+      "Failed to process compressed callback",
+      error,
+      {
+        action: "ML_COMPRESSED_CALLBACK_ERROR",
+      },
+    );
   }
 });
 
@@ -1136,7 +1304,7 @@ router.post("/forgot-password", async (req, res) => {
         res,
         {},
         "Se essa conta existe, você receberá um link para resetar sua senha.",
-        200
+        200,
       );
     }
 
@@ -1155,12 +1323,18 @@ router.post("/forgot-password", async (req, res) => {
       res,
       { resetToken },
       "Se essa conta existe, você receberá um link para resetar sua senha.",
-      200
+      200,
     );
   } catch (error) {
-    return handleError(res, 500, "Failed to process password reset request", error, {
-      action: "FORGOT_PASSWORD_ERROR",
-    });
+    return handleError(
+      res,
+      500,
+      "Failed to process password reset request",
+      error,
+      {
+        action: "FORGOT_PASSWORD_ERROR",
+      },
+    );
   }
 });
 
@@ -1170,23 +1344,41 @@ router.post("/forgot-password", async (req, res) => {
  */
 router.post("/reset-password", async (req, res) => {
   try {
-    const validation = validateRequired(req, ["email", "resetToken", "newPassword"]);
+    const validation = validateRequired(req, [
+      "email",
+      "resetToken",
+      "newPassword",
+    ]);
     if (!validation.valid) {
-      return handleError(res, 400, "Email, reset token, and new password are required", null, {
-        action: "RESET_PASSWORD_INVALID_REQUEST",
-        missingFields: validation.missingFields,
-      });
+      return handleError(
+        res,
+        400,
+        "Email, reset token, and new password are required",
+        null,
+        {
+          action: "RESET_PASSWORD_INVALID_REQUEST",
+          missingFields: validation.missingFields,
+        },
+      );
     }
 
     const { email, resetToken, newPassword } = req.body;
 
     if (newPassword.length < 8) {
-      return handleError(res, 400, "Password must be at least 8 characters", null, {
-        action: "RESET_PASSWORD_WEAK_PASSWORD",
-      });
+      return handleError(
+        res,
+        400,
+        "Password must be at least 8 characters",
+        null,
+        {
+          action: "RESET_PASSWORD_WEAK_PASSWORD",
+        },
+      );
     }
 
-    const user = await User.findOne({ email: email.toLowerCase() }).select("+password");
+    const user = await User.findOne({ email: email.toLowerCase() }).select(
+      "+password",
+    );
 
     if (!user) {
       return handleError(res, 404, "User not found", null, {
@@ -1200,7 +1392,7 @@ router.post("/reset-password", async (req, res) => {
         400,
         "Invalid or expired reset token. Please request a new password reset.",
         null,
-        { action: "RESET_PASSWORD_INVALID_TOKEN" }
+        { action: "RESET_PASSWORD_INVALID_TOKEN" },
       );
     }
 
@@ -1222,7 +1414,7 @@ router.post("/reset-password", async (req, res) => {
       res,
       { user: userProfile },
       "Senha resetada com sucesso. Você pode fazer login agora.",
-      200
+      200,
     );
   } catch (error) {
     return handleError(res, 500, "Failed to reset password", error, {
@@ -1260,7 +1452,7 @@ router.post("/verify-reset-token", async (req, res) => {
       res,
       { valid: isValid },
       isValid ? "Reset token is valid" : "Reset token is invalid or expired",
-      200
+      200,
     );
   } catch (error) {
     return handleError(res, 500, "Failed to verify reset token", error, {
@@ -1284,9 +1476,15 @@ router.post("/2fa/setup", async (req, res) => {
 
     const verification = verifyJWT(token);
     if (!verification.valid) {
-      return handleError(res, 401, "Invalid or expired token", verification.error, {
-        action: "2FA_SETUP_INVALID_TOKEN",
-      });
+      return handleError(
+        res,
+        401,
+        "Invalid or expired token",
+        verification.error,
+        {
+          action: "2FA_SETUP_INVALID_TOKEN",
+        },
+      );
     }
 
     const user = await User.findOne({ id: verification.decoded.userId });
@@ -1337,7 +1535,7 @@ router.post("/2fa/setup", async (req, res) => {
         backupCodes: backupCodes.map((b) => b.code),
       },
       "2FA setup initiated. Please verify with your authenticator app.",
-      200
+      200,
     );
   } catch (error) {
     return handleError(res, 500, "Failed to setup 2FA", error, {
@@ -1367,12 +1565,20 @@ router.post("/2fa/verify", async (req, res) => {
 
     const verification = verifyJWT(token);
     if (!verification.valid) {
-      return handleError(res, 401, "Invalid or expired token", verification.error, {
-        action: "2FA_VERIFY_INVALID_TOKEN",
-      });
+      return handleError(
+        res,
+        401,
+        "Invalid or expired token",
+        verification.error,
+        {
+          action: "2FA_VERIFY_INVALID_TOKEN",
+        },
+      );
     }
 
-    const user = await User.findOne({ id: verification.decoded.userId }).select("+twoFactorSecret");
+    const user = await User.findOne({ id: verification.decoded.userId }).select(
+      "+twoFactorSecret",
+    );
     if (!user) {
       return handleError(res, 404, "User not found", null, {
         action: "2FA_VERIFY_USER_NOT_FOUND",
@@ -1380,9 +1586,15 @@ router.post("/2fa/verify", async (req, res) => {
     }
 
     if (!user.twoFactorSecret) {
-      return handleError(res, 400, "No pending 2FA setup found. Start setup first.", null, {
-        action: "2FA_VERIFY_NO_SETUP",
-      });
+      return handleError(
+        res,
+        400,
+        "No pending 2FA setup found. Start setup first.",
+        null,
+        {
+          action: "2FA_VERIFY_NO_SETUP",
+        },
+      );
     }
 
     const verified = speakeasy.totp.verify({
@@ -1420,7 +1632,7 @@ router.post("/2fa/verify", async (req, res) => {
         backupCodes: user.backupCodes.map((b) => b.code),
       },
       "2FA enabled successfully",
-      200
+      200,
     );
   } catch (error) {
     return handleError(res, 500, "Failed to verify 2FA code", error, {
@@ -1452,9 +1664,15 @@ router.post("/2fa/login", async (req, res) => {
     }
 
     if (!user.twoFactorEnabled) {
-      return handleError(res, 400, "2FA is not enabled for this account", null, {
-        action: "2FA_LOGIN_NOT_ENABLED",
-      });
+      return handleError(
+        res,
+        400,
+        "2FA is not enabled for this account",
+        null,
+        {
+          action: "2FA_LOGIN_NOT_ENABLED",
+        },
+      );
     }
 
     let verified = speakeasy.totp.verify({
@@ -1465,7 +1683,9 @@ router.post("/2fa/login", async (req, res) => {
     });
 
     if (!verified) {
-      const backupCodeIndex = user.backupCodes.findIndex((b) => b.code === code && !b.used);
+      const backupCodeIndex = user.backupCodes.findIndex(
+        (b) => b.code === code && !b.used,
+      );
       if (backupCodeIndex !== -1) {
         verified = true;
         user.backupCodes[backupCodeIndex].used = true;
@@ -1492,7 +1712,7 @@ router.post("/2fa/login", async (req, res) => {
     const token = jwt.sign(
       { userId: user.id, email: user.email, role: user.role },
       process.env.JWT_SECRET || "your-secret-key",
-      { expiresIn: "7d" }
+      { expiresIn: "7d" },
     );
 
     logger.info({
@@ -1502,12 +1722,7 @@ router.post("/2fa/login", async (req, res) => {
       timestamp: new Date().toISOString(),
     });
 
-    return sendSuccess(
-      res,
-      { token },
-      "2FA verification successful",
-      200
-    );
+    return sendSuccess(res, { token }, "2FA verification successful", 200);
   } catch (error) {
     return handleError(res, 500, "Failed to verify 2FA code", error, {
       action: "2FA_LOGIN_ERROR",
@@ -1529,26 +1744,43 @@ router.post("/2fa/disable", async (req, res) => {
     }
 
     if (!req.body.password) {
-      return handleError(res, 400, "Password is required for disabling 2FA", null, {
-        action: "2FA_DISABLE_MISSING_PASSWORD",
-      });
+      return handleError(
+        res,
+        400,
+        "Password is required for disabling 2FA",
+        null,
+        {
+          action: "2FA_DISABLE_MISSING_PASSWORD",
+        },
+      );
     }
 
     const verification = verifyJWT(token);
     if (!verification.valid) {
-      return handleError(res, 401, "Invalid or expired token", verification.error, {
-        action: "2FA_DISABLE_INVALID_TOKEN",
-      });
+      return handleError(
+        res,
+        401,
+        "Invalid or expired token",
+        verification.error,
+        {
+          action: "2FA_DISABLE_INVALID_TOKEN",
+        },
+      );
     }
 
-    const user = await User.findOne({ id: verification.decoded.userId }).select("+password +twoFactorSecret");
+    const user = await User.findOne({ id: verification.decoded.userId }).select(
+      "+password +twoFactorSecret",
+    );
     if (!user) {
       return handleError(res, 404, "User not found", null, {
         action: "2FA_DISABLE_USER_NOT_FOUND",
       });
     }
 
-    const isPasswordValid = await bcrypt.compare(req.body.password, user.password);
+    const isPasswordValid = await bcrypt.compare(
+      req.body.password,
+      user.password,
+    );
     if (!isPasswordValid) {
       return handleError(res, 401, "Invalid password", null, {
         action: "2FA_DISABLE_INVALID_PASSWORD",
@@ -1590,9 +1822,15 @@ router.get("/2fa/status", async (req, res) => {
 
     const verification = verifyJWT(token);
     if (!verification.valid) {
-      return handleError(res, 401, "Invalid or expired token", verification.error, {
-        action: "2FA_STATUS_INVALID_TOKEN",
-      });
+      return handleError(
+        res,
+        401,
+        "Invalid or expired token",
+        verification.error,
+        {
+          action: "2FA_STATUS_INVALID_TOKEN",
+        },
+      );
     }
 
     const user = await User.findOne({ id: verification.decoded.userId });
@@ -1609,7 +1847,7 @@ router.get("/2fa/status", async (req, res) => {
         backupCodesRemaining: user.backupCodes.filter((b) => !b.used).length,
       },
       "2FA status retrieved",
-      200
+      200,
     );
   } catch (error) {
     return handleError(res, 500, "Failed to get 2FA status", error, {
@@ -1639,9 +1877,15 @@ router.post("/refresh-token", async (req, res) => {
     const decoded = verification.decoded;
 
     if (!decoded) {
-      return handleError(res, 401, "Invalid or malformed token", verification.error, {
-        action: "REFRESH_TOKEN_INVALID",
-      });
+      return handleError(
+        res,
+        401,
+        "Invalid or malformed token",
+        verification.error,
+        {
+          action: "REFRESH_TOKEN_INVALID",
+        },
+      );
     }
 
     const user = await User.findOne({ id: decoded.userId });
@@ -1664,7 +1908,7 @@ router.post("/refresh-token", async (req, res) => {
         role: user.role,
       },
       process.env.JWT_SECRET || "your-secret-key",
-      { expiresIn: "7d" }
+      { expiresIn: "7d" },
     );
 
     logger.info({
@@ -1681,7 +1925,7 @@ router.post("/refresh-token", async (req, res) => {
         expiresIn: "7 days",
       },
       "Token refreshed successfully",
-      200
+      200,
     );
   } catch (error) {
     return handleError(res, 500, "Failed to refresh token", error, {
@@ -1705,9 +1949,15 @@ router.get("/me", async (req, res) => {
 
     const verification = verifyJWT(token);
     if (!verification.valid) {
-      return handleError(res, 401, "Invalid or expired token", verification.error, {
-        action: "GET_ME_INVALID_TOKEN",
-      });
+      return handleError(
+        res,
+        401,
+        "Invalid or expired token",
+        verification.error,
+        {
+          action: "GET_ME_INVALID_TOKEN",
+        },
+      );
     }
 
     const user = await User.findOne({ id: verification.decoded.userId });
@@ -1721,7 +1971,7 @@ router.get("/me", async (req, res) => {
       res,
       { user: user.getProfile() },
       "User profile retrieved",
-      200
+      200,
     );
   } catch (error) {
     return handleError(res, 500, "Failed to get user profile", error, {
@@ -1745,9 +1995,15 @@ router.post("/logout", async (req, res) => {
 
     const verification = verifyJWT(token);
     if (!verification.valid) {
-      return handleError(res, 401, "Invalid or expired token", verification.error, {
-        action: "LOGOUT_INVALID_TOKEN",
-      });
+      return handleError(
+        res,
+        401,
+        "Invalid or expired token",
+        verification.error,
+        {
+          action: "LOGOUT_INVALID_TOKEN",
+        },
+      );
     }
 
     const user = await User.findOne({ id: verification.decoded.userId });
@@ -1781,37 +2037,63 @@ router.post("/change-password", async (req, res) => {
       });
     }
 
-    const validation = validateRequired(req, ["currentPassword", "newPassword"]);
+    const validation = validateRequired(req, [
+      "currentPassword",
+      "newPassword",
+    ]);
     if (!validation.valid) {
-      return handleError(res, 400, "Current password and new password are required", null, {
-        action: "CHANGE_PASSWORD_MISSING_FIELDS",
-        missingFields: validation.missingFields,
-      });
+      return handleError(
+        res,
+        400,
+        "Current password and new password are required",
+        null,
+        {
+          action: "CHANGE_PASSWORD_MISSING_FIELDS",
+          missingFields: validation.missingFields,
+        },
+      );
     }
 
     const { currentPassword, newPassword } = req.body;
 
     if (newPassword.length < 8) {
-      return handleError(res, 400, "New password must be at least 8 characters", null, {
-        action: "CHANGE_PASSWORD_WEAK_PASSWORD",
-      });
+      return handleError(
+        res,
+        400,
+        "New password must be at least 8 characters",
+        null,
+        {
+          action: "CHANGE_PASSWORD_WEAK_PASSWORD",
+        },
+      );
     }
 
     const verification = verifyJWT(token);
     if (!verification.valid) {
-      return handleError(res, 401, "Invalid or expired token", verification.error, {
-        action: "CHANGE_PASSWORD_INVALID_TOKEN",
-      });
+      return handleError(
+        res,
+        401,
+        "Invalid or expired token",
+        verification.error,
+        {
+          action: "CHANGE_PASSWORD_INVALID_TOKEN",
+        },
+      );
     }
 
-    const user = await User.findOne({ id: verification.decoded.userId }).select("+password");
+    const user = await User.findOne({ id: verification.decoded.userId }).select(
+      "+password",
+    );
     if (!user) {
       return handleError(res, 404, "User not found", null, {
         action: "CHANGE_PASSWORD_USER_NOT_FOUND",
       });
     }
 
-    const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
+    const isPasswordValid = await bcrypt.compare(
+      currentPassword,
+      user.password,
+    );
     if (!isPasswordValid) {
       return handleError(res, 401, "Current password is incorrect", null, {
         action: "CHANGE_PASSWORD_INVALID_CURRENT",
@@ -1835,7 +2117,6 @@ router.post("/change-password", async (req, res) => {
     });
   }
 });
-
 
 /**
  * GET /api/auth/ml-login-url
@@ -2174,6 +2455,7 @@ router.get("/ml-auth/status", async (req, res) => {
     const token = authHeader && authHeader.split(" ")[1];
 
     let userId = null;
+
     if (token) {
       try {
         const decoded = require("jsonwebtoken").verify(
@@ -2182,7 +2464,7 @@ router.get("/ml-auth/status", async (req, res) => {
         );
         userId = decoded.userId;
       } catch (e) {
-        // Invalid token
+        // Token inválido ou expirado - apenas continue sem userId
       }
     }
 
@@ -2193,13 +2475,16 @@ router.get("/ml-auth/status", async (req, res) => {
       });
     }
 
-    const accounts = await getAccountsByUserId(userId);
+    // Fetch from MongoDB
+    const accounts = await MLAccount.findByUserId(userId);
+    const summaries = accounts.map((acc) => acc.getSummary());
+
     return res.json({
       success: true,
-      accounts: accounts || [],
+      accounts: summaries || [],
     });
   } catch (error) {
-    console.error("Error getting ML auth status:", error);
+    console.error("[ML-AUTH-STATUS ERROR]", error);
     return res.status(500).json({
       success: false,
       error: "Failed to get ML accounts status",
@@ -2494,14 +2779,11 @@ router.post("/ml-add-token", authenticateToken, async (req, res, next) => {
     let mlUserData;
     try {
       const mlResponse = await sdkManager.execute(null, async (sdk) => {
-        return sdk.axiosInstance.get(
-          "https://api.mercadolibre.com/users/me",
-          {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-            },
+        return sdk.axiosInstance.get("https://api.mercadolibre.com/users/me", {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
           },
-        );
+        });
       });
       mlUserData = mlResponse.data;
     } catch (error) {
@@ -2647,7 +2929,6 @@ router.post("/ml-logout", async (req, res, next) => {
   }
 });
 
-
 // ============================================
 // HELPER FUNCTIONS
 // ============================================
@@ -2703,25 +2984,24 @@ async function exchangeCodeForTokenWithCredentials(
       redirectUri: redirectUri,
     });
 
-    const response = await sdkManager.execute(null, async (sdk) => {
-      return sdk.axiosInstance.post(
-        ML_TOKEN_URL,
-        {
-          grant_type: "authorization_code",
-          client_id: clientId,
-          client_secret: clientSecret,
-          code: code,
-          redirect_uri: redirectUri,
+    // Fazer requisição HTTP direta sem usar SDKManager
+    const response = await axios.post(
+      ML_TOKEN_URL,
+      {
+        grant_type: "authorization_code",
+        client_id: clientId,
+        client_secret: clientSecret,
+        code: code,
+        redirect_uri: redirectUri,
+      },
+      {
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/x-www-form-urlencoded",
         },
-        {
-          headers: {
-            Accept: "application/json",
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-          timeout: 10000,
-        },
-      );
-    });
+        timeout: 10000,
+      },
+    );
 
     logger.info({
       action: "EXCHANGE_CODE_SUCCESS",
@@ -2741,7 +3021,6 @@ async function exchangeCodeForTokenWithCredentials(
       mlError: error.response?.data?.error,
       mlErrorDescription: error.response?.data?.error_description,
     });
-
     throw error;
   }
 }

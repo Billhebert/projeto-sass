@@ -97,15 +97,24 @@ function MLAuth() {
   };
 
   const handleDisconnect = async (accountId) => {
-    if (!window.confirm("Desconectar?")) return;
+    if (
+      !window.confirm(
+        "Deseja realmente remover esta conta? Esta ação não pode ser desfeita.",
+      )
+    )
+      return;
     try {
       const response = await api.delete(`/ml-accounts/${accountId}`);
       if (response.data.success) {
-        toast.success("Desconectado!");
+        toast.success("Conta removida com sucesso!");
+        // Atualizar lista local
+        setAccounts(accounts.filter((acc) => acc.id !== accountId));
+        // Recarregar do servidor
         fetchAccounts();
       }
     } catch (err) {
-      toast.error("Erro");
+      console.error("Error disconnecting account:", err);
+      toast.error(err.response?.data?.message || "Erro ao remover conta");
     }
   };
 
@@ -132,8 +141,12 @@ function MLAuth() {
           <div className="ml-card">
             <div className="ml-header">
               <h2>
-                {accounts.length} conta{accounts.length > 1 ? "s" : ""}
+                {accounts.length} conta{accounts.length > 1 ? "s" : ""}{" "}
+                conectada{accounts.length > 1 ? "s" : ""}
               </h2>
+              <p className="ml-header-subtitle">
+                Gerencie suas contas do Mercado Livre
+              </p>
             </div>
             <div className="ml-list">
               {accounts.map((acc) => (
@@ -145,18 +158,32 @@ function MLAuth() {
                   </div>
                   <div className="ml-item__info">
                     <h3>{acc.nickname || acc.accountName || "Conta ML"}</h3>
-                    <p>{acc.email || "-"}</p>
+                    <p className="ml-item__email">{acc.email || "-"}</p>
+                    {acc.mlUserId && (
+                      <p className="ml-item__id">ID: {acc.mlUserId}</p>
+                    )}
                   </div>
-                  <span
-                    className={`badge badge--${acc.status === "active" ? "success" : "warning"}`}
-                  >
-                    {acc.status === "active" ? "Ativo" : "Expirado"}
-                  </span>
+                  <div className="ml-item__status">
+                    <span
+                      className={`badge badge--${acc.status === "active" || acc.status === "connected" ? "success" : "warning"}`}
+                    >
+                      {acc.status === "active" || acc.status === "connected"
+                        ? "Conectado"
+                        : "Desconectado"}
+                    </span>
+                    {acc.tokenExpiresAt && (
+                      <small className="ml-item__expiry">
+                        Expira:{" "}
+                        {new Date(acc.tokenExpiresAt).toLocaleDateString()}
+                      </small>
+                    )}
+                  </div>
                   <button
                     className="btn btn--danger btn--small"
                     onClick={() => handleDisconnect(acc.id)}
+                    title="Remover conta"
                   >
-                    ×
+                    Remover
                   </button>
                 </div>
               ))}

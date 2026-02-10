@@ -1,7 +1,7 @@
 /**
  * Advertising/Mercado Ads Routes
  * Mercado Livre Product Ads API Integration
- * 
+ *
  * Endpoints:
  * - GET /api/advertising/:accountId - Get advertising overview
  * - GET /api/advertising/:accountId/campaigns - List all campaigns
@@ -16,8 +16,12 @@
  * - GET /api/advertising/:accountId/product-ads/* - Product Ads v2 endpoints
  */
 
-const express = require('express');
+const express = require("express");
 const router = express.Router();
+const logger = require("../logger");
+const sdkManager = require("../services/sdk-manager");
+const { authenticateToken } = require("../middleware/auth");
+const { validateMLToken } = require("../middleware/ml-token-validation");
 
 // ============================================
 // HELPER FUNCTIONS
@@ -58,13 +62,20 @@ function sendSuccess(res, data, message = null, statusCode = 200) {
 /**
  * Make ML API request with consistent headers
  */
-async function makeMLRequest(accountId, method, endpoint, data = null, additionalHeaders = {}, params = {}) {
+async function makeMLRequest(
+  accountId,
+  method,
+  endpoint,
+  data = null,
+  additionalHeaders = {},
+  params = {},
+) {
   return sdkManager.execute(accountId, async (sdk) => {
     const config = {
       method,
       url: endpoint,
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
         ...additionalHeaders,
       },
     };
@@ -73,7 +84,7 @@ async function makeMLRequest(accountId, method, endpoint, data = null, additiona
       config.params = params;
     }
 
-    if (data && (method === 'post' || method === 'put' || method === 'patch')) {
+    if (data && (method === "post" || method === "put" || method === "patch")) {
       config.data = data;
     }
 
@@ -86,7 +97,7 @@ async function makeMLRequest(accountId, method, endpoint, data = null, additiona
  */
 function getMLHeaders(additionalHeaders = {}) {
   return {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
     ...additionalHeaders,
   };
 }
@@ -94,21 +105,27 @@ function getMLHeaders(additionalHeaders = {}) {
 /**
  * Get advertiser info from ML API
  */
-async function getAdvertiserInfo(accountId, productId = 'PADS', siteId = 'MLB') {
+async function getAdvertiserInfo(
+  accountId,
+  productId = "PADS",
+  siteId = "MLB",
+) {
   try {
     const response = await makeMLRequest(
       accountId,
-      'get',
+      "get",
       `/advertising/advertisers`,
       null,
-      { 'Api-Version': '1' },
-      { product_id: productId }
+      { "Api-Version": "1" },
+      { product_id: productId },
     );
 
     const advertisers = response.data?.advertisers || [];
-    return advertisers.find(a => a.site_id === siteId) || advertisers[0] || null;
+    return (
+      advertisers.find((a) => a.site_id === siteId) || advertisers[0] || null
+    );
   } catch (error) {
-    logger.warn('Error fetching advertiser info:', { error: error.message });
+    logger.warn("Error fetching advertiser info:", { error: error.message });
     return null;
   }
 }
@@ -122,8 +139,8 @@ function calculateDateRange(days = 30) {
   startDate.setDate(today.getDate() - parseInt(days));
 
   return {
-    from: startDate.toISOString().split('T')[0],
-    to: today.toISOString().split('T')[0],
+    from: startDate.toISOString().split("T")[0],
+    to: today.toISOString().split("T")[0],
   };
 }
 
@@ -162,9 +179,12 @@ function calculateStats(campaigns, metricsSummary = null) {
       totalRevenue: metricsSummary.total_amount || 0,
       avgCpc: metricsSummary.cpc || 0,
       avgCtr: metricsSummary.ctr || 0,
-      roi: metricsSummary.cost > 0 
-        ? ((metricsSummary.total_amount - metricsSummary.cost) / metricsSummary.cost * 100) 
-        : 0,
+      roi:
+        metricsSummary.cost > 0
+          ? ((metricsSummary.total_amount - metricsSummary.cost) /
+              metricsSummary.cost) *
+            100
+          : 0,
     };
   }
 
@@ -180,7 +200,7 @@ function calculateStats(campaigns, metricsSummary = null) {
     roi: 0,
   };
 
-  campaigns.forEach(c => {
+  campaigns.forEach((c) => {
     stats.totalSpend += c.spent || 0;
     stats.totalClicks += c.clicks || 0;
     stats.totalImpressions += c.impressions || 0;
@@ -195,7 +215,8 @@ function calculateStats(campaigns, metricsSummary = null) {
     stats.avgCtr = (stats.totalClicks / stats.totalImpressions) * 100;
   }
   if (stats.totalSpend > 0) {
-    stats.roi = ((stats.totalRevenue - stats.totalSpend) / stats.totalSpend) * 100;
+    stats.roi =
+      ((stats.totalRevenue - stats.totalSpend) / stats.totalSpend) * 100;
   }
 
   return stats;
@@ -212,10 +233,19 @@ function generatePerformanceData(stats, days = 30) {
     const date = new Date();
     date.setDate(date.getDate() - i);
     performance.push({
-      date: date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
-      spend: Math.round((stats.totalSpend / daysCount) * (0.7 + Math.random() * 0.6)),
-      clicks: Math.round((stats.totalClicks / daysCount) * (0.7 + Math.random() * 0.6)),
-      conversions: Math.round((stats.totalConversions / daysCount) * (0.7 + Math.random() * 0.6)),
+      date: date.toLocaleDateString("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+      }),
+      spend: Math.round(
+        (stats.totalSpend / daysCount) * (0.7 + Math.random() * 0.6),
+      ),
+      clicks: Math.round(
+        (stats.totalClicks / daysCount) * (0.7 + Math.random() * 0.6),
+      ),
+      conversions: Math.round(
+        (stats.totalConversions / daysCount) * (0.7 + Math.random() * 0.6),
+      ),
     });
   }
 
@@ -228,11 +258,11 @@ function generatePerformanceData(stats, days = 30) {
 async function fetchLegacyCampaigns(accountId, mlUserId, params = {}) {
   const response = await makeMLRequest(
     accountId,
-    'get',
+    "get",
     `/users/${mlUserId}/ads/campaigns`,
     null,
     {},
-    params
+    params,
   );
 
   return (response.data.results || []).map(formatCampaign);
@@ -248,11 +278,11 @@ async function fetchProductAdsCampaigns(accountId, advertiser, params = {}) {
 
   const response = await makeMLRequest(
     accountId,
-    'get',
+    "get",
     `/advertising/${advertiser.site_id}/advertisers/${advertiser.advertiser_id}/product_ads/campaigns/search`,
     null,
-    { 'api-version': '2' },
-    params
+    { "api-version": "2" },
+    params,
   );
 
   return {
@@ -271,21 +301,21 @@ async function getMLAccount(req, res, next) {
     if (!account) {
       return res.status(404).json({
         success: false,
-        error: 'ML account not found',
+        error: "ML account not found",
       });
     }
 
     if (account.isTokenExpired()) {
       return res.status(401).json({
         success: false,
-        error: 'Token expired. Please refresh.',
+        error: "Token expired. Please refresh.",
       });
     }
 
     req.mlAccount = account;
     next();
   } catch (error) {
-    handleError(res, 500, 'Error getting ML account', error);
+    handleError(res, 500, "Error getting ML account", error);
   }
 }
 
@@ -297,7 +327,7 @@ async function getMLAccount(req, res, next) {
  * GET /api/advertising/:accountId
  * Get advertising overview with campaigns, stats and performance data
  */
-router.get('/:accountId', authenticateToken, getMLAccount, async (req, res) => {
+router.get("/:accountId", authenticateToken, getMLAccount, async (req, res) => {
   try {
     const { accountId } = req.params;
     const { days = 30 } = req.query;
@@ -312,7 +342,7 @@ router.get('/:accountId', authenticateToken, getMLAccount, async (req, res) => {
       totalRevenue: 0,
       avgCpc: 0,
       avgCtr: 0,
-      roi: 0
+      roi: 0,
     };
 
     // Try to get Product Ads data first (newer API)
@@ -324,15 +354,19 @@ router.get('/:accountId', authenticateToken, getMLAccount, async (req, res) => {
           limit: 50,
           date_from: dateRange.from,
           date_to: dateRange.to,
-          metrics: 'clicks,prints,ctr,cost,cpc,acos,cvr,roas,units_quantity,total_amount',
-          metrics_summary: 'true',
+          metrics:
+            "clicks,prints,ctr,cost,cpc,acos,cvr,roas,units_quantity,total_amount",
+          metrics_summary: "true",
         });
 
         campaigns = result.campaigns;
         stats = calculateStats(campaigns, result.metricsSummary);
       }
     } catch (err) {
-      logger.warn('Product Ads API not available, trying legacy API:', err.message);
+      logger.warn(
+        "Product Ads API not available, trying legacy API:",
+        err.message,
+      );
 
       // Fallback to legacy campaigns API
       try {
@@ -342,7 +376,7 @@ router.get('/:accountId', authenticateToken, getMLAccount, async (req, res) => {
         });
         stats = calculateStats(campaigns);
       } catch (legacyErr) {
-        logger.warn('Legacy ads API also failed:', legacyErr.message);
+        logger.warn("Legacy ads API also failed:", legacyErr.message);
       }
     }
 
@@ -354,26 +388,30 @@ router.get('/:accountId', authenticateToken, getMLAccount, async (req, res) => {
       performance,
     });
   } catch (error) {
-    logger.error('Error fetching advertising overview:', {
+    logger.error("Error fetching advertising overview:", {
       error: error.message,
       accountId: req.params.accountId,
     });
 
     // Return empty data instead of error to allow frontend to show mock data
-    return sendSuccess(res, {
-      campaigns: [],
-      stats: {
-        totalSpend: 0,
-        totalClicks: 0,
-        totalImpressions: 0,
-        totalConversions: 0,
-        totalRevenue: 0,
-        avgCpc: 0,
-        avgCtr: 0,
-        roi: 0
+    return sendSuccess(
+      res,
+      {
+        campaigns: [],
+        stats: {
+          totalSpend: 0,
+          totalClicks: 0,
+          totalImpressions: 0,
+          totalConversions: 0,
+          totalRevenue: 0,
+          avgCpc: 0,
+          avgCtr: 0,
+          roi: 0,
+        },
+        performance: [],
       },
-      performance: [],
-    }, 'Advertising data not available for this account');
+      "Advertising data not available for this account",
+    );
   }
 });
 
@@ -381,302 +419,412 @@ router.get('/:accountId', authenticateToken, getMLAccount, async (req, res) => {
  * GET /api/advertising/:accountId/campaigns
  * List all advertising campaigns
  */
-router.get('/:accountId/campaigns', authenticateToken, getMLAccount, async (req, res) => {
-  try {
-    const { accountId } = req.params;
-    const { mlUserId } = req.mlAccount;
-    const { offset = 0, limit = 50, status } = req.query;
+router.get(
+  "/:accountId/campaigns",
+  authenticateToken,
+  getMLAccount,
+  async (req, res) => {
+    try {
+      const { accountId } = req.params;
+      const { mlUserId } = req.mlAccount;
+      const { offset = 0, limit = 50, status } = req.query;
 
-    const params = { offset, limit };
-    if (status) params.status = status;
+      const params = { offset, limit };
+      if (status) params.status = status;
 
-    const response = await makeMLRequest(
-      accountId,
-      'get',
-      `/users/${mlUserId}/ads/campaigns`,
-      null,
-      {},
-      params
-    );
+      const response = await makeMLRequest(
+        accountId,
+        "get",
+        `/users/${mlUserId}/ads/campaigns`,
+        null,
+        {},
+        params,
+      );
 
-    return sendSuccess(res, response.data);
-  } catch (error) {
-    // Handle case where ads feature is not available
-    if (error.response?.status === 403 || error.response?.status === 404) {
-      return sendSuccess(res, { results: [], paging: { total: 0 } }, 'Advertising feature may not be available for this account');
+      return sendSuccess(res, response.data);
+    } catch (error) {
+      // Handle case where ads feature is not available
+      if (error.response?.status === 403 || error.response?.status === 404) {
+        return sendSuccess(
+          res,
+          { results: [], paging: { total: 0 } },
+          "Advertising feature may not be available for this account",
+        );
+      }
+
+      return handleError(
+        res,
+        error.response?.status || 500,
+        "Error fetching campaigns",
+        error,
+      );
     }
-
-    return handleError(res, error.response?.status || 500, 'Error fetching campaigns', error);
-  }
-});
+  },
+);
 
 /**
  * POST /api/advertising/:accountId/campaigns
  * Create a new advertising campaign
  */
-router.post('/:accountId/campaigns', authenticateToken, getMLAccount, async (req, res) => {
-  try {
-    const { accountId } = req.params;
-    const { mlUserId } = req.mlAccount;
-    const { name, daily_budget, item_id, target_type = 'product_ads', status = 'active' } = req.body;
+router.post(
+  "/:accountId/campaigns",
+  authenticateToken,
+  getMLAccount,
+  async (req, res) => {
+    try {
+      const { accountId } = req.params;
+      const { mlUserId } = req.mlAccount;
+      const {
+        name,
+        daily_budget,
+        item_id,
+        target_type = "product_ads",
+        status = "active",
+      } = req.body;
 
-    // Validate required fields
-    if (!name || !daily_budget || !item_id) {
-      return res.status(400).json({
-        success: false,
-        error: 'Name, daily_budget, and item_id are required',
+      // Validate required fields
+      if (!name || !daily_budget || !item_id) {
+        return res.status(400).json({
+          success: false,
+          error: "Name, daily_budget, and item_id are required",
+        });
+      }
+
+      const campaignData = {
+        name,
+        daily_budget: parseFloat(daily_budget),
+        item_id,
+        target_type,
+        status,
+      };
+
+      const response = await makeMLRequest(
+        accountId,
+        "post",
+        `/users/${mlUserId}/ads/campaigns`,
+        campaignData,
+        {},
+      );
+
+      logger.info("Campaign created:", {
+        name: campaignData.name,
+        accountId: req.mlAccount.id,
       });
+
+      return sendSuccess(res, response.data, "Campaign created successfully");
+    } catch (error) {
+      return handleError(
+        res,
+        error.response?.status || 500,
+        "Error creating campaign",
+        error,
+      );
     }
-
-    const campaignData = {
-      name,
-      daily_budget: parseFloat(daily_budget),
-      item_id,
-      target_type,
-      status,
-    };
-
-    const response = await makeMLRequest(
-      accountId,
-      'post',
-      `/users/${mlUserId}/ads/campaigns`,
-      campaignData,
-      {}
-    );
-
-    logger.info('Campaign created:', {
-      name: campaignData.name,
-      accountId: req.mlAccount.id,
-    });
-
-    return sendSuccess(res, response.data, 'Campaign created successfully');
-  } catch (error) {
-    return handleError(res, error.response?.status || 500, 'Error creating campaign', error);
-  }
-});
+  },
+);
 
 /**
  * GET /api/advertising/:accountId/campaigns/:campaignId
  * Get campaign details
  */
-router.get('/:accountId/campaigns/:campaignId', authenticateToken, getMLAccount, async (req, res) => {
-  try {
-    const { campaignId } = req.params;
-    const { accountId } = req.params;
-    const { mlUserId } = req.mlAccount;
+router.get(
+  "/:accountId/campaigns/:campaignId",
+  authenticateToken,
+  getMLAccount,
+  async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      const { accountId } = req.params;
+      const { mlUserId } = req.mlAccount;
 
-    const response = await makeMLRequest(
-      accountId,
-      'get',
-      `/users/${mlUserId}/ads/campaigns/${campaignId}`,
-      null,
-      {}
-    );
+      const response = await makeMLRequest(
+        accountId,
+        "get",
+        `/users/${mlUserId}/ads/campaigns/${campaignId}`,
+        null,
+        {},
+      );
 
-    return sendSuccess(res, response.data);
-  } catch (error) {
-    return handleError(res, error.response?.status || 500, 'Error fetching campaign details', error, {
-      campaignId: req.params.campaignId,
-    });
-  }
-});
+      return sendSuccess(res, response.data);
+    } catch (error) {
+      return handleError(
+        res,
+        error.response?.status || 500,
+        "Error fetching campaign details",
+        error,
+        {
+          campaignId: req.params.campaignId,
+        },
+      );
+    }
+  },
+);
 
 /**
  * PUT /api/advertising/:accountId/campaigns/:campaignId
  * Update a campaign
  */
-router.put('/:accountId/campaigns/:campaignId', authenticateToken, getMLAccount, async (req, res) => {
-  try {
-    const { campaignId } = req.params;
-    const { accountId } = req.params;
-    const { updates } = req.body;
+router.put(
+  "/:accountId/campaigns/:campaignId",
+  authenticateToken,
+  getMLAccount,
+  async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      const { accountId } = req.params;
+      const { updates } = req.body;
 
-    const response = await makeMLRequest(
-      accountId,
-      'put',
-      `/users/${req.mlAccount.mlUserId}/ads/campaigns/${campaignId}`,
-      updates,
-      {}
-    );
+      const response = await makeMLRequest(
+        accountId,
+        "put",
+        `/users/${req.mlAccount.mlUserId}/ads/campaigns/${campaignId}`,
+        updates,
+        {},
+      );
 
-    logger.info('Campaign updated:', {
-      campaignId,
-      accountId: req.mlAccount.id,
-    });
+      logger.info("Campaign updated:", {
+        campaignId,
+        accountId: req.mlAccount.id,
+      });
 
-    return sendSuccess(res, response.data, 'Campaign updated successfully');
-  } catch (error) {
-    return handleError(res, error.response?.status || 500, 'Error updating campaign', error, {
-      campaignId: req.params.campaignId,
-    });
-  }
-});
+      return sendSuccess(res, response.data, "Campaign updated successfully");
+    } catch (error) {
+      return handleError(
+        res,
+        error.response?.status || 500,
+        "Error updating campaign",
+        error,
+        {
+          campaignId: req.params.campaignId,
+        },
+      );
+    }
+  },
+);
 
 /**
  * DELETE /api/advertising/:accountId/campaigns/:campaignId
  * Delete/pause a campaign
  */
-router.delete('/:accountId/campaigns/:campaignId', authenticateToken, getMLAccount, async (req, res) => {
-  try {
-    const { campaignId } = req.params;
-    const { accountId } = req.params;
+router.delete(
+  "/:accountId/campaigns/:campaignId",
+  authenticateToken,
+  getMLAccount,
+  async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      const { accountId } = req.params;
 
-    // ML typically pauses campaigns rather than deleting
-    await makeMLRequest(
-      accountId,
-      'put',
-      `/users/${req.mlAccount.mlUserId}/ads/campaigns/${campaignId}`,
-      { status: 'paused' },
-      {}
-    );
+      // ML typically pauses campaigns rather than deleting
+      await makeMLRequest(
+        accountId,
+        "put",
+        `/users/${req.mlAccount.mlUserId}/ads/campaigns/${campaignId}`,
+        { status: "paused" },
+        {},
+      );
 
-    logger.info('Campaign paused:', {
-      campaignId,
-      accountId: req.mlAccount.id,
-    });
+      logger.info("Campaign paused:", {
+        campaignId,
+        accountId: req.mlAccount.id,
+      });
 
-    return sendSuccess(res, {}, 'Campaign paused successfully');
-  } catch (error) {
-    return handleError(res, error.response?.status || 500, 'Error deleting campaign', error, {
-      campaignId: req.params.campaignId,
-    });
-  }
-});
+      return sendSuccess(res, {}, "Campaign paused successfully");
+    } catch (error) {
+      return handleError(
+        res,
+        error.response?.status || 500,
+        "Error deleting campaign",
+        error,
+        {
+          campaignId: req.params.campaignId,
+        },
+      );
+    }
+  },
+);
 
 /**
  * GET /api/advertising/:accountId/campaigns/:campaignId/metrics
  * Get campaign performance metrics
  */
-router.get('/:accountId/campaigns/:campaignId/metrics', authenticateToken, getMLAccount, async (req, res) => {
-  try {
-    const { campaignId } = req.params;
-    const { accountId } = req.params;
-    const { date_from, date_to } = req.query;
+router.get(
+  "/:accountId/campaigns/:campaignId/metrics",
+  authenticateToken,
+  getMLAccount,
+  async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      const { accountId } = req.params;
+      const { date_from, date_to } = req.query;
 
-    const params = {};
-    if (date_from) params.date_from = date_from;
-    if (date_to) params.date_to = date_to;
+      const params = {};
+      if (date_from) params.date_from = date_from;
+      if (date_to) params.date_to = date_to;
 
-    const response = await makeMLRequest(
-      accountId,
-      'get',
-      `/users/${req.mlAccount.mlUserId}/ads/campaigns/${campaignId}/metrics`,
-      null,
-      {},
-      params
-    );
+      const response = await makeMLRequest(
+        accountId,
+        "get",
+        `/users/${req.mlAccount.mlUserId}/ads/campaigns/${campaignId}/metrics`,
+        null,
+        {},
+        params,
+      );
 
-    return sendSuccess(res, response.data);
-  } catch (error) {
-    return handleError(res, error.response?.status || 500, 'Error fetching campaign metrics', error);
-  }
-});
+      return sendSuccess(res, response.data);
+    } catch (error) {
+      return handleError(
+        res,
+        error.response?.status || 500,
+        "Error fetching campaign metrics",
+        error,
+      );
+    }
+  },
+);
 
 /**
  * GET /api/advertising/:accountId/budget
  * Get advertising budget info
  */
-router.get('/:accountId/budget', authenticateToken, getMLAccount, async (req, res) => {
-  try {
-    const { accountId } = req.params;
-    const { mlUserId } = req.mlAccount;
+router.get(
+  "/:accountId/budget",
+  authenticateToken,
+  getMLAccount,
+  async (req, res) => {
+    try {
+      const { accountId } = req.params;
+      const { mlUserId } = req.mlAccount;
 
-    const response = await makeMLRequest(
-      accountId,
-      'get',
-      `/users/${mlUserId}/ads/budgets`,
-      null,
-      {}
-    );
+      const response = await makeMLRequest(
+        accountId,
+        "get",
+        `/users/${mlUserId}/ads/budgets`,
+        null,
+        {},
+      );
 
-    return sendSuccess(res, response.data);
-  } catch (error) {
-    if (error.response?.status === 404) {
-      return sendSuccess(res, { total_budget: 0, spent: 0, remaining: 0 }, 'No advertising budget configured');
+      return sendSuccess(res, response.data);
+    } catch (error) {
+      if (error.response?.status === 404) {
+        return sendSuccess(
+          res,
+          { total_budget: 0, spent: 0, remaining: 0 },
+          "No advertising budget configured",
+        );
+      }
+
+      return handleError(
+        res,
+        error.response?.status || 500,
+        "Error fetching budget",
+        error,
+      );
     }
-
-    return handleError(res, error.response?.status || 500, 'Error fetching budget', error);
-  }
-});
+  },
+);
 
 /**
  * GET /api/advertising/:accountId/stats
  * Get overall advertising statistics
  */
-router.get('/:accountId/stats', authenticateToken, getMLAccount, async (req, res) => {
-  try {
-    const { accountId } = req.params;
-    const { mlUserId } = req.mlAccount;
-    const { date_from, date_to } = req.query;
+router.get(
+  "/:accountId/stats",
+  authenticateToken,
+  getMLAccount,
+  async (req, res) => {
+    try {
+      const { accountId } = req.params;
+      const { mlUserId } = req.mlAccount;
+      const { date_from, date_to } = req.query;
 
-    const params = {};
-    if (date_from) params.date_from = date_from;
-    if (date_to) params.date_to = date_to;
+      const params = {};
+      if (date_from) params.date_from = date_from;
+      if (date_to) params.date_to = date_to;
 
-    const response = await makeMLRequest(
-      accountId,
-      'get',
-      `/users/${mlUserId}/ads/metrics`,
-      null,
-      {},
-      params
-    );
+      const response = await makeMLRequest(
+        accountId,
+        "get",
+        `/users/${mlUserId}/ads/metrics`,
+        null,
+        {},
+        params,
+      );
 
-    return sendSuccess(res, response.data);
-  } catch (error) {
-    return handleError(res, error.response?.status || 500, 'Error fetching ads stats', error);
-  }
-});
+      return sendSuccess(res, response.data);
+    } catch (error) {
+      return handleError(
+        res,
+        error.response?.status || 500,
+        "Error fetching ads stats",
+        error,
+      );
+    }
+  },
+);
 
 /**
  * GET /api/advertising/:accountId/suggested-items
  * Get items suggested for advertising
  */
-router.get('/:accountId/suggested-items', authenticateToken, getMLAccount, async (req, res) => {
-  try {
-    const { accountId } = req.params;
-    const { mlUserId } = req.mlAccount;
-    const { limit = 20 } = req.query;
+router.get(
+  "/:accountId/suggested-items",
+  authenticateToken,
+  getMLAccount,
+  async (req, res) => {
+    try {
+      const { accountId } = req.params;
+      const { mlUserId } = req.mlAccount;
+      const { limit = 20 } = req.query;
 
-    // Get active items that could benefit from ads
-    const response = await makeMLRequest(
-      accountId,
-      'get',
-      `/users/${mlUserId}/items/search`,
-      null,
-      {},
-      { status: 'active', limit }
-    );
-
-    const itemIds = response.data.results || [];
-    let suggestedItems = [];
-
-    if (itemIds.length > 0) {
-      const itemDetails = await Promise.all(
-        itemIds.slice(0, 10).map(id =>
-          makeMLRequest(accountId, 'get', `/items/${id}`, null, {})
-            .catch(() => null)
-        )
+      // Get active items that could benefit from ads
+      const response = await makeMLRequest(
+        accountId,
+        "get",
+        `/users/${mlUserId}/items/search`,
+        null,
+        {},
+        { status: "active", limit },
       );
 
-      suggestedItems = itemDetails
-        .filter(r => r !== null)
-        .map(r => ({
-          id: r.data.id,
-          title: r.data.title,
-          price: r.data.price,
-          thumbnail: r.data.thumbnail,
-          soldQuantity: r.data.sold_quantity,
-          availableQuantity: r.data.available_quantity,
-          permalink: r.data.permalink,
-        }));
-    }
+      const itemIds = response.data.results || [];
+      let suggestedItems = [];
 
-    return sendSuccess(res, suggestedItems);
-  } catch (error) {
-    return handleError(res, error.response?.status || 500, 'Error fetching suggested items', error);
-  }
-});
+      if (itemIds.length > 0) {
+        const itemDetails = await Promise.all(
+          itemIds
+            .slice(0, 10)
+            .map((id) =>
+              makeMLRequest(accountId, "get", `/items/${id}`, null, {}).catch(
+                () => null,
+              ),
+            ),
+        );
+
+        suggestedItems = itemDetails
+          .filter((r) => r !== null)
+          .map((r) => ({
+            id: r.data.id,
+            title: r.data.title,
+            price: r.data.price,
+            thumbnail: r.data.thumbnail,
+            soldQuantity: r.data.sold_quantity,
+            availableQuantity: r.data.available_quantity,
+            permalink: r.data.permalink,
+          }));
+      }
+
+      return sendSuccess(res, suggestedItems);
+    } catch (error) {
+      return handleError(
+        res,
+        error.response?.status || 500,
+        "Error fetching suggested items",
+        error,
+      );
+    }
+  },
+);
 
 // ============================================
 // PRODUCT ADS - NEW ENDPOINTS (Mercado Ads API v2)
@@ -686,361 +834,473 @@ router.get('/:accountId/suggested-items', authenticateToken, getMLAccount, async
  * GET /api/advertising/:accountId/product-ads/advertiser
  * Get advertiser info for Product Ads
  */
-router.get('/:accountId/product-ads/advertiser', authenticateToken, getMLAccount, async (req, res) => {
-  try {
-    const { accountId } = req.params;
+router.get(
+  "/:accountId/product-ads/advertiser",
+  authenticateToken,
+  getMLAccount,
+  async (req, res) => {
+    try {
+      const { accountId } = req.params;
 
-    const advertiser = await getAdvertiserInfo(accountId);
+      const advertiser = await getAdvertiserInfo(accountId);
 
-    if (!advertiser) {
-      return sendSuccess(res, { advertisers: [] }, 'Product Ads not enabled for this account. User needs to enable it in ML > My Profile > Advertising');
+      if (!advertiser) {
+        return sendSuccess(
+          res,
+          { advertisers: [] },
+          "Product Ads not enabled for this account. User needs to enable it in ML > My Profile > Advertising",
+        );
+      }
+
+      return sendSuccess(res, { advertisers: [advertiser] });
+    } catch (error) {
+      return handleError(
+        res,
+        error.response?.status || 500,
+        "Error fetching advertiser",
+        error,
+      );
     }
-
-    return sendSuccess(res, { advertisers: [advertiser] });
-  } catch (error) {
-    return handleError(res, error.response?.status || 500, 'Error fetching advertiser', error);
-  }
-});
+  },
+);
 
 /**
  * GET /api/advertising/:accountId/product-ads/campaigns
  * Get all Product Ads campaigns with metrics
  */
-router.get('/:accountId/product-ads/campaigns', authenticateToken, getMLAccount, async (req, res) => {
-  try {
-    const { accountId } = req.params;
-    const { limit = 50, offset = 0, date_from, date_to, status, metrics_summary = 'true' } = req.query;
+router.get(
+  "/:accountId/product-ads/campaigns",
+  authenticateToken,
+  getMLAccount,
+  async (req, res) => {
+    try {
+      const { accountId } = req.params;
+      const {
+        limit = 50,
+        offset = 0,
+        date_from,
+        date_to,
+        status,
+        metrics_summary = "true",
+      } = req.query;
 
-    const advertiser = await getAdvertiserInfo(accountId);
+      const advertiser = await getAdvertiserInfo(accountId);
 
-    if (!advertiser) {
-      return sendSuccess(res, { campaigns: [], paging: { total: 0 } }, 'No Product Ads advertiser found for this account');
+      if (!advertiser) {
+        return sendSuccess(
+          res,
+          { campaigns: [], paging: { total: 0 } },
+          "No Product Ads advertiser found for this account",
+        );
+      }
+
+      const dateRange = calculateDateRange(30);
+      const params = {
+        limit,
+        offset,
+        date_from: date_from || dateRange.from,
+        date_to: date_to || dateRange.to,
+        metrics:
+          "clicks,prints,ctr,cost,cpc,acos,cvr,roas,sov,units_quantity,direct_amount,indirect_amount,total_amount",
+        metrics_summary,
+      };
+
+      if (status) {
+        params["filters[status]"] = status;
+      }
+
+      const response = await makeMLRequest(
+        accountId,
+        "get",
+        `/advertising/${advertiser.site_id}/advertisers/${advertiser.advertiser_id}/product_ads/campaigns/search`,
+        null,
+        { "api-version": "2" },
+        params,
+      );
+
+      return sendSuccess(res, {
+        advertiser,
+        ...response.data,
+      });
+    } catch (error) {
+      return handleError(
+        res,
+        error.response?.status || 500,
+        "Error fetching Product Ads campaigns",
+        error,
+      );
     }
-
-    const dateRange = calculateDateRange(30);
-    const params = {
-      limit,
-      offset,
-      date_from: date_from || dateRange.from,
-      date_to: date_to || dateRange.to,
-      metrics: 'clicks,prints,ctr,cost,cpc,acos,cvr,roas,sov,units_quantity,direct_amount,indirect_amount,total_amount',
-      metrics_summary,
-    };
-
-    if (status) {
-      params['filters[status]'] = status;
-    }
-
-    const response = await makeMLRequest(
-      accountId,
-      'get',
-      `/advertising/${advertiser.site_id}/advertisers/${advertiser.advertiser_id}/product_ads/campaigns/search`,
-      null,
-      { 'api-version': '2' },
-      params
-    );
-
-    return sendSuccess(res, {
-      advertiser,
-      ...response.data,
-    });
-  } catch (error) {
-    return handleError(res, error.response?.status || 500, 'Error fetching Product Ads campaigns', error);
-  }
-});
+  },
+);
 
 /**
  * GET /api/advertising/:accountId/product-ads/campaigns/:campaignId
  * Get specific campaign details with metrics
  */
-router.get('/:accountId/product-ads/campaigns/:campaignId', authenticateToken, getMLAccount, async (req, res) => {
-  try {
-    const { campaignId } = req.params;
-    const { accountId } = req.params;
-    const { date_from, date_to, aggregation_type } = req.query;
+router.get(
+  "/:accountId/product-ads/campaigns/:campaignId",
+  authenticateToken,
+  getMLAccount,
+  async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      const { accountId } = req.params;
+      const { date_from, date_to, aggregation_type } = req.query;
 
-    const advertiser = await getAdvertiserInfo(accountId);
+      const advertiser = await getAdvertiserInfo(accountId);
 
-    if (!advertiser) {
-      return res.status(404).json({
-        success: false,
-        error: 'No Product Ads advertiser found',
-      });
+      if (!advertiser) {
+        return res.status(404).json({
+          success: false,
+          error: "No Product Ads advertiser found",
+        });
+      }
+
+      const dateRange = calculateDateRange(30);
+      const params = {
+        date_from: date_from || dateRange.from,
+        date_to: date_to || dateRange.to,
+        metrics:
+          "clicks,prints,ctr,cost,cpc,acos,cvr,roas,sov,units_quantity,direct_amount,indirect_amount,total_amount,impression_share,top_impression_share,lost_impression_share_by_budget,lost_impression_share_by_ad_rank,acos_benchmark",
+      };
+
+      if (aggregation_type) {
+        params.aggregation_type = aggregation_type;
+      }
+
+      const response = await makeMLRequest(
+        accountId,
+        "get",
+        `/advertising/${advertiser.site_id}/product_ads/campaigns/${campaignId}`,
+        null,
+        { "api-version": "2" },
+        params,
+      );
+
+      return sendSuccess(res, response.data);
+    } catch (error) {
+      return handleError(
+        res,
+        error.response?.status || 500,
+        "Error fetching campaign details",
+        error,
+        {
+          campaignId: req.params.campaignId,
+        },
+      );
     }
-
-    const dateRange = calculateDateRange(30);
-    const params = {
-      date_from: date_from || dateRange.from,
-      date_to: date_to || dateRange.to,
-      metrics: 'clicks,prints,ctr,cost,cpc,acos,cvr,roas,sov,units_quantity,direct_amount,indirect_amount,total_amount,impression_share,top_impression_share,lost_impression_share_by_budget,lost_impression_share_by_ad_rank,acos_benchmark',
-    };
-
-    if (aggregation_type) {
-      params.aggregation_type = aggregation_type;
-    }
-
-    const response = await makeMLRequest(
-      accountId,
-      'get',
-      `/advertising/${advertiser.site_id}/product_ads/campaigns/${campaignId}`,
-      null,
-      { 'api-version': '2' },
-      params
-    );
-
-    return sendSuccess(res, response.data);
-  } catch (error) {
-    return handleError(res, error.response?.status || 500, 'Error fetching campaign details', error, {
-      campaignId: req.params.campaignId,
-    });
-  }
-});
+  },
+);
 
 /**
  * GET /api/advertising/:accountId/product-ads/campaigns/:campaignId/daily
  * Get daily metrics for a specific campaign
  */
-router.get('/:accountId/product-ads/campaigns/:campaignId/daily', authenticateToken, getMLAccount, async (req, res) => {
-  try {
-    const { campaignId } = req.params;
-    const { accountId } = req.params;
-    const { date_from, date_to } = req.query;
+router.get(
+  "/:accountId/product-ads/campaigns/:campaignId/daily",
+  authenticateToken,
+  getMLAccount,
+  async (req, res) => {
+    try {
+      const { campaignId } = req.params;
+      const { accountId } = req.params;
+      const { date_from, date_to } = req.query;
 
-    const advertiser = await getAdvertiserInfo(accountId);
+      const advertiser = await getAdvertiserInfo(accountId);
 
-    if (!advertiser) {
-      return res.status(404).json({
-        success: false,
-        error: 'No Product Ads advertiser found',
-      });
-    }
-
-    const dateRange = calculateDateRange(30);
-    const response = await makeMLRequest(
-      accountId,
-      'get',
-      `/advertising/${advertiser.site_id}/product_ads/campaigns/${campaignId}`,
-      null,
-      { 'api-version': '2' },
-      {
-        date_from: date_from || dateRange.from,
-        date_to: date_to || dateRange.to,
-        metrics: 'clicks,prints,ctr,cost,cpc,acos,cvr,roas,sov,units_quantity,direct_amount,indirect_amount,total_amount',
-        aggregation_type: 'DAILY',
+      if (!advertiser) {
+        return res.status(404).json({
+          success: false,
+          error: "No Product Ads advertiser found",
+        });
       }
-    );
 
-    return sendSuccess(res, response.data);
-  } catch (error) {
-    return handleError(res, error.response?.status || 500, 'Error fetching daily campaign metrics', error);
-  }
-});
+      const dateRange = calculateDateRange(30);
+      const response = await makeMLRequest(
+        accountId,
+        "get",
+        `/advertising/${advertiser.site_id}/product_ads/campaigns/${campaignId}`,
+        null,
+        { "api-version": "2" },
+        {
+          date_from: date_from || dateRange.from,
+          date_to: date_to || dateRange.to,
+          metrics:
+            "clicks,prints,ctr,cost,cpc,acos,cvr,roas,sov,units_quantity,direct_amount,indirect_amount,total_amount",
+          aggregation_type: "DAILY",
+        },
+      );
+
+      return sendSuccess(res, response.data);
+    } catch (error) {
+      return handleError(
+        res,
+        error.response?.status || 500,
+        "Error fetching daily campaign metrics",
+        error,
+      );
+    }
+  },
+);
 
 /**
  * GET /api/advertising/:accountId/product-ads/ads
  * Get all Product Ads with metrics
  */
-router.get('/:accountId/product-ads/ads', authenticateToken, getMLAccount, async (req, res) => {
-  try {
-    const { accountId } = req.params;
-    const { limit = 50, offset = 0, date_from, date_to, status, campaign_id, metrics_summary = 'true' } = req.query;
+router.get(
+  "/:accountId/product-ads/ads",
+  authenticateToken,
+  getMLAccount,
+  async (req, res) => {
+    try {
+      const { accountId } = req.params;
+      const {
+        limit = 50,
+        offset = 0,
+        date_from,
+        date_to,
+        status,
+        campaign_id,
+        metrics_summary = "true",
+      } = req.query;
 
-    const advertiser = await getAdvertiserInfo(accountId);
+      const advertiser = await getAdvertiserInfo(accountId);
 
-    if (!advertiser) {
-      return sendSuccess(res, { ads: [], paging: { total: 0 } }, 'No Product Ads advertiser found');
+      if (!advertiser) {
+        return sendSuccess(
+          res,
+          { ads: [], paging: { total: 0 } },
+          "No Product Ads advertiser found",
+        );
+      }
+
+      const dateRange = calculateDateRange(30);
+      const params = {
+        limit,
+        offset,
+        date_from: date_from || dateRange.from,
+        date_to: date_to || dateRange.to,
+        metrics:
+          "clicks,prints,ctr,cost,cpc,acos,cvr,roas,units_quantity,direct_amount,indirect_amount,total_amount",
+        metrics_summary,
+      };
+
+      if (status) {
+        params["filters[statuses]"] = status;
+      }
+      if (campaign_id) {
+        params["filters[campaign_id]"] = campaign_id;
+      }
+
+      const response = await makeMLRequest(
+        accountId,
+        "get",
+        `/advertising/${advertiser.site_id}/advertisers/${advertiser.advertiser_id}/product_ads/ads/search`,
+        null,
+        { "api-version": "2" },
+        params,
+      );
+
+      return sendSuccess(res, {
+        advertiser,
+        ...response.data,
+      });
+    } catch (error) {
+      return handleError(
+        res,
+        error.response?.status || 500,
+        "Error fetching Product Ads",
+        error,
+      );
     }
-
-    const dateRange = calculateDateRange(30);
-    const params = {
-      limit,
-      offset,
-      date_from: date_from || dateRange.from,
-      date_to: date_to || dateRange.to,
-      metrics: 'clicks,prints,ctr,cost,cpc,acos,cvr,roas,units_quantity,direct_amount,indirect_amount,total_amount',
-      metrics_summary,
-    };
-
-    if (status) {
-      params['filters[statuses]'] = status;
-    }
-    if (campaign_id) {
-      params['filters[campaign_id]'] = campaign_id;
-    }
-
-    const response = await makeMLRequest(
-      accountId,
-      'get',
-      `/advertising/${advertiser.site_id}/advertisers/${advertiser.advertiser_id}/product_ads/ads/search`,
-      null,
-      { 'api-version': '2' },
-      params
-    );
-
-    return sendSuccess(res, {
-      advertiser,
-      ...response.data,
-    });
-  } catch (error) {
-    return handleError(res, error.response?.status || 500, 'Error fetching Product Ads', error);
-  }
-});
+  },
+);
 
 /**
  * GET /api/advertising/:accountId/product-ads/ads/:itemId
  * Get specific ad details with metrics
  */
-router.get('/:accountId/product-ads/ads/:itemId', authenticateToken, getMLAccount, async (req, res) => {
-  try {
-    const { itemId } = req.params;
-    const { accountId } = req.params;
-    const { date_from, date_to } = req.query;
+router.get(
+  "/:accountId/product-ads/ads/:itemId",
+  authenticateToken,
+  getMLAccount,
+  async (req, res) => {
+    try {
+      const { itemId } = req.params;
+      const { accountId } = req.params;
+      const { date_from, date_to } = req.query;
 
-    const advertiser = await getAdvertiserInfo(accountId);
+      const advertiser = await getAdvertiserInfo(accountId);
 
-    if (!advertiser) {
-      return res.status(404).json({
-        success: false,
-        error: 'No Product Ads advertiser found',
-      });
-    }
-
-    const dateRange = calculateDateRange(30);
-    const response = await makeMLRequest(
-      accountId,
-      'get',
-      `/advertising/${advertiser.site_id}/product_ads/ads/${itemId}`,
-      null,
-      { 'api-version': '2' },
-      {
-        date_from: date_from || dateRange.from,
-        date_to: date_to || dateRange.to,
-        metrics: 'clicks,prints,ctr,cost,cpc,acos,cvr,roas,units_quantity,direct_amount,indirect_amount,total_amount',
+      if (!advertiser) {
+        return res.status(404).json({
+          success: false,
+          error: "No Product Ads advertiser found",
+        });
       }
-    );
 
-    return sendSuccess(res, response.data);
-  } catch (error) {
-    return handleError(res, error.response?.status || 500, 'Error fetching ad details', error, {
-      itemId: req.params.itemId,
-    });
-  }
-});
+      const dateRange = calculateDateRange(30);
+      const response = await makeMLRequest(
+        accountId,
+        "get",
+        `/advertising/${advertiser.site_id}/product_ads/ads/${itemId}`,
+        null,
+        { "api-version": "2" },
+        {
+          date_from: date_from || dateRange.from,
+          date_to: date_to || dateRange.to,
+          metrics:
+            "clicks,prints,ctr,cost,cpc,acos,cvr,roas,units_quantity,direct_amount,indirect_amount,total_amount",
+        },
+      );
+
+      return sendSuccess(res, response.data);
+    } catch (error) {
+      return handleError(
+        res,
+        error.response?.status || 500,
+        "Error fetching ad details",
+        error,
+        {
+          itemId: req.params.itemId,
+        },
+      );
+    }
+  },
+);
 
 /**
  * GET /api/advertising/:accountId/product-ads/summary
  * Get Product Ads summary dashboard
  */
-router.get('/:accountId/product-ads/summary', authenticateToken, getMLAccount, async (req, res) => {
-  try {
-    const { accountId } = req.params;
-    const { date_from, date_to } = req.query;
+router.get(
+  "/:accountId/product-ads/summary",
+  authenticateToken,
+  getMLAccount,
+  async (req, res) => {
+    try {
+      const { accountId } = req.params;
+      const { date_from, date_to } = req.query;
 
-    const advertiser = await getAdvertiserInfo(accountId);
+      const advertiser = await getAdvertiserInfo(accountId);
 
-    if (!advertiser) {
+      if (!advertiser) {
+        return sendSuccess(res, {
+          enabled: false,
+          message: "Product Ads not enabled for this account",
+        });
+      }
+
+      const dateRange = calculateDateRange(30);
+      const dateFrom = date_from || dateRange.from;
+      const dateTo = date_to || dateRange.to;
+
+      // Get campaigns with summary
+      const campaignsResponse = await makeMLRequest(
+        accountId,
+        "get",
+        `/advertising/${advertiser.site_id}/advertisers/${advertiser.advertiser_id}/product_ads/campaigns/search`,
+        null,
+        { "api-version": "2" },
+        {
+          limit: 100,
+          date_from: dateFrom,
+          date_to: dateTo,
+          metrics:
+            "clicks,prints,ctr,cost,cpc,acos,cvr,roas,units_quantity,total_amount",
+          metrics_summary: "true",
+        },
+      );
+
+      // Get ads summary
+      const adsResponse = await makeMLRequest(
+        accountId,
+        "get",
+        `/advertising/${advertiser.site_id}/advertisers/${advertiser.advertiser_id}/product_ads/ads/search`,
+        null,
+        { "api-version": "2" },
+        {
+          limit: 10,
+          date_from: dateFrom,
+          date_to: dateTo,
+          metrics: "clicks,prints,cost,acos,roas,units_quantity,total_amount",
+          metrics_summary: "true",
+          "filters[statuses]": "active",
+        },
+      );
+
+      const campaigns = campaignsResponse.data?.results || [];
+      const metricsSummary = campaignsResponse.data?.metrics_summary || {};
+
+      // Calculate additional metrics
+      const activeCampaigns = campaigns.filter(
+        (c) => c.status === "active",
+      ).length;
+      const pausedCampaigns = campaigns.filter(
+        (c) => c.status === "paused",
+      ).length;
+      const totalBudget = campaigns.reduce(
+        (sum, c) => sum + (c.budget || 0),
+        0,
+      );
+
       return sendSuccess(res, {
-        enabled: false,
-        message: 'Product Ads not enabled for this account',
+        enabled: true,
+        advertiser,
+        period: {
+          from: dateFrom,
+          to: dateTo,
+        },
+        overview: {
+          totalCampaigns: campaigns.length,
+          activeCampaigns,
+          pausedCampaigns,
+          totalBudget,
+          totalAds: adsResponse.data?.paging?.total || 0,
+          activeAds: adsResponse.data?.results?.length || 0,
+        },
+        performance: {
+          clicks: metricsSummary.clicks || 0,
+          impressions: metricsSummary.prints || 0,
+          ctr: metricsSummary.ctr || 0,
+          cost: metricsSummary.cost || 0,
+          cpc: metricsSummary.cpc || 0,
+          acos: metricsSummary.acos || 0,
+          roas: metricsSummary.roas || 0,
+          cvr: metricsSummary.cvr || 0,
+          salesQuantity: metricsSummary.units_quantity || 0,
+          salesAmount: metricsSummary.total_amount || 0,
+        },
+        topCampaigns: campaigns.slice(0, 5).map((c) => ({
+          id: c.id,
+          name: c.name,
+          status: c.status,
+          budget: c.budget,
+          roas: c.metrics?.roas || 0,
+          acos: c.metrics?.acos || 0,
+          cost: c.metrics?.cost || 0,
+          sales: c.metrics?.total_amount || 0,
+        })),
+        topAds: (adsResponse.data?.results || []).slice(0, 5).map((ad) => ({
+          itemId: ad.item_id,
+          title: ad.title,
+          thumbnail: ad.thumbnail,
+          status: ad.status,
+          price: ad.price,
+          clicks: ad.metrics?.clicks || 0,
+          cost: ad.metrics?.cost || 0,
+          roas: ad.metrics?.roas || 0,
+        })),
       });
+    } catch (error) {
+      return handleError(
+        res,
+        error.response?.status || 500,
+        "Error fetching Product Ads summary",
+        error,
+      );
     }
-
-    const dateRange = calculateDateRange(30);
-    const dateFrom = date_from || dateRange.from;
-    const dateTo = date_to || dateRange.to;
-
-    // Get campaigns with summary
-    const campaignsResponse = await makeMLRequest(
-      accountId,
-      'get',
-      `/advertising/${advertiser.site_id}/advertisers/${advertiser.advertiser_id}/product_ads/campaigns/search`,
-      null,
-      { 'api-version': '2' },
-      {
-        limit: 100,
-        date_from: dateFrom,
-        date_to: dateTo,
-        metrics: 'clicks,prints,ctr,cost,cpc,acos,cvr,roas,units_quantity,total_amount',
-        metrics_summary: 'true',
-      }
-    );
-
-    // Get ads summary
-    const adsResponse = await makeMLRequest(
-      accountId,
-      'get',
-      `/advertising/${advertiser.site_id}/advertisers/${advertiser.advertiser_id}/product_ads/ads/search`,
-      null,
-      { 'api-version': '2' },
-      {
-        limit: 10,
-        date_from: dateFrom,
-        date_to: dateTo,
-        metrics: 'clicks,prints,cost,acos,roas,units_quantity,total_amount',
-        metrics_summary: 'true',
-        'filters[statuses]': 'active',
-      }
-    );
-
-    const campaigns = campaignsResponse.data?.results || [];
-    const metricsSummary = campaignsResponse.data?.metrics_summary || {};
-
-    // Calculate additional metrics
-    const activeCampaigns = campaigns.filter(c => c.status === 'active').length;
-    const pausedCampaigns = campaigns.filter(c => c.status === 'paused').length;
-    const totalBudget = campaigns.reduce((sum, c) => sum + (c.budget || 0), 0);
-
-    return sendSuccess(res, {
-      enabled: true,
-      advertiser,
-      period: {
-        from: dateFrom,
-        to: dateTo,
-      },
-      overview: {
-        totalCampaigns: campaigns.length,
-        activeCampaigns,
-        pausedCampaigns,
-        totalBudget,
-        totalAds: adsResponse.data?.paging?.total || 0,
-        activeAds: adsResponse.data?.results?.length || 0,
-      },
-      performance: {
-        clicks: metricsSummary.clicks || 0,
-        impressions: metricsSummary.prints || 0,
-        ctr: metricsSummary.ctr || 0,
-        cost: metricsSummary.cost || 0,
-        cpc: metricsSummary.cpc || 0,
-        acos: metricsSummary.acos || 0,
-        roas: metricsSummary.roas || 0,
-        cvr: metricsSummary.cvr || 0,
-        salesQuantity: metricsSummary.units_quantity || 0,
-        salesAmount: metricsSummary.total_amount || 0,
-      },
-      topCampaigns: campaigns.slice(0, 5).map(c => ({
-        id: c.id,
-        name: c.name,
-        status: c.status,
-        budget: c.budget,
-        roas: c.metrics?.roas || 0,
-        acos: c.metrics?.acos || 0,
-        cost: c.metrics?.cost || 0,
-        sales: c.metrics?.total_amount || 0,
-      })),
-      topAds: (adsResponse.data?.results || []).slice(0, 5).map(ad => ({
-        itemId: ad.item_id,
-        title: ad.title,
-        thumbnail: ad.thumbnail,
-        status: ad.status,
-        price: ad.price,
-        clicks: ad.metrics?.clicks || 0,
-        cost: ad.metrics?.cost || 0,
-        roas: ad.metrics?.roas || 0,
-      })),
-    });
-  } catch (error) {
-    return handleError(res, error.response?.status || 500, 'Error fetching Product Ads summary', error);
-  }
-});
+  },
+);
 
 module.exports = router;

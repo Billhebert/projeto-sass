@@ -9,7 +9,7 @@ const sdkManager = require("../services/sdk-manager");
 const { authenticateToken } = require("../middleware/auth");
 const { validateMLToken } = require("../middleware/ml-token-validation");
 const MLAccount = require("../db/models/MLAccount");
-const { handleError, sendSuccess } = require('../middleware/response-helpers');
+const { handleError, sendSuccess } = require("../middleware/response-helpers");
 
 const router = express.Router();
 
@@ -19,9 +19,7 @@ const SITE_ID = "MLB";
  * Extract and process catalog product search result
  */
 function processCompetition(results, itemId) {
-  const prices = results
-    .map((r) => r.price)
-    .filter((p) => p > 0);
+  const prices = results.map((r) => r.price).filter((p) => p > 0);
 
   return {
     myItem: results.find((r) => r.id === itemId),
@@ -30,9 +28,12 @@ function processCompetition(results, itemId) {
       total_sellers: results.length,
       min_price: prices.length > 0 ? Math.min(...prices) : 0,
       max_price: prices.length > 0 ? Math.max(...prices) : 0,
-      avg_price: prices.length > 0 
-        ? parseFloat((prices.reduce((a, b) => a + b, 0) / prices.length).toFixed(2))
-        : 0,
+      avg_price:
+        prices.length > 0
+          ? parseFloat(
+              (prices.reduce((a, b) => a + b, 0) / prices.length).toFixed(2),
+            )
+          : 0,
       my_position: results.findIndex((r) => r.id === itemId) + 1,
     },
   };
@@ -94,7 +95,7 @@ router.get("/", authenticateToken, async (req, res) => {
       "Failed to fetch catalog",
       error,
       "CATALOG_LIST_ERROR",
-      { userId: req.user?.userId }
+      { userId: req.user?.userId },
     );
   }
 });
@@ -133,7 +134,7 @@ router.get("/search", authenticateToken, async (req, res) => {
       "Failed to search catalog",
       error,
       "CATALOG_SEARCH_ERROR",
-      { userId: req.user.userId }
+      { userId: req.user.userId },
     );
   }
 });
@@ -154,7 +155,7 @@ router.get("/categories", authenticateToken, async (req, res) => {
       "Failed to fetch categories",
       error,
       "GET_CATEGORIES_ERROR",
-      { userId: req.user.userId }
+      { userId: req.user.userId },
     );
   }
 });
@@ -177,7 +178,7 @@ router.get("/categories/:categoryId", authenticateToken, async (req, res) => {
       "Failed to fetch category",
       error,
       "GET_CATEGORY_ERROR",
-      { categoryId: req.params.categoryId, userId: req.user.userId }
+      { categoryId: req.params.categoryId, userId: req.user.userId },
     );
   }
 });
@@ -193,7 +194,10 @@ router.get(
     try {
       const { categoryId } = req.params;
 
-      const attributes = await sdkManager.getCategoryAttributes(null, categoryId);
+      const attributes = await sdkManager.getCategoryAttributes(
+        null,
+        categoryId,
+      );
 
       const required = attributes.filter((attr) => attr.tags?.required);
       const optional = attributes.filter((attr) => !attr.tags?.required);
@@ -212,7 +216,7 @@ router.get(
         "Failed to fetch category attributes",
         error,
         "GET_CATEGORY_ATTRIBUTES_ERROR",
-        { categoryId: req.params.categoryId, userId: req.user.userId }
+        { categoryId: req.params.categoryId, userId: req.user.userId },
       );
     }
   },
@@ -238,7 +242,7 @@ router.get("/products/:productId", authenticateToken, async (req, res) => {
       "Failed to fetch catalog product",
       error,
       "GET_CATALOG_PRODUCT_ERROR",
-      { productId: req.params.productId, userId: req.user.userId }
+      { productId: req.params.productId, userId: req.user.userId },
     );
   }
 });
@@ -251,7 +255,11 @@ router.get("/trends/:categoryId", authenticateToken, async (req, res) => {
   try {
     const { categoryId } = req.params;
 
-    const trends = await sdkManager.getCategoryTrends(null, SITE_ID, categoryId);
+    const trends = await sdkManager.getCategoryTrends(
+      null,
+      SITE_ID,
+      categoryId,
+    );
 
     return sendSuccess(res, {
       categoryId,
@@ -264,7 +272,7 @@ router.get("/trends/:categoryId", authenticateToken, async (req, res) => {
       "Failed to fetch trends",
       error,
       "GET_TRENDS_ERROR",
-      { categoryId: req.params.categoryId, userId: req.user.userId }
+      { categoryId: req.params.categoryId, userId: req.user.userId },
     );
   }
 });
@@ -293,7 +301,7 @@ router.get("/predict", authenticateToken, async (req, res) => {
       "Failed to predict category",
       error,
       "PREDICT_CATEGORY_ERROR",
-      { userId: req.user.userId }
+      { userId: req.user.userId },
     );
   }
 });
@@ -360,7 +368,7 @@ router.get(
           "Item not found",
           new Error("Item not found"),
           "CHECK_ELIGIBILITY_ERROR",
-          { accountId, itemId, userId: req.user.userId }
+          { accountId, itemId, userId: req.user.userId },
         );
       }
 
@@ -394,7 +402,11 @@ router.get(
         "Failed to check catalog eligibility",
         error,
         "CHECK_ELIGIBILITY_ERROR",
-        { accountId: req.params.accountId, itemId: req.params.itemId, userId: req.user.userId }
+        {
+          accountId: req.params.accountId,
+          itemId: req.params.itemId,
+          userId: req.user.userId,
+        },
       );
     }
   },
@@ -424,7 +436,11 @@ router.get(
       if (q) params.q = q;
       if (category) params.category = category;
 
-      const results = await sdkManager.searchByQuery(accountId, q || category, params);
+      const results = await sdkManager.searchByQuery(
+        accountId,
+        q || category,
+        params,
+      );
 
       logger.info({
         action: "SEARCH_CATALOG_PRODUCTS",
@@ -448,7 +464,7 @@ router.get(
         "Failed to search catalog products",
         error,
         "SEARCH_CATALOG_PRODUCTS_ERROR",
-        { accountId: req.params.accountId, userId: req.user.userId }
+        { accountId: req.params.accountId, userId: req.user.userId },
       );
     }
   },
@@ -467,12 +483,19 @@ router.post(
       const { accountId, itemId } = req.params;
       const { catalog_product_id } = req.body;
 
-      const validation = validateRequired(req, ["catalog_product_id"], 'body');
+      const validation = validateRequired(req, ["catalog_product_id"], "body");
       if (validation) {
-        return sendSuccess(res, null, validation.message, validation.statusCode);
+        return sendSuccess(
+          res,
+          null,
+          validation.message,
+          validation.statusCode,
+        );
       }
 
-      const item = await sdkManager.updateItem(accountId, itemId, { catalog_product_id });
+      const item = await sdkManager.updateItem(accountId, itemId, {
+        catalog_product_id,
+      });
 
       logger.info({
         action: "PUBLISH_TO_CATALOG",
@@ -482,11 +505,15 @@ router.post(
         userId: req.user.userId,
       });
 
-      return sendSuccess(res, {
-        item_id: itemId,
-        catalog_product_id,
-        item,
-      }, "Item published to catalog successfully");
+      return sendSuccess(
+        res,
+        {
+          item_id: itemId,
+          catalog_product_id,
+          item,
+        },
+        "Item published to catalog successfully",
+      );
     } catch (error) {
       return handleError(
         res,
@@ -494,7 +521,11 @@ router.post(
         "Failed to publish to catalog",
         error,
         "PUBLISH_TO_CATALOG_ERROR",
-        { accountId: req.params.accountId, itemId: req.params.itemId, userId: req.user.userId }
+        {
+          accountId: req.params.accountId,
+          itemId: req.params.itemId,
+          userId: req.user.userId,
+        },
       );
     }
   },
@@ -512,7 +543,9 @@ router.delete(
     try {
       const { accountId, itemId } = req.params;
 
-      const item = await sdkManager.updateItem(accountId, itemId, { catalog_product_id: null });
+      const item = await sdkManager.updateItem(accountId, itemId, {
+        catalog_product_id: null,
+      });
 
       logger.info({
         action: "REMOVE_FROM_CATALOG",
@@ -521,10 +554,14 @@ router.delete(
         userId: req.user.userId,
       });
 
-      return sendSuccess(res, {
-        item_id: itemId,
-        item,
-      }, "Item removed from catalog successfully");
+      return sendSuccess(
+        res,
+        {
+          item_id: itemId,
+          item,
+        },
+        "Item removed from catalog successfully",
+      );
     } catch (error) {
       return handleError(
         res,
@@ -532,7 +569,11 @@ router.delete(
         "Failed to remove from catalog",
         error,
         "REMOVE_FROM_CATALOG_ERROR",
-        { accountId: req.params.accountId, itemId: req.params.itemId, userId: req.user.userId }
+        {
+          accountId: req.params.accountId,
+          itemId: req.params.itemId,
+          userId: req.user.userId,
+        },
       );
     }
   },
@@ -608,7 +649,11 @@ router.get(
         "Failed to get competition info",
         error,
         "GET_COMPETITION_ERROR",
-        { accountId: req.params.accountId, itemId: req.params.itemId, userId: req.user.userId }
+        {
+          accountId: req.params.accountId,
+          itemId: req.params.itemId,
+          userId: req.user.userId,
+        },
       );
     }
   },
@@ -674,7 +719,11 @@ router.get(
         "Failed to get buy box status",
         error,
         "GET_BUYBOX_ERROR",
-        { accountId: req.params.accountId, itemId: req.params.itemId, userId: req.user.userId }
+        {
+          accountId: req.params.accountId,
+          itemId: req.params.itemId,
+          userId: req.user.userId,
+        },
       );
     }
   },
@@ -697,36 +746,41 @@ router.get(
       let searchRes;
 
       if (all === "true") {
-        let currentOffset = 0;
-        const batchSize = 50;
-
         logger.info({
           action: "FETCH_ALL_CATALOG_ITEMS_START",
           accountId,
         });
 
-        while (true) {
-          searchRes = await sdkManager.getAllUserItems(accountId, req.mlAccount.mlUserId, {
-            limit: batchSize,
-            offset: currentOffset,
-          });
+        // getAllUserItems já busca TODOS os itens automaticamente
+        searchRes = await sdkManager.getAllUserItems(
+          accountId,
+          req.mlAccount.mlUserId,
+          {
+            limit: 50,
+          },
+        );
 
-          const batch = searchRes.results || [];
-          if (batch.length === 0) break;
-
-          itemIds.push(...batch);
-          currentOffset += batchSize;
-
-          const total = searchRes.paging?.total || 0;
-          if (currentOffset >= total) break;
-        }
+        itemIds = searchRes.ids || [];
       } else {
-        searchRes = await sdkManager.getAllUserItems(accountId, req.mlAccount.mlUserId, {
-          limit: parseInt(limit),
-          offset: parseInt(offset),
-        });
+        // Para busca paginada, usamos getUserItems que retorna IDs
+        const userItemsRes = await sdkManager.execute(
+          accountId,
+          async (sdk) => {
+            return sdk.getUserItems(req.mlAccount.mlUserId, {
+              limit: parseInt(limit),
+              offset: parseInt(offset),
+            });
+          },
+        );
 
-        itemIds = searchRes.results || [];
+        itemIds = userItemsRes.data || [];
+        searchRes = {
+          paging: userItemsRes.paging || {
+            total: itemIds.length,
+            offset: parseInt(offset),
+            limit: parseInt(limit),
+          },
+        };
       }
 
       const items = [];
@@ -743,14 +797,16 @@ router.get(
             catalogStatus = "catalog_listed";
           } else {
             try {
-              const eligibilityRes = await sdkManager.execute(accountId, async (sdk) => {
-                return sdk.checkCatalogEligibility(itemId);
-              });
+              const eligibilityRes = await sdkManager.execute(
+                accountId,
+                async (sdk) => {
+                  return sdk.checkCatalogEligibility(itemId);
+                },
+              );
               if (eligibilityRes?.eligible) {
                 catalogStatus = "eligible";
               }
-            } catch (eligErr) {
-            }
+            } catch (eligErr) {}
           }
 
           items.push({
@@ -783,8 +839,12 @@ router.get(
 
       return sendSuccess(res, {
         items,
-        total: searchRes?.paging?.total || items.length,
-        paging: searchRes?.paging,
+        total: searchRes?.paging?.total || itemIds.length,
+        paging: searchRes?.paging || {
+          total: items.length,
+          offset: 0,
+          limit: items.length,
+        },
       });
     } catch (error) {
       return handleError(
@@ -793,7 +853,7 @@ router.get(
         "Failed to list catalog items",
         error,
         "LIST_CATALOG_ITEMS_ERROR",
-        { accountId: req.params.accountId, userId: req.user.userId }
+        { accountId: req.params.accountId, userId: req.user.userId },
       );
     }
   },
@@ -811,11 +871,15 @@ router.get(
     try {
       const { accountId } = req.params;
 
-      const searchRes = await sdkManager.getAllUserItems(accountId, req.mlAccount.mlUserId, {
-        limit: 50,
-      });
+      const searchRes = await sdkManager.getAllUserItems(
+        accountId,
+        req.mlAccount.mlUserId,
+        {
+          limit: 50,
+        },
+      );
 
-      const itemIds = searchRes.results || [];
+      const itemIds = searchRes.ids || [];
       let catalogCount = 0;
       let buyboxWins = 0;
       const totalItems = itemIds.length;
@@ -829,17 +893,18 @@ router.get(
             catalogCount++;
 
             try {
-              const buyboxRes = await sdkManager.execute(accountId, async (sdk) => {
-                return sdk.getBuyBoxWinner(itemId);
-              });
+              const buyboxRes = await sdkManager.execute(
+                accountId,
+                async (sdk) => {
+                  return sdk.getBuyBoxWinner(itemId);
+                },
+              );
               if (buyboxRes?.winner_item_id === itemId) {
                 buyboxWins++;
               }
-            } catch (e) {
-            }
+            } catch (e) {}
           }
-        } catch (err) {
-        }
+        } catch (err) {}
       }
 
       logger.info({

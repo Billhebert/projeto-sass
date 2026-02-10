@@ -15,7 +15,7 @@ import {
   Cell,
 } from "recharts";
 import api from "../services/api";
-import { exportFinancialReportToCSV } from "../utils/exportUtils";
+import { exportFinancialReportToCSV } from "../utils/export";
 import { exportFinancialReportToPDF } from "../utils/pdfExportUtils";
 import "./FinancialReports.css";
 

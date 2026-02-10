@@ -13,7 +13,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
-import { exportAnalyticsToCSV } from "../utils/exportUtils";
+import { exportAnalyticsToCSV } from "../utils/export";
 import { exportAnalyticsToPDF } from "../utils/pdfExportUtils";
 import "./Analytics.css";
 
