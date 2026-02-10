@@ -10,14 +10,11 @@
 
 const express = require('express');
 const router = express.Router();
-const axios = require('axios');
 const logger = require('../logger');
 const sdkManager = require("../services/sdk-manager");
 const MLAccount = require('../db/models/MLAccount');
 const { authenticateToken } = require('../middleware/auth');
 const { handleError, sendSuccess } = require('../middleware/response-helpers');
-
-const ML_API_BASE = 'https://api.mercadolibre.com';
 
 // Middleware to get ML account
 async function getMLAccount(req, res, next) {
@@ -54,34 +51,22 @@ async function getMLAccount(req, res, next) {
  */
 router.get('/:accountId/items/:itemId', authenticateToken, getMLAccount, async (req, res) => {
   try {
-    const { itemId } = req.params;
-    const { accessToken } = req.mlAccount;
+    const { accountId, itemId } = req.params;
     const { last = 30, unit = 'day' } = req.query;
 
-    const response = await axios.get(
-      `${ML_API_BASE}/items/${itemId}/visits/time_window`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-        params: {
-          last,
-          unit, // 'day', 'hour'
-        },
-      }
+    // Get visits using SDK
+    const visitsData = await sdkManager.getVisitsTimeWindow(
+      accountId,
+      req.mlAccount.mlUserId,
+      parseInt(last),
+      unit
     );
 
-    res.json({
-      success: true,
-      data: response.data,
-    });
+    sendSuccess(res, visitsData);
   } catch (error) {
-    logger.error('Error fetching item visits:', {
-      error: error.message,
-      itemId: req.params.itemId,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
+    handleError(res, 500, 'Failed to fetch item visits', error, {
+      action: 'FETCH_ITEM_VISITS_ERROR',
+      itemId: req.params.itemId
     });
   }
 });
@@ -92,35 +77,28 @@ router.get('/:accountId/items/:itemId', authenticateToken, getMLAccount, async (
  */
 router.get('/:accountId/items/:itemId/time-window', authenticateToken, getMLAccount, async (req, res) => {
   try {
-    const { itemId } = req.params;
-    const { accessToken } = req.mlAccount;
+    const { accountId, itemId } = req.params;
     const { date_from, date_to, ending } = req.query;
 
-    const params = {};
-    if (date_from) params.date_from = date_from;
-    if (date_to) params.date_to = date_to;
-    if (ending) params.ending = ending;
+    // Get visits using SDK
+    const visitsData = await sdkManager.execute(accountId, async (sdk) => {
+      const params = {};
+      if (date_from) params.date_from = date_from;
+      if (date_to) params.date_to = date_to;
+      if (ending) params.ending = ending;
 
-    const response = await axios.get(
-      `${ML_API_BASE}/items/${itemId}/visits/time_window`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-        params,
-      }
-    );
-
-    res.json({
-      success: true,
-      data: response.data,
+      const response = await sdk.axiosInstance.get(
+        `/items/${itemId}/visits/time_window`,
+        { params }
+      );
+      return response.data;
     });
+
+    sendSuccess(res, visitsData);
   } catch (error) {
-    logger.error('Error fetching item visits time window:', {
-      error: error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
+    handleError(res, 500, 'Failed to fetch item visits time window', error, {
+      action: 'FETCH_ITEM_VISITS_TIME_WINDOW_ERROR',
+      itemId: req.params.itemId
     });
   }
 });
@@ -131,32 +109,25 @@ router.get('/:accountId/items/:itemId/time-window', authenticateToken, getMLAcco
  */
 router.get('/:accountId/summary', authenticateToken, getMLAccount, async (req, res) => {
   try {
-    const { accessToken, mlUserId } = req.mlAccount;
+    const { accountId } = req.params;
     const { last = 30, unit = 'day' } = req.query;
 
-    const response = await axios.get(
-      `${ML_API_BASE}/users/${mlUserId}/items_visits/time_window`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-        params: {
-          last,
-          unit,
-        },
-      }
+    // Get visits summary using SDK
+    const visitsSummary = await sdkManager.getUserVisits(
+      accountId,
+      req.mlAccount.mlUserId,
+      new Date(Date.now() - parseInt(last) * 24 * 60 * 60 * 1000).toISOString(),
+      new Date().toISOString()
     );
 
-    res.json({
-      success: true,
-      data: response.data,
+    sendSuccess(res, {
+      period: { last, unit },
+      data: visitsSummary
     });
   } catch (error) {
-    logger.error('Error fetching visits summary:', {
-      error: error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
+    handleError(res, 500, 'Failed to fetch visits summary', error, {
+      action: 'FETCH_VISITS_SUMMARY_ERROR',
+      accountId: req.params.accountId
     });
   }
 });
@@ -167,56 +138,41 @@ router.get('/:accountId/summary', authenticateToken, getMLAccount, async (req, r
  */
 router.get('/:accountId/top-items', authenticateToken, getMLAccount, async (req, res) => {
   try {
-    const { accessToken, mlUserId } = req.mlAccount;
+    const { accountId } = req.params;
     const { limit = 10 } = req.query;
+    const mlUserId = req.mlAccount.mlUserId;
 
-    // Get active items
-    const itemsResponse = await axios.get(
-      `${ML_API_BASE}/users/${mlUserId}/items/search`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-        params: {
-          status: 'active',
-          limit: 50,
-        },
-      }
-    );
+    // Get active items using SDK
+    const itemsData = await sdkManager.getAllUserItems(accountId, mlUserId, {
+      status: 'active',
+      limit: 50
+    });
 
-    const itemIds = itemsResponse.data.results || [];
+    const itemIds = itemsData.results || [];
 
     if (itemIds.length === 0) {
-      return res.json({
-        success: true,
-        data: [],
-      });
+      return sendSuccess(res, []);
     }
 
-    // Get visits for each item (limited to avoid rate limiting)
+    // Get visits and details for each item using SDK
     const visitsPromises = itemIds.slice(0, 20).map(async (itemId) => {
       try {
-        const [itemResponse, visitsResponse] = await Promise.all([
-          axios.get(`${ML_API_BASE}/items/${itemId}`, {
-            headers: { Authorization: `Bearer ${accessToken}` },
-          }),
-          axios.get(`${ML_API_BASE}/items/${itemId}/visits/time_window`, {
-            headers: { Authorization: `Bearer ${accessToken}` },
-            params: { last: 7, unit: 'day' },
-          }),
+        const [itemData, visitsData] = await Promise.all([
+          sdkManager.getItem(accountId, itemId),
+          sdkManager.getVisitsTimeWindow(accountId, mlUserId, 7, 'day').catch(() => ({ total_visits: 0 }))
         ]);
 
-        const totalVisits = visitsResponse.data.results?.reduce(
-          (sum, day) => sum + (day.total || 0),
-          0
-        ) || 0;
+        const totalVisits = visitsData.total_visits ||
+          visitsData.results?.reduce((sum, day) => sum + (day.total || 0), 0) || 0;
 
         return {
           id: itemId,
-          title: itemResponse.data.title,
-          thumbnail: itemResponse.data.thumbnail,
-          price: itemResponse.data.price,
-          permalink: itemResponse.data.permalink,
+          title: itemData.title,
+          thumbnail: itemData.thumbnail,
+          price: itemData.price,
+          permalink: itemData.permalink,
           visits: totalVisits,
-          soldQuantity: itemResponse.data.sold_quantity,
+          soldQuantity: itemData.sold_quantity,
         };
       } catch (err) {
         return null;
@@ -228,18 +184,11 @@ router.get('/:accountId/top-items', authenticateToken, getMLAccount, async (req,
       .sort((a, b) => b.visits - a.visits)
       .slice(0, parseInt(limit));
 
-    res.json({
-      success: true,
-      data: itemsWithVisits,
-    });
+    sendSuccess(res, itemsWithVisits);
   } catch (error) {
-    logger.error('Error fetching top items:', {
-      error: error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
+    handleError(res, 500, 'Failed to fetch top items', error, {
+      action: 'FETCH_TOP_ITEMS_ERROR',
+      accountId: req.params.accountId
     });
   }
 });
@@ -250,8 +199,9 @@ router.get('/:accountId/top-items', authenticateToken, getMLAccount, async (req,
  */
 router.get('/:accountId/comparison', authenticateToken, getMLAccount, async (req, res) => {
   try {
-    const { accessToken } = req.mlAccount;
-    const { items } = req.query; // comma-separated item IDs
+    const { accountId } = req.params;
+    const { items } = req.query;
+    const mlUserId = req.mlAccount.mlUserId;
 
     if (!items) {
       return res.status(400).json({
@@ -260,25 +210,20 @@ router.get('/:accountId/comparison', authenticateToken, getMLAccount, async (req
       });
     }
 
-    const itemIds = items.split(',').slice(0, 5); // Limit to 5 items
+    const itemIds = items.split(',').slice(0, 5);
 
     const visitsPromises = itemIds.map(async (itemId) => {
       try {
-        const [itemResponse, visitsResponse] = await Promise.all([
-          axios.get(`${ML_API_BASE}/items/${itemId.trim()}`, {
-            headers: { Authorization: `Bearer ${accessToken}` },
-          }),
-          axios.get(`${ML_API_BASE}/items/${itemId.trim()}/visits/time_window`, {
-            headers: { Authorization: `Bearer ${accessToken}` },
-            params: { last: 30, unit: 'day' },
-          }),
+        const [itemData, visitsData] = await Promise.all([
+          sdkManager.getItem(accountId, itemId.trim()),
+          sdkManager.getVisitsTimeWindow(accountId, mlUserId, 30, 'day').catch(() => ({ results: [] }))
         ]);
 
         return {
           id: itemId.trim(),
-          title: itemResponse.data.title,
-          visits: visitsResponse.data.results || [],
-          totalVisits: visitsResponse.data.results?.reduce(
+          title: itemData.title,
+          visits: visitsData.results || [],
+          totalVisits: visitsData.results?.reduce(
             (sum, day) => sum + (day.total || 0),
             0
           ) || 0,
@@ -293,18 +238,11 @@ router.get('/:accountId/comparison', authenticateToken, getMLAccount, async (req
 
     const comparison = await Promise.all(visitsPromises);
 
-    res.json({
-      success: true,
-      data: comparison,
-    });
+    sendSuccess(res, comparison);
   } catch (error) {
-    logger.error('Error comparing visits:', {
-      error: error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
+    handleError(res, 500, 'Failed to compare visits', error, {
+      action: 'COMPARE_VISITS_ERROR',
+      accountId: req.params.accountId
     });
   }
 });
