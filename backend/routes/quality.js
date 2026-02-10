@@ -11,14 +11,11 @@
 
 const express = require('express');
 const router = express.Router();
-const axios = require('axios');
 const logger = require('../logger');
 const sdkManager = require("../services/sdk-manager");
 const MLAccount = require('../db/models/MLAccount');
 const { authenticateToken } = require('../middleware/auth');
 const { handleError, sendSuccess } = require('../middleware/response-helpers');
-
-const ML_API_BASE = 'https://api.mercadolibre.com';
 
 // Middleware to get ML account
 async function getMLAccount(req, res, next) {
@@ -55,53 +52,48 @@ async function getMLAccount(req, res, next) {
  */
 router.get('/:accountId', authenticateToken, getMLAccount, async (req, res) => {
   try {
-    const { accessToken, mlUserId } = req.mlAccount;
+    const { accountId } = req.params;
     const { limit = 50 } = req.query;
+    const mlUserId = req.mlAccount.mlUserId;
 
-    // Get user's active items
-    const itemsResponse = await axios.get(
-      `${ML_API_BASE}/users/${mlUserId}/items/search`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-        params: { status: 'active', limit: parseInt(limit) },
-      }
-    );
+    // Get all user's items using SDK with pagination
+    const itemsData = await sdkManager.getAllUserItems(accountId, mlUserId, {
+      status: 'active',
+      limit: parseInt(limit)
+    });
 
-    const itemIds = itemsResponse.data.results || [];
-    
+    const itemIds = itemsData.results || itemsData || [];
+    const totalItems = itemsData.paging?.total || itemIds.length;
+
     // Get details for each item with health/quality data
     const items = [];
-    const batchSize = 20; // Process in batches to avoid rate limiting
-    
+    const batchSize = 20;
+
     for (let i = 0; i < Math.min(itemIds.length, parseInt(limit)); i += batchSize) {
       const batch = itemIds.slice(i, i + batchSize);
-      
+
       const batchResults = await Promise.all(
         batch.map(async (itemId) => {
           try {
-            // Get item details
-            const itemResponse = await axios.get(
-              `${ML_API_BASE}/items/${itemId}`,
-              { headers: { Authorization: `Bearer ${accessToken}` } }
-            );
-            
-            const item = itemResponse.data;
-            
+            // Get item details using SDK
+            const item = await sdkManager.getItem(accountId, itemId);
+
             // Try to get health score
             let health = null;
             try {
-              const healthResponse = await axios.get(
-                `${ML_API_BASE}/items/${itemId}/health`,
-                { headers: { Authorization: `Bearer ${accessToken}` } }
-              );
-              health = healthResponse.data;
+              health = await sdkManager.execute(accountId, async (sdk) => {
+                const response = await sdk.axiosInstance.get(
+                  `/items/${itemId}/health`
+                );
+                return response.data;
+              });
             } catch (healthErr) {
               // Health endpoint might not be available for all items
             }
 
             // Calculate quality level based on available data
             const qualityScore = calculateQualityScore(item, health);
-            
+
             return {
               _id: item.id,
               mlItemId: item.id.replace('MLB', ''),
@@ -123,7 +115,7 @@ router.get('/:accountId', authenticateToken, getMLAccount, async (req, res) => {
           }
         })
       );
-      
+
       items.push(...batchResults.filter(item => item !== null));
     }
 
@@ -135,21 +127,15 @@ router.get('/:accountId', authenticateToken, getMLAccount, async (req, res) => {
       total: items.length,
     };
 
-    res.json({
-      success: true,
+    sendSuccess(res, {
       items,
       stats,
-      total: itemsResponse.data.paging?.total || items.length,
+      total: totalItems,
     });
   } catch (error) {
-    logger.error('Error fetching quality overview:', {
-      error: error.message,
-      accountId: req.params.accountId,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
+    handleError(res, 500, 'Failed to fetch quality overview', error, {
+      action: 'FETCH_QUALITY_OVERVIEW_ERROR',
+      accountId: req.params.accountId
     });
   }
 });
@@ -266,29 +252,27 @@ function analyzeItemIssues(item, health) {
  */
 router.get('/:accountId/items/:itemId/health', authenticateToken, getMLAccount, async (req, res) => {
   try {
-    const { itemId } = req.params;
-    const { accessToken } = req.mlAccount;
+    const { accountId, itemId } = req.params;
 
-    const response = await axios.get(
-      `${ML_API_BASE}/items/${itemId}/health`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      }
-    );
+    // Try to get health from SDK, fallback to direct axios
+    let healthData = null;
+    try {
+      healthData = await sdkManager.execute(accountId, async (sdk) => {
+        const response = await sdk.axiosInstance.get(
+          `/items/${itemId}/health`
+        );
+        return response.data;
+      });
+    } catch (healthErr) {
+      // Health endpoint might not be available
+      logger.warn('Health endpoint not available:', healthErr.message);
+    }
 
-    res.json({
-      success: true,
-      data: response.data,
-    });
+    sendSuccess(res, healthData);
   } catch (error) {
-    logger.error('Error fetching item health:', {
-      error: error.message,
-      itemId: req.params.itemId,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
+    handleError(res, 500, 'Failed to fetch item health', error, {
+      action: 'FETCH_ITEM_HEALTH_ERROR',
+      itemId: req.params.itemId
     });
   }
 });
@@ -425,48 +409,38 @@ router.get('/:accountId/overview', authenticateToken, getMLAccount, async (req, 
  */
 router.get('/:accountId/reputation', authenticateToken, getMLAccount, async (req, res) => {
   try {
-    const { accessToken, mlUserId } = req.mlAccount;
+    const { accountId } = req.params;
+    const mlUserId = req.mlAccount.mlUserId;
 
-    const response = await axios.get(
-      `${ML_API_BASE}/users/${mlUserId}`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      }
-    );
+    // Get user info using SDK
+    const userData = await sdkManager.getUser(accountId, mlUserId);
 
-    const { seller_reputation, buyer_reputation } = response.data;
+    const { seller_reputation, buyer_reputation } = userData;
 
-    res.json({
-      success: true,
-      data: {
-        seller: {
-          levelId: seller_reputation?.level_id,
-          powerSellerStatus: seller_reputation?.power_seller_status,
-          transactions: {
-            canceled: seller_reputation?.transactions?.canceled,
-            completed: seller_reputation?.transactions?.completed,
-            total: seller_reputation?.transactions?.total,
-            ratings: seller_reputation?.transactions?.ratings,
-            period: seller_reputation?.transactions?.period,
-          },
-          metrics: {
-            sales: seller_reputation?.metrics?.sales,
-            claims: seller_reputation?.metrics?.claims,
-            delayedHandlingTime: seller_reputation?.metrics?.delayed_handling_time,
-            cancellations: seller_reputation?.metrics?.cancellations,
-          },
+    sendSuccess(res, {
+      seller: {
+        levelId: seller_reputation?.level_id,
+        powerSellerStatus: seller_reputation?.power_seller_status,
+        transactions: {
+          canceled: seller_reputation?.transactions?.canceled,
+          completed: seller_reputation?.transactions?.completed,
+          total: seller_reputation?.transactions?.total,
+          ratings: seller_reputation?.transactions?.ratings,
+          period: seller_reputation?.transactions?.period,
         },
-        buyer: buyer_reputation,
+        metrics: {
+          sales: seller_reputation?.metrics?.sales,
+          claims: seller_reputation?.metrics?.claims,
+          delayedHandlingTime: seller_reputation?.metrics?.delayed_handling_time,
+          cancellations: seller_reputation?.metrics?.cancellations,
+        },
       },
+      buyer: buyer_reputation,
     });
   } catch (error) {
-    logger.error('Error fetching reputation:', {
-      error: error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
+    handleError(res, 500, 'Failed to fetch reputation', error, {
+      action: 'FETCH_REPUTATION_ERROR',
+      accountId: req.params.accountId
     });
   }
 });
@@ -516,62 +490,48 @@ router.get('/:accountId/sale-restrictions', authenticateToken, getMLAccount, asy
  */
 router.get('/:accountId/items-with-issues', authenticateToken, getMLAccount, async (req, res) => {
   try {
-    const { accessToken, mlUserId } = req.mlAccount;
+    const { accountId } = req.params;
     const { limit = 50 } = req.query;
+    const mlUserId = req.mlAccount.mlUserId;
 
-    // Search for items with issues (paused due to moderation)
-    const response = await axios.get(
-      `${ML_API_BASE}/users/${mlUserId}/items/search`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-        params: {
-          status: 'paused',
-          limit,
-        },
-      }
-    );
+    // Search for items with issues using SDK
+    const searchData = await sdkManager.getAllUserItems(accountId, mlUserId, {
+      status: 'paused',
+      limit: parseInt(limit)
+    });
 
-    const itemIds = response.data.results || [];
-    
-    // Get details for each item
+    const itemIds = searchData.results || searchData || [];
+
+    // Get details for each item using SDK
     let itemsWithIssues = [];
     if (itemIds.length > 0) {
       const itemDetails = await Promise.all(
         itemIds.slice(0, 20).map(id =>
-          axios.get(`${ML_API_BASE}/items/${id}`, {
-            headers: { Authorization: `Bearer ${accessToken}` },
-          }).catch(() => null)
+          sdkManager.getItem(accountId, id).catch(() => null)
         )
       );
 
       itemsWithIssues = itemDetails
         .filter(r => r !== null)
         .map(r => ({
-          id: r.data.id,
-          title: r.data.title,
-          status: r.data.status,
-          substatus: r.data.sub_status,
-          thumbnail: r.data.thumbnail,
-          price: r.data.price,
-          permalink: r.data.permalink,
+          id: r.id,
+          title: r.title,
+          status: r.status,
+          sub_status: r.sub_status,
+          thumbnail: r.thumbnail,
+          price: r.price,
+          permalink: r.permalink,
         }));
     }
 
-    res.json({
-      success: true,
-      data: {
-        total: response.data.paging?.total || 0,
-        items: itemsWithIssues,
-      },
+    sendSuccess(res, {
+      total: searchData.paging?.total || 0,
+      items: itemsWithIssues,
     });
   } catch (error) {
-    logger.error('Error fetching items with issues:', {
-      error: error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
+    handleError(res, 500, 'Failed to fetch items with issues', error, {
+      action: 'FETCH_ITEMS_WITH_ISSUES_ERROR',
+      accountId: req.params.accountId
     });
   }
 });

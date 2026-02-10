@@ -11,13 +11,10 @@
 
 const express = require('express');
 const router = express.Router();
-const axios = require('axios');
 const logger = require('../logger');
 const sdkManager = require("../services/sdk-manager");
 const { authenticateToken } = require('../middleware/auth');
 const { handleError, sendSuccess } = require('../middleware/response-helpers');
-
-const ML_API_BASE = 'https://api.mercadolibre.com';
 
 // Fallback trends data for when ML API fails
 const fallbackTrends = [
@@ -44,25 +41,28 @@ const fallbackTrends = [
  */
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    const response = await axios.get(`${ML_API_BASE}/trends/MLB`);
-    
-    // Transform ML API response to our format
-    const trends = (response.data || []).map((trend, idx) => ({
-      keyword: trend.keyword || trend.query || `Trend ${idx + 1}`,
-      volume: Math.floor(Math.random() * 80000) + 20000, // ML doesn't provide volume
-      growth: (Math.random() * 40) - 10,
-      category: 'Geral',
-      url: trend.url
-    }));
-    
+    // Get first active account for this user
+    const MLAccount = require('../db/models/MLAccount');
+    const account = await MLAccount.findOne({ userId: req.user.userId });
+
+    if (!account) {
+      return res.json({
+        success: true,
+        trends: fallbackTrends,
+        source: 'fallback',
+        message: 'No ML accounts found'
+      });
+    }
+
+    const trends = await sdkManager.getBrazilTrends(account.id);
+
     res.json({
       success: true,
-      trends: trends.length > 0 ? trends : fallbackTrends
+      trends: trends && trends.length > 0 ? trends : fallbackTrends
     });
   } catch (error) {
     logger.error('Error fetching trends:', { error: error.message });
-    
-    // Return fallback data instead of error
+
     res.json({
       success: true,
       trends: fallbackTrends,
@@ -78,27 +78,39 @@ router.get('/', authenticateToken, async (req, res) => {
 router.get('/category/:categoryId', authenticateToken, async (req, res) => {
   try {
     const { categoryId } = req.params;
-    
-    const response = await axios.get(`${ML_API_BASE}/trends/MLB/${categoryId}`);
-    
-    const trends = (response.data || []).map((trend, idx) => ({
-      keyword: trend.keyword || trend.query || `Trend ${idx + 1}`,
-      volume: Math.floor(Math.random() * 50000) + 10000,
-      growth: (Math.random() * 40) - 10,
-      position: idx + 1,
-      url: trend.url
-    }));
-    
+
+    // Get first active account for this user
+    const MLAccount = require('../db/models/MLAccount');
+    const account = await MLAccount.findOne({ userId: req.user.userId });
+
+    let trends = [];
+    if (account) {
+      trends = await sdkManager.getCategoryTrends(account.id, 'MLB', categoryId);
+    }
+
+    // Transform to our format if needed
+    if (trends.length > 0 && trends[0].keyword) {
+      trends = trends.map((trend, idx) => ({
+        keyword: trend.keyword,
+        volume: trend.volume || Math.floor(Math.random() * 50000) + 10000,
+        growth: trend.growth || (Math.random() * 40) - 10,
+        position: idx + 1,
+        url: trend.url
+      }));
+    } else {
+      trends = generateCategoryFallback(categoryId);
+    }
+
     res.json({
       success: true,
       trends: trends.length > 0 ? trends : generateCategoryFallback(categoryId)
     });
   } catch (error) {
-    logger.error('Error fetching category trends:', { 
+    logger.error('Error fetching category trends:', {
       error: error.message,
-      categoryId: req.params.categoryId 
+      categoryId: req.params.categoryId
     });
-    
+
     res.json({
       success: true,
       trends: generateCategoryFallback(req.params.categoryId),
@@ -125,21 +137,24 @@ router.get('/site/:siteId', authenticateToken, async (req, res) => {
   try {
     const { siteId } = req.params;
 
-    const response = await axios.get(`${ML_API_BASE}/trends/${siteId}`);
+    // Get first active account for this user
+    const MLAccount = require('../db/models/MLAccount');
+    const account = await MLAccount.findOne({ userId: req.user.userId });
 
-    res.json({
-      success: true,
-      data: response.data,
-    });
+    if (!account) {
+      return res.status(404).json({
+        success: false,
+        error: 'No ML accounts found'
+      });
+    }
+
+    const data = await sdkManager.getTrends(account.id, siteId);
+
+    sendSuccess(res, data);
   } catch (error) {
-    logger.error('Error fetching site trends:', {
-      error: error.message,
-      siteId: req.params.siteId,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
+    handleError(res, 500, 'Failed to fetch site trends', error, {
+      action: 'FETCH_SITE_TRENDS_ERROR',
+      siteId: req.params.siteId
     });
   }
 });
@@ -152,24 +167,25 @@ router.get('/site/:siteId/category/:categoryId', authenticateToken, async (req, 
   try {
     const { siteId, categoryId } = req.params;
 
-    const response = await axios.get(
-      `${ML_API_BASE}/trends/${siteId}/${categoryId}`
-    );
+    // Get first active account for this user
+    const MLAccount = require('../db/models/MLAccount');
+    const account = await MLAccount.findOne({ userId: req.user.userId });
 
-    res.json({
-      success: true,
-      data: response.data,
-    });
+    if (!account) {
+      return res.status(404).json({
+        success: false,
+        error: 'No ML accounts found'
+      });
+    }
+
+    const data = await sdkManager.getCategoryTrends(account.id, siteId, categoryId);
+
+    sendSuccess(res, data);
   } catch (error) {
-    logger.error('Error fetching category trends:', {
-      error: error.message,
+    handleError(res, 500, 'Failed to fetch category trends', error, {
+      action: 'FETCH_CATEGORY_TRENDS_ERROR',
       siteId: req.params.siteId,
-      categoryId: req.params.categoryId,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
+      categoryId: req.params.categoryId
     });
   }
 });
