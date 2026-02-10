@@ -171,11 +171,26 @@ export function useClaims(accountId, status = "open") {
  * Hook para buscar métricas do dashboard
  */
 export function useDashboardMetrics(accountId) {
-  const { data: items, isLoading: itemsLoading } = useItems(accountId);
-  const { data: orders, isLoading: ordersLoading } = useOrders(accountId);
-  const { data: questions, isLoading: questionsLoading } =
-    useQuestions(accountId);
-  const { data: claims, isLoading: claimsLoading } = useClaims(accountId);
+  const {
+    data: items,
+    isLoading: itemsLoading,
+    refetch: refetchItems,
+  } = useItems(accountId);
+  const {
+    data: orders,
+    isLoading: ordersLoading,
+    refetch: refetchOrders,
+  } = useOrders(accountId);
+  const {
+    data: questions,
+    isLoading: questionsLoading,
+    refetch: refetchQuestions,
+  } = useQuestions(accountId);
+  const {
+    data: claims,
+    isLoading: claimsLoading,
+    refetch: refetchClaims,
+  } = useClaims(accountId);
 
   const isLoading =
     itemsLoading || ordersLoading || questionsLoading || claimsLoading;
@@ -206,6 +221,16 @@ export function useDashboardMetrics(accountId) {
     openClaims: claims?.claims?.filter((c) => c.status === "open").length || 0,
   };
 
+  // Refetch all data
+  const refetch = async () => {
+    await Promise.all([
+      refetchItems(),
+      refetchOrders(),
+      refetchQuestions(),
+      refetchClaims(),
+    ]);
+  };
+
   return {
     data: metrics,
     isLoading,
@@ -213,6 +238,7 @@ export function useDashboardMetrics(accountId) {
     orders: orders?.orders || [],
     questions: questions?.questions || [],
     claims: claims?.claims || [],
+    refetch,
   };
 }
 
