@@ -12,7 +12,6 @@
  */
 
 const express = require('express');
-const axios = require('axios');
 const logger = require('../logger');
 const sdkManager = require("../services/sdk-manager");
 const { authenticateToken } = require('../middleware/auth');
@@ -25,8 +24,6 @@ const { handleError, sendSuccess } = require('../middleware/response-helpers');
 
 const router = express.Router();
 
-const ML_API_BASE = 'https://api.mercadolibre.com';
-
 /**
  * GET /api/metrics/:accountId
  * Get comprehensive metrics for an account
@@ -36,17 +33,14 @@ router.get('/:accountId', authenticateToken, validateMLToken('accountId'), async
     const { accountId } = req.params;
     const account = req.mlAccount;
 
-    const headers = {
-      'Authorization': `Bearer ${account.accessToken}`,
-      'Content-Type': 'application/json',
-    };
+    // Fetch user reputation using SDK
+    const userData = await sdkManager.getUser(accountId, account.mlUserId);
 
     // Fetch multiple metrics in parallel
     const [reputationRes, salesRes, visitsRes] = await Promise.all([
-      // Reputation
-      axios.get(`${ML_API_BASE}/users/${account.mlUserId}`, { headers })
-        .catch(err => ({ data: null })),
-      
+      // Reputation from SDK
+      Promise.resolve({ data: userData }),
+
       // Sales stats from local DB
       Order.aggregate([
         { $match: { accountId, status: 'paid' } },
@@ -59,7 +53,7 @@ router.get('/:accountId', authenticateToken, validateMLToken('accountId'), async
           },
         },
       ]),
-      
+
       // Get total visits from products
       Product.aggregate([
         { $match: { accountId } },
@@ -95,42 +89,32 @@ router.get('/:accountId', authenticateToken, validateMLToken('accountId'), async
       cancelled: await Order.countDocuments({ accountId, status: 'cancelled' }),
     };
 
-    res.json({
-      success: true,
-      data: {
-        accountId,
-        reputation: reputation ? {
-          level: reputation.level_id,
-          powerSellerStatus: reputation.power_seller_status,
-          transactions: reputation.transactions,
-          metrics: reputation.metrics,
-        } : null,
-        sales: {
-          total: salesStats.totalSales,
-          revenue: salesStats.totalRevenue,
-          averageOrderValue: salesStats.avgOrderValue,
-        },
-        visits: {
-          total: visitsStats.totalViews,
-          questions: visitsStats.totalQuestions,
-        },
-        products: productStats,
-        questions: questionStats,
-        orders: orderStats,
+    sendSuccess(res, {
+      accountId,
+      reputation: reputation ? {
+        level: reputation.level_id,
+        powerSellerStatus: reputation.power_seller_status,
+        transactions: reputation.transactions,
+        metrics: reputation.metrics,
+      } : null,
+      sales: {
+        total: salesStats.totalSales,
+        revenue: salesStats.totalRevenue,
+        averageOrderValue: salesStats.avgOrderValue,
       },
+      visits: {
+        total: visitsStats.totalViews,
+        questions: visitsStats.totalQuestions,
+      },
+      products: productStats,
+      questions: questionStats,
+      orders: orderStats,
     });
   } catch (error) {
-    logger.error({
+    handleError(res, 500, 'Failed to fetch metrics', error, {
       action: 'GET_METRICS_ERROR',
       accountId: req.params.accountId,
-      userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch metrics',
-      error: error.message,
+      userId: req.user.userId
     });
   }
 });
@@ -212,54 +196,35 @@ router.get('/:accountId/reputation', authenticateToken, validateMLToken('account
     const { accountId } = req.params;
     const account = req.mlAccount;
 
-    const headers = {
-      'Authorization': `Bearer ${account.accessToken}`,
-      'Content-Type': 'application/json',
-    };
-
-    const response = await axios.get(
-      `${ML_API_BASE}/users/${account.mlUserId}`,
-      { headers }
-    );
-
-    const userData = response.data;
+    // Get user data using SDK
+    const userData = await sdkManager.getUser(accountId, account.mlUserId);
     const reputation = userData.seller_reputation || {};
 
-    res.json({
-      success: true,
-      data: {
-        accountId,
-        userId: userData.id,
-        nickname: userData.nickname,
-        siteId: userData.site_id,
-        registrationDate: userData.registration_date,
-        reputation: {
-          level: reputation.level_id,
-          powerSellerStatus: reputation.power_seller_status,
-          transactions: reputation.transactions,
-          metrics: {
-            sales: reputation.metrics?.sales,
-            claims: reputation.metrics?.claims,
-            delayedHandlingTime: reputation.metrics?.delayed_handling_time,
-            cancellations: reputation.metrics?.cancellations,
-          },
+    sendSuccess(res, {
+      accountId,
+      userId: userData.id,
+      nickname: userData.nickname,
+      siteId: userData.site_id,
+      registrationDate: userData.registration_date,
+      reputation: {
+        level: reputation.level_id,
+        powerSellerStatus: reputation.power_seller_status,
+        transactions: reputation.transactions,
+        metrics: {
+          sales: reputation.metrics?.sales,
+          claims: reputation.metrics?.claims,
+          delayedHandlingTime: reputation.metrics?.delayed_handling_time,
+          cancellations: reputation.metrics?.cancellations,
         },
-        buyerReputation: userData.buyer_reputation,
-        status: userData.status,
       },
+      buyerReputation: userData.buyer_reputation,
+      status: userData.status,
     });
   } catch (error) {
-    logger.error({
+    handleError(res, 500, 'Failed to fetch reputation', error, {
       action: 'GET_REPUTATION_ERROR',
       accountId: req.params.accountId,
-      userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch reputation',
-      error: error.message,
+      userId: req.user.userId
     });
   }
 });
@@ -323,39 +288,24 @@ router.get('/:accountId/items/:itemId/visits', authenticateToken, validateMLToke
     const { last = 30, unit = 'day' } = req.query;
     const account = req.mlAccount;
 
-    const headers = {
-      'Authorization': `Bearer ${account.accessToken}`,
-      'Content-Type': 'application/json',
-    };
-
-    const response = await axios.get(
-      `${ML_API_BASE}/items/${itemId}/visits/time_window`,
-      {
-        headers,
-        params: { last: parseInt(last), unit },
-      }
+    // Get visits using SDK
+    const visitsData = await sdkManager.getVisitsTimeWindow(
+      accountId,
+      account.mlUserId,
+      parseInt(last),
+      unit
     );
 
-    res.json({
-      success: true,
-      data: {
-        itemId,
-        period: { last: parseInt(last), unit },
-        visits: response.data,
-      },
+    sendSuccess(res, {
+      itemId,
+      period: { last: parseInt(last), unit },
+      visits: visitsData,
     });
   } catch (error) {
-    logger.error({
+    handleError(res, 500, 'Failed to fetch item visits', error, {
       action: 'GET_ITEM_VISITS_ERROR',
       itemId: req.params.itemId,
-      userId: req.user.userId,
-      error: error.message,
-    });
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch item visits',
-      error: error.message,
+      userId: req.user.userId
     });
   }
 });
