@@ -12,14 +12,11 @@
 
 const express = require('express');
 const router = express.Router();
-const axios = require('axios');
 const logger = require('../logger');
 const sdkManager = require("../services/sdk-manager");
 const MLAccount = require('../db/models/MLAccount');
 const { authenticateToken } = require('../middleware/auth');
 const { handleError, sendSuccess } = require('../middleware/response-helpers');
-
-const ML_API_BASE = 'https://api.mercadolibre.com';
 
 // Middleware to get ML account
 async function getMLAccount(req, res, next) {
@@ -56,47 +53,29 @@ async function getMLAccount(req, res, next) {
  */
 router.get('/:accountId', authenticateToken, getMLAccount, async (req, res) => {
   try {
-    const { accessToken, mlUserId } = req.mlAccount;
+    const { accountId } = req.params;
     const { offset = 0, limit = 50, status } = req.query;
+    const mlUserId = req.mlAccount.mlUserId;
 
-    const params = {
-      offset,
-      limit,
-    };
+    const params = { offset, limit };
+    if (status) params.status = status;
 
-    if (status) {
-      params.status = status;
-    }
-
-    const response = await axios.get(
-      `${ML_API_BASE}/users/${mlUserId}/coupons`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-        params,
-      }
-    );
-
-    res.json({
-      success: true,
-      data: response.data,
+    // Use SDK execute for custom endpoint
+    const response = await sdkManager.execute(accountId, async (sdk) => {
+      return await sdk.axiosInstance.get(`/users/${mlUserId}/coupons`, { params });
     });
+
+    sendSuccess(res, { data: response.data });
   } catch (error) {
-    logger.error('Error fetching coupons:', {
-      error: error.message,
-    });
+    logger.error('Error fetching coupons:', { error: error.message });
 
-    // Handle case where coupons feature is not available
     if (error.response?.status === 403 || error.response?.status === 404) {
-      return res.json({
-        success: true,
-        data: { results: [], paging: { total: 0 } },
-        message: 'Coupons feature may not be available for this account',
-      });
+      return sendSuccess(res, { results: [], paging: { total: 0 } });
     }
 
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
+    handleError(res, 500, 'Failed to fetch coupons', error, {
+      action: 'FETCH_COUPONS_ERROR',
+      accountId: req.params.accountId
     });
   }
 });
