@@ -26,6 +26,28 @@ export default defineConfig({
     outDir: "dist",
     sourcemap: true,
     minify: "esbuild",
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Vendor chunks
+          "react-vendor": ["react", "react-dom", "react-router-dom"],
+          "query-vendor": [
+            "@tanstack/react-query",
+            "@tanstack/react-query-devtools",
+          ],
+          "chart-vendor": ["recharts"],
+          "ui-vendor": ["date-fns", "jspdf", "jspdf-autotable"],
+
+          // Store chunks
+          store: [
+            "./src/store/authStore.js",
+            "./src/store/toastStore.js",
+            "./src/store/sidebarStore.js",
+          ],
+        },
+      },
+    },
   },
   test: {
     environment: "jsdom",
