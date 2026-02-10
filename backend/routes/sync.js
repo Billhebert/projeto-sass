@@ -8,24 +8,18 @@
  */
 
 const express = require('express');
-const axios = require('axios');
 const logger = require('../logger');
 const sdkManager = require("../services/sdk-manager");
 const { authenticateToken } = require('../middleware/auth');
 const { handleError, sendSuccess } = require('../middleware/response-helpers');
 
-
-
-
-const ML_API_BASE = 'https://api.mercadolibre.com';
-const ML_SANDBOX_BASE = 'https://api.mercadolibre.com'; // Usar sandbox em dev se necessário
+const router = express.Router();
 
 /**
  * GET /api/sync/account/:accountId
  * Obter dados atuais da conta
  */
 router.get('/account/:accountId', authenticateToken, async (req, res) => {
-const { handleError, sendSuccess } = require('../middleware/response-helpers');
   try {
     const { accountId } = req.params;
     const accessToken = req.headers['x-access-token'] || req.body.accessToken;
@@ -72,7 +66,6 @@ const { handleError, sendSuccess } = require('../middleware/response-helpers');
  * Disparar sincronização para uma conta
  */
 router.post('/account/:accountId', authenticateToken, async (req, res) => {
-const { handleError, sendSuccess } = require('../middleware/response-helpers');
   try {
     const { accountId } = req.params;
     const accessToken = req.headers['x-access-token'] || req.body.accessToken;
@@ -135,7 +128,6 @@ const { handleError, sendSuccess } = require('../middleware/response-helpers');
  * Sincronizar todas as contas do usuário
  */
 router.post('/all', authenticateToken, async (req, res) => {
-const { handleError, sendSuccess } = require('../middleware/response-helpers');
   try {
     const { accounts } = req.body;
 
@@ -215,7 +207,6 @@ const { handleError, sendSuccess } = require('../middleware/response-helpers');
  * Obter status de sincronização
  */
 router.get('/status/:accountId', authenticateToken, async (req, res) => {
-const { handleError, sendSuccess } = require('../middleware/response-helpers');
   try {
     const { accountId } = req.params;
 
@@ -251,48 +242,31 @@ const { handleError, sendSuccess } = require('../middleware/response-helpers');
 
 /**
  * Buscar dados da conta no Mercado Livre
- * @param {string} userId - ID do usuário no Mercado Livre
+ * @param {string} accountId - Account ID
  * @param {string} accessToken - Token de acesso
  */
-async function fetchMLAccountData(userId, accessToken) {
+async function fetchMLAccountData(accountId, accessToken) {
   try {
-    // Headers padrão para requisições ao ML
-    const headers = {
-      'Authorization': `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    };
+    // Buscar informações do usuário usando SDK
+    const user = await sdkManager.getMe(accountId);
 
-    // Buscar informações do usuário
-    const userResponse = await axios.get(`${ML_API_BASE}/users/me`, { headers });
-    const user = userResponse.data;
+    // Buscar produtos usando SDK
+    const productsData = await sdkManager.getAllUserItems(accountId, user.id);
+    const productsCount = productsData.paging?.total || 0;
 
-    // Buscar produtos
-    const productsResponse = await axios.get(
-      `${ML_API_BASE}/users/${user.id}/items/search`,
-      { headers }
-    );
-    const productsCount = productsResponse.data.total || 0;
+    // Buscar pedidos usando SDK
+    const ordersData = await sdkManager.getAllOrders(accountId, user.id);
+    const ordersCount = ordersData.paging?.total || 0;
 
-    // Buscar pedidos
-    const ordersResponse = await axios.get(
-      `${ML_API_BASE}/orders/search?seller=${user.id}&sort=date_desc&limit=1`,
-      { headers }
-    );
-    const ordersCount = ordersResponse.data.total || 0;
-
-    // Buscar questões/problemas
+    // Buscar questões usando SDK
     let issuesCount = 0;
     try {
-      const issuesResponse = await axios.get(
-        `${ML_API_BASE}/questions/search?seller_id=${user.id}`,
-        { headers }
-      );
-      issuesCount = issuesResponse.data.total || 0;
+      const questionsData = await sdkManager.getAllSellerQuestions(accountId, user.id);
+      issuesCount = questionsData.paging?.total || 0;
     } catch (error) {
-      // Se falhar ao buscar questões, continua sem contar
       logger.warn({
         action: 'FETCH_ISSUES_FAILED',
-        userId,
+        accountId,
         error: error.message,
       });
     }
@@ -309,13 +283,11 @@ async function fetchMLAccountData(userId, accessToken) {
   } catch (error) {
     logger.error({
       action: 'FETCH_ML_DATA_ERROR',
-      userId,
+      accountId,
       error: error.message,
-      statusCode: error.response?.status,
       timestamp: new Date().toISOString(),
     });
 
-    // Se for erro de autenticação
     if (error.response?.status === 401) {
       throw new Error('Token expirado ou inválido');
     }
