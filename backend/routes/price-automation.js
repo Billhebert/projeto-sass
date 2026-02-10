@@ -12,17 +12,13 @@
 
 const express = require('express');
 const router = express.Router();
-const axios = require('axios');
 const logger = require('../logger');
 const sdkManager = require("../services/sdk-manager");
 const MLAccount = require('../db/models/MLAccount');
 const { authenticateToken } = require('../middleware/auth');
 const { handleError, sendSuccess } = require('../middleware/response-helpers');
 
-const ML_API_BASE = 'https://api.mercadolibre.com';
-
 // In-memory storage for rules (in production, use MongoDB)
-// This would normally be stored in a PriceAutomationRule model
 let priceRules = new Map();
 
 // Middleware to get ML account
@@ -236,9 +232,8 @@ router.delete('/:accountId/rules/:ruleId', authenticateToken, getMLAccount, asyn
  */
 router.post('/:accountId/rules/:ruleId/run', authenticateToken, getMLAccount, async (req, res) => {
   try {
-    const { ruleId } = req.params;
-    const { accessToken } = req.mlAccount;
-    
+    const { accountId, ruleId } = req.params;
+
     const rule = priceRules.get(ruleId);
     if (!rule) {
       return res.status(404).json({
@@ -257,25 +252,16 @@ router.post('/:accountId/rules/:ruleId/run', authenticateToken, getMLAccount, as
     // Process each item in the rule
     for (const itemId of rule.items) {
       try {
-        // Get current item info
-        const itemResponse = await axios.get(
-          `${ML_API_BASE}/items/${itemId}`,
-          {
-            headers: { Authorization: `Bearer ${accessToken}` },
-          }
-        );
-
-        const item = itemResponse.data;
+        // Get current item info using SDK
+        const item = await sdkManager.getItem(accountId, itemId);
         let newPrice = item.price;
         let shouldUpdate = false;
 
         // Apply rule logic based on type
         switch (rule.type) {
           case 'competitor_match':
-            // In a real implementation, fetch competitor prices
-            // For now, simulate price adjustment
             if (rule.action.type === 'match_lowest') {
-              const competitorPrice = item.price * 0.98; // Simulated competitor price
+              const competitorPrice = item.price * 0.98;
               if (competitorPrice < item.price) {
                 newPrice = competitorPrice;
                 shouldUpdate = true;
@@ -284,9 +270,8 @@ router.post('/:accountId/rules/:ruleId/run', authenticateToken, getMLAccount, as
             break;
 
           case 'margin_protection':
-            // Ensure minimum margin
             const minMargin = rule.conditions.minMargin || 10;
-            const cost = item.price * 0.7; // Estimated cost (would come from user data)
+            const cost = item.price * 0.7;
             const currentMargin = ((item.price - cost) / item.price) * 100;
             if (currentMargin < minMargin) {
               newPrice = cost / (1 - minMargin / 100);
@@ -295,7 +280,6 @@ router.post('/:accountId/rules/:ruleId/run', authenticateToken, getMLAccount, as
             break;
 
           case 'discount':
-            // Apply percentage discount
             if (rule.action.adjustment === 'percentage') {
               newPrice = item.price * (1 - rule.action.value / 100);
               shouldUpdate = true;
@@ -306,7 +290,6 @@ router.post('/:accountId/rules/:ruleId/run', authenticateToken, getMLAccount, as
             break;
 
           case 'increase':
-            // Apply price increase
             if (rule.action.adjustment === 'percentage') {
               newPrice = item.price * (1 + rule.action.value / 100);
               shouldUpdate = true;
@@ -325,18 +308,11 @@ router.post('/:accountId/rules/:ruleId/run', authenticateToken, getMLAccount, as
           newPrice = rule.conditions.maxPrice;
         }
 
-        // Update item price if changed
+        // Update item price if changed using SDK
         if (shouldUpdate && newPrice !== item.price) {
-          await axios.put(
-            `${ML_API_BASE}/items/${itemId}`,
-            { price: Math.round(newPrice * 100) / 100 },
-            {
-              headers: {
-                Authorization: `Bearer ${accessToken}`,
-                'Content-Type': 'application/json',
-              },
-            }
-          );
+          await sdkManager.updateItem(accountId, itemId, {
+            price: Math.round(newPrice * 100) / 100
+          });
 
           results.updated++;
           results.details.push({
@@ -428,32 +404,19 @@ router.post('/:accountId/rules/:ruleId/toggle', authenticateToken, getMLAccount,
  */
 router.get('/:accountId/competitor-prices/:itemId', authenticateToken, getMLAccount, async (req, res) => {
   try {
-    const { itemId } = req.params;
-    const { accessToken } = req.mlAccount;
+    const { accountId, itemId } = req.params;
 
-    // Get item details
-    const itemResponse = await axios.get(
-      `${ML_API_BASE}/items/${itemId}`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      }
-    );
+    // Get item details using SDK
+    const item = await sdkManager.getItem(accountId, itemId);
 
-    const item = itemResponse.data;
+    // Search for similar items (competitors) using SDK
+    const searchData = await sdkManager.searchByQuery(accountId, '', {
+      category: item.category_id,
+      limit: 10,
+      sort: 'price_asc'
+    });
 
-    // Search for similar items (competitors)
-    const searchResponse = await axios.get(
-      `${ML_API_BASE}/sites/MLB/search`,
-      {
-        params: {
-          category: item.category_id,
-          limit: 10,
-          sort: 'price_asc',
-        },
-      }
-    );
-
-    const competitors = (searchResponse.data.results || [])
+    const competitors = (searchData.results || [])
       .filter(r => r.id !== itemId)
       .map(r => ({
         id: r.id,
