@@ -18,7 +18,6 @@
  */
 
 const express = require('express');
-const axios = require('axios');
 const logger = require('../logger');
 const sdkManager = require("../services/sdk-manager");
 const { authenticateToken } = require('../middleware/auth');
@@ -27,34 +26,21 @@ const { handleError, sendSuccess } = require('../middleware/response-helpers');
 
 const router = express.Router();
 
-const ML_API_BASE = 'https://api.mercadolibre.com';
-
-/**
- * Build ML API headers with authorization
- * @param {string} accessToken - ML access token
- * @returns {Object} Headers object
- */
-const buildHeaders = (accessToken) => {
-  return {
-    'Authorization': `Bearer ${accessToken}`,
-    'Content-Type': 'application/json',
-  };
-};
-
 /**
  * Fetch item health and calculate health score with issues
  * @param {string} itemId - Item ID
- * @param {string} accessToken - ML access token
+ * @param {string} accountId - Account ID
  * @returns {Promise<Object>} Health data with score and issues
  */
-const getItemHealthWithScore = async (itemId, accessToken) => {
-  const headers = buildHeaders(accessToken);
-  const [healthRes, itemRes] = await Promise.all([
-    axios.get(`${ML_API_BASE}/items/${itemId}/health`, { headers }),
-    axios.get(`${ML_API_BASE}/items/${itemId}`, { headers }),
+const getItemHealthWithScore = async (itemId, accountId) => {
+  const [health, item] = await Promise.all([
+    sdkManager.execute(accountId, async (sdk) => {
+      const response = await sdk.axiosInstance.get(`/items/${itemId}/health`);
+      return response.data;
+    }).catch(() => null),
+    sdkManager.getItem(accountId, itemId),
   ]);
 
-  const health = healthRes.data;
   let healthScore = 100;
   const issues = [];
 
@@ -75,18 +61,18 @@ const getItemHealthWithScore = async (itemId, accessToken) => {
   }
 
   // Check item status
-  if (itemRes.data.status === 'under_review') {
+  if (item.status === 'under_review') {
     issues.push({ type: 'status', message: 'Item under moderation review' });
     healthScore -= 20;
   }
-  if (itemRes.data.status === 'inactive') {
+  if (item.status === 'inactive') {
     issues.push({ type: 'status', message: 'Item is inactive' });
     healthScore -= 30;
   }
 
   healthScore = Math.max(0, healthScore);
 
-  return { health, healthScore, issues, itemData: itemRes.data };
+  return { health, healthScore, issues, itemData: item };
 };
 
 /**
@@ -232,47 +218,52 @@ const generateRequiredActions = (itemData, categoryAttrs = [], healthData = null
 
 /**
  * Fetch items under moderation with multiple statuses
+ * @param {string} accountId - Account ID
  * @param {string} mlUserId - ML user ID
- * @param {string} accessToken - ML access token
  * @param {Object} queryParams - Query parameters (limit, offset)
  * @returns {Promise<Object>} Items with health data
  */
-const fetchModerationItems = async (mlUserId, accessToken, queryParams = {}) => {
-  const headers = buildHeaders(accessToken);
+const fetchModerationItems = async (accountId, mlUserId, queryParams = {}) => {
   const { limit = 50, offset = 0 } = queryParams;
 
-  const [underReviewRes, inactiveRes, pausedRes] = await Promise.all([
-    axios.get(`${ML_API_BASE}/users/${mlUserId}/items/search`, {
-      headers,
-      params: { status: 'under_review', limit: parseInt(limit), offset: parseInt(offset) },
-    }).catch(() => ({ data: { results: [], paging: { total: 0 } } })),
-    axios.get(`${ML_API_BASE}/users/${mlUserId}/items/search`, {
-      headers,
-      params: { status: 'inactive', limit: parseInt(limit), offset: parseInt(offset) },
-    }).catch(() => ({ data: { results: [], paging: { total: 0 } } })),
-    axios.get(`${ML_API_BASE}/users/${mlUserId}/items/search`, {
-      headers,
-      params: { status: 'paused', sub_status: 'out_of_stock', limit: parseInt(limit), offset: parseInt(offset) },
-    }).catch(() => ({ data: { results: [], paging: { total: 0 } } })),
+  const [underReviewData, inactiveData, pausedData] = await Promise.all([
+    sdkManager.getAllUserItems(accountId, mlUserId, {
+      status: 'under_review',
+      limit: parseInt(limit),
+      offset: parseInt(offset)
+    }).catch(() => ({ results: [], paging: { total: 0 } })),
+    sdkManager.getAllUserItems(accountId, mlUserId, {
+      status: 'inactive',
+      limit: parseInt(limit),
+      offset: parseInt(offset)
+    }).catch(() => ({ results: [], paging: { total: 0 } })),
+    sdkManager.getAllUserItems(accountId, mlUserId, {
+      status: 'paused',
+      limit: parseInt(limit),
+      offset: parseInt(offset)
+    }).catch(() => ({ results: [], paging: { total: 0 } })),
   ]);
 
   const allItemIds = [
-    ...underReviewRes.data.results,
-    ...inactiveRes.data.results,
-    ...pausedRes.data.results,
+    ...(underReviewData.results || []),
+    ...(inactiveData.results || []),
+    ...(pausedData.results || []),
   ];
 
   const uniqueItemIds = [...new Set(allItemIds)];
 
-  // Fetch details and health for each item
+  // Fetch details and health for each item using SDK
   const itemsWithHealth = await Promise.all(
     uniqueItemIds.slice(0, 20).map(async (itemId) => {
       try {
-        const [itemRes, healthRes] = await Promise.all([
-          axios.get(`${ML_API_BASE}/items/${itemId}`, { headers }),
-          axios.get(`${ML_API_BASE}/items/${itemId}/health`, { headers }).catch(() => ({ data: null })),
+        const [item, health] = await Promise.all([
+          sdkManager.getItem(accountId, itemId),
+          sdkManager.execute(accountId, async (sdk) => {
+            const response = await sdk.axiosInstance.get(`/items/${itemId}/health`);
+            return response.data;
+          }).catch(() => null),
         ]);
-        return { item: itemRes.data, health: healthRes.data };
+        return { item, health };
       } catch (err) {
         return null;
       }
@@ -282,9 +273,9 @@ const fetchModerationItems = async (mlUserId, accessToken, queryParams = {}) => 
   return {
     items: itemsWithHealth.filter(i => i !== null),
     summary: {
-      under_review: underReviewRes.data.paging?.total || 0,
-      inactive: inactiveRes.data.paging?.total || 0,
-      paused: pausedRes.data.paging?.total || 0,
+      under_review: underReviewData.paging?.total || 0,
+      inactive: inactiveData.paging?.total || 0,
+      paused: pausedData.paging?.total || 0,
       total: uniqueItemIds.length,
     },
   };
@@ -297,9 +288,9 @@ const fetchModerationItems = async (mlUserId, accessToken, queryParams = {}) => 
 router.get('/:accountId', authenticateToken, validateMLToken('accountId'), async (req, res) => {
   try {
     const { accountId } = req.params;
-    const account = req.mlAccount;
+    const mlUserId = req.mlAccount.mlUserId;
 
-    const result = await fetchModerationItems(account.mlUserId, account.accessToken, req.query);
+    const result = await fetchModerationItems(accountId, mlUserId, req.query);
 
     logger.info({
       action: 'LIST_MODERATIONS',
@@ -330,9 +321,8 @@ router.get('/:accountId', authenticateToken, validateMLToken('accountId'), async
 router.get('/:accountId/health/:itemId', authenticateToken, validateMLToken('accountId'), async (req, res) => {
   try {
     const { accountId, itemId } = req.params;
-    const account = req.mlAccount;
 
-    const healthData = await getItemHealthWithScore(itemId, account.accessToken);
+    const healthData = await getItemHealthWithScore(itemId, accountId);
 
     logger.info({
       action: 'GET_ITEM_HEALTH',
@@ -369,16 +359,20 @@ router.get('/:accountId/health/:itemId', authenticateToken, validateMLToken('acc
 router.get('/:accountId/issues/:itemId', authenticateToken, validateMLToken('accountId'), async (req, res) => {
   try {
     const { accountId, itemId } = req.params;
-    const account = req.mlAccount;
-    const headers = buildHeaders(account.accessToken);
 
-    const [itemRes, healthRes, rulesRes] = await Promise.all([
-      axios.get(`${ML_API_BASE}/items/${itemId}`, { headers }),
-      axios.get(`${ML_API_BASE}/items/${itemId}/health`, { headers }).catch(() => ({ data: null })),
-      axios.get(`${ML_API_BASE}/items/${itemId}/rules`, { headers }).catch(() => ({ data: null })),
+    const [item, health, rules] = await Promise.all([
+      sdkManager.getItem(accountId, itemId),
+      sdkManager.execute(accountId, async (sdk) => {
+        const response = await sdk.axiosInstance.get(`/items/${itemId}/health`);
+        return response.data;
+      }).catch(() => null),
+      sdkManager.execute(accountId, async (sdk) => {
+        const response = await sdk.axiosInstance.get(`/items/${itemId}/rules`);
+        return response.data;
+      }).catch(() => null),
     ]);
 
-    const issues = extractIssues(itemRes.data, healthRes.data);
+    const issues = extractIssues(item, health);
 
     logger.info({
       action: 'GET_ITEM_ISSUES',
@@ -390,11 +384,11 @@ router.get('/:accountId/issues/:itemId', authenticateToken, validateMLToken('acc
 
     sendSuccess(res, {
       item_id: itemId,
-      title: itemRes.data.title,
-      status: itemRes.data.status,
+      title: item.title,
+      status: item.status,
       issues,
       total_issues: issues.length,
-      rules: rulesRes.data,
+      rules,
     });
   } catch (error) {
     handleError(res, error.response?.status || 500, 'Failed to get item issues', error, {
@@ -413,16 +407,21 @@ router.get('/:accountId/issues/:itemId', authenticateToken, validateMLToken('acc
 router.get('/:accountId/actions/:itemId', authenticateToken, validateMLToken('accountId'), async (req, res) => {
   try {
     const { accountId, itemId } = req.params;
-    const account = req.mlAccount;
-    const headers = buildHeaders(account.accessToken);
 
-    const [itemRes, healthRes, categoryRes] = await Promise.all([
-      axios.get(`${ML_API_BASE}/items/${itemId}`, { headers }),
-      axios.get(`${ML_API_BASE}/items/${itemId}/health`, { headers }).catch(() => ({ data: null })),
-      axios.get(`${ML_API_BASE}/categories/${(await axios.get(`${ML_API_BASE}/items/${itemId}`, { headers })).data.category_id}/attributes`, { headers }).catch(() => ({ data: [] })),
+    const [item, health] = await Promise.all([
+      sdkManager.getItem(accountId, itemId),
+      sdkManager.execute(accountId, async (sdk) => {
+        const response = await sdk.axiosInstance.get(`/items/${itemId}/health`);
+        return response.data;
+      }).catch(() => null),
     ]);
 
-    const actions = generateRequiredActions(itemRes.data, categoryRes.data, healthRes.data);
+    const categoryAttrs = await sdkManager.execute(accountId, async (sdk) => {
+      const response = await sdk.axiosInstance.get(`/categories/${item.category_id}/attributes`);
+      return response.data;
+    }).catch(() => []);
+
+    const actions = generateRequiredActions(item, categoryAttrs, health);
 
     logger.info({
       action: 'GET_REQUIRED_ACTIONS',
@@ -434,8 +433,8 @@ router.get('/:accountId/actions/:itemId', authenticateToken, validateMLToken('ac
 
     sendSuccess(res, {
       item_id: itemId,
-      title: itemRes.data.title,
-      status: itemRes.data.status,
+      title: item.title,
+      status: item.status,
       actions,
       total_actions: actions.length,
     });
@@ -457,8 +456,6 @@ router.post('/:accountId/fix/:itemId', authenticateToken, validateMLToken('accou
   try {
     const { accountId, itemId } = req.params;
     const { fixes } = req.body;
-    const account = req.mlAccount;
-    const headers = buildHeaders(account.accessToken);
 
     const results = [];
 
@@ -467,38 +464,26 @@ router.post('/:accountId/fix/:itemId', authenticateToken, validateMLToken('accou
       try {
         switch (fix.type) {
           case 'update_attribute':
-            await axios.put(
-              `${ML_API_BASE}/items/${itemId}`,
-              { attributes: [{ id: fix.attribute_id, value_name: fix.value }] },
-              { headers }
-            );
+            await sdkManager.updateItem(accountId, itemId, {
+              attributes: [{ id: fix.attribute_id, value_name: fix.value }]
+            });
             results.push({ type: fix.type, success: true, attribute_id: fix.attribute_id });
             break;
 
           case 'activate':
-            await axios.put(
-              `${ML_API_BASE}/items/${itemId}`,
-              { status: 'active' },
-              { headers }
-            );
+            await sdkManager.updateItem(accountId, itemId, { status: 'active' });
             results.push({ type: fix.type, success: true });
             break;
 
           case 'add_description':
-            await axios.put(
-              `${ML_API_BASE}/items/${itemId}/description`,
-              { plain_text: fix.description },
-              { headers }
-            );
+            await sdkManager.execute(accountId, async (sdk) => {
+              await sdk.axiosInstance.put(`/items/${itemId}/description`, { plain_text: fix.description });
+            });
             results.push({ type: fix.type, success: true });
             break;
 
           case 'update_pictures':
-            await axios.put(
-              `${ML_API_BASE}/items/${itemId}`,
-              { pictures: fix.pictures },
-              { headers }
-            );
+            await sdkManager.updateItem(accountId, itemId, { pictures: fix.pictures });
             results.push({ type: fix.type, success: true });
             break;
 
@@ -546,15 +531,10 @@ router.post('/:accountId/fix/:itemId', authenticateToken, validateMLToken('accou
 router.get('/:accountId/seller-reputation', authenticateToken, validateMLToken('accountId'), async (req, res) => {
   try {
     const { accountId } = req.params;
-    const account = req.mlAccount;
-    const headers = buildHeaders(account.accessToken);
+    const mlUserId = req.mlAccount.mlUserId;
 
-    const userResponse = await axios.get(
-      `${ML_API_BASE}/users/${account.mlUserId}`,
-      { headers }
-    );
-
-    const reputation = userResponse.data.seller_reputation || {};
+    const userData = await sdkManager.getUser(accountId, mlUserId);
+    const reputation = userData.seller_reputation || {};
 
     logger.info({
       action: 'GET_SELLER_REPUTATION',
@@ -563,15 +543,15 @@ router.get('/:accountId/seller-reputation', authenticateToken, validateMLToken('
     });
 
     sendSuccess(res, {
-      seller_id: account.mlUserId,
-      nickname: userResponse.data.nickname,
+      seller_id: mlUserId,
+      nickname: userData.nickname,
       reputation: {
         level_id: reputation.level_id,
         power_seller_status: reputation.power_seller_status,
         transactions: reputation.transactions,
         metrics: reputation.metrics,
       },
-      status: userResponse.data.status,
+      status: userData.status,
     });
   } catch (error) {
     handleError(res, error.response?.status || 500, 'Failed to get seller reputation', error, {
