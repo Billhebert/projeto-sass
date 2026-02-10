@@ -17,7 +17,6 @@
  */
 
 const express = require('express');
-const axios = require('axios');
 const logger = require('../logger');
 const sdkManager = require("../services/sdk-manager");
 const { authenticateToken } = require('../middleware/auth');
@@ -25,8 +24,6 @@ const { validateMLToken } = require('../middleware/ml-token-validation');
 const { handleError, sendSuccess } = require('../middleware/response-helpers');
 
 const router = express.Router();
-
-const ML_API_BASE = 'https://api.mercadolibre.com';
 
 /**
  * GET /api/kits/:accountId
@@ -36,43 +33,30 @@ router.get('/:accountId', authenticateToken, validateMLToken('accountId'), async
   try {
     const { accountId } = req.params;
     const { limit = 50, offset = 0 } = req.query;
-    const account = req.mlAccount;
+    const mlUserId = req.mlAccount.mlUserId;
 
-    const headers = {
-      'Authorization': `Bearer ${account.accessToken}`,
-      'Content-Type': 'application/json',
-    };
+    // Get user's items using SDK
+    const searchData = await sdkManager.getAllUserItems(accountId, mlUserId, {
+      limit: parseInt(limit),
+      offset: parseInt(offset)
+    });
 
-    // Search for items - filter for kits
-    const searchResponse = await axios.get(
-      `${ML_API_BASE}/users/${account.mlUserId}/items/search`,
-      {
-        headers,
-        params: {
-          limit: parseInt(limit),
-          offset: parseInt(offset),
-        },
-      }
-    );
+    const itemIds = searchData.results || [];
 
-    const itemIds = searchResponse.data.results || [];
-
-    // Fetch details for items and identify kits
+    // Fetch details for items and identify kits using SDK
     const items = await Promise.all(
       itemIds.map(async (itemId) => {
         try {
-          const itemRes = await axios.get(`${ML_API_BASE}/items/${itemId}`, { headers });
-          return itemRes.data;
+          return await sdkManager.getItem(accountId, itemId);
         } catch (err) {
           return null;
         }
       })
     );
 
-    // Filter for kit items (items with multiple variations that are "components")
+    // Filter for kit items
     const kits = items.filter(item => {
       if (!item) return false;
-      // Identify kits by attributes or structure
       const isKit = item.attributes?.some(attr => 
         attr.id === 'ITEM_CONDITION' && attr.value_name === 'Kit'
       ) || 
@@ -88,26 +72,16 @@ router.get('/:accountId', authenticateToken, validateMLToken('accountId'), async
       kitsFound: kits.length,
     });
 
-    res.json({
-      success: true,
-      data: {
-        kits,
-        paging: searchResponse.data.paging,
-        total_kits: kits.length,
-      },
+    sendSuccess(res, {
+      kits,
+      paging: searchData.paging,
+      total_kits: kits.length,
     });
   } catch (error) {
-    logger.error({
+    handleError(res, 500, 'Failed to list kits', error, {
       action: 'LIST_KITS_ERROR',
       accountId: req.params.accountId,
-      userId: req.user.userId,
-      error: error.response?.data || error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      message: 'Failed to list kits',
-      error: error.response?.data?.message || error.message,
+      userId: req.user.userId
     });
   }
 });
@@ -119,20 +93,12 @@ router.get('/:accountId', authenticateToken, validateMLToken('accountId'), async
 router.get('/:accountId/:itemId', authenticateToken, validateMLToken('accountId'), async (req, res) => {
   try {
     const { accountId, itemId } = req.params;
-    const account = req.mlAccount;
 
-    const headers = {
-      'Authorization': `Bearer ${account.accessToken}`,
-      'Content-Type': 'application/json',
-    };
-
-    // Get item details
-    const [itemRes, descRes] = await Promise.all([
-      axios.get(`${ML_API_BASE}/items/${itemId}`, { headers }),
-      axios.get(`${ML_API_BASE}/items/${itemId}/description`, { headers }).catch(() => ({ data: null })),
+    // Get item details using SDK
+    const [item, description] = await Promise.all([
+      sdkManager.getItem(accountId, itemId),
+      sdkManager.getItemDescription(accountId, itemId).catch(() => null)
     ]);
-
-    const item = itemRes.data;
 
     // Extract kit components from attributes
     const kitComponents = item.attributes?.filter(attr => 
@@ -149,29 +115,19 @@ router.get('/:accountId/:itemId', authenticateToken, validateMLToken('accountId'
       userId: req.user.userId,
     });
 
-    res.json({
-      success: true,
-      data: {
-        kit: item,
-        description: descRes.data,
-        components: kitComponents,
-        variations,
-        pictures: item.pictures || [],
-      },
+    sendSuccess(res, {
+      kit: item,
+      description,
+      components: kitComponents,
+      variations,
+      pictures: item.pictures || [],
     });
   } catch (error) {
-    logger.error({
+    handleError(res, 500, 'Failed to get kit details', error, {
       action: 'GET_KIT_DETAILS_ERROR',
       accountId: req.params.accountId,
       itemId: req.params.itemId,
-      userId: req.user.userId,
-      error: error.response?.data || error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      message: 'Failed to get kit details',
-      error: error.response?.data?.message || error.message,
+      userId: req.user.userId
     });
   }
 });
@@ -184,7 +140,6 @@ router.post('/:accountId', authenticateToken, validateMLToken('accountId'), asyn
   try {
     const { accountId } = req.params;
     const { title, category_id, price, currency_id, available_quantity, components, pictures, description } = req.body;
-    const account = req.mlAccount;
 
     // Validate required fields
     if (!title || !category_id || !price || !available_quantity) {
@@ -193,11 +148,6 @@ router.post('/:accountId', authenticateToken, validateMLToken('accountId'), asyn
         message: 'Missing required fields: title, category_id, price, available_quantity',
       });
     }
-
-    const headers = {
-      'Authorization': `Bearer ${account.accessToken}`,
-      'Content-Type': 'application/json',
-    };
 
     // Build kit attributes
     const attributes = [
@@ -227,25 +177,22 @@ router.post('/:accountId', authenticateToken, validateMLToken('accountId'), asyn
       pictures: pictures || [],
     };
 
-    // Create item on ML
-    const response = await axios.post(
-      `${ML_API_BASE}/items`,
-      kitData,
-      { headers }
-    );
+    // Create item on ML using SDK
+    const response = await sdkManager.createItem(accountId, kitData);
 
     // Add description if provided
     if (description) {
       try {
-        await axios.put(
-          `${ML_API_BASE}/items/${response.data.id}/description`,
-          { plain_text: description },
-          { headers }
-        );
+        await sdkManager.execute(accountId, async (sdk) => {
+          await sdk.axiosInstance.put(
+            `/items/${response.id}/description`,
+            { plain_text: description }
+          );
+        });
       } catch (descErr) {
         logger.warn({
           action: 'ADD_KIT_DESCRIPTION_WARNING',
-          itemId: response.data.id,
+          itemId: response.id,
           error: descErr.message,
         });
       }
@@ -254,27 +201,19 @@ router.post('/:accountId', authenticateToken, validateMLToken('accountId'), asyn
     logger.info({
       action: 'CREATE_KIT',
       accountId,
-      itemId: response.data.id,
+      itemId: response.id,
       userId: req.user.userId,
     });
 
-    res.json({
-      success: true,
+    sendSuccess(res, {
       message: 'Kit created successfully',
-      data: response.data,
+      data: response,
     });
   } catch (error) {
-    logger.error({
+    handleError(res, 500, 'Failed to create kit', error, {
       action: 'CREATE_KIT_ERROR',
       accountId: req.params.accountId,
-      userId: req.user.userId,
-      error: error.response?.data || error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      message: 'Failed to create kit',
-      error: error.response?.data?.message || error.message,
+      userId: req.user.userId
     });
   }
 });
@@ -287,18 +226,9 @@ router.put('/:accountId/:itemId', authenticateToken, validateMLToken('accountId'
   try {
     const { accountId, itemId } = req.params;
     const updateData = req.body;
-    const account = req.mlAccount;
 
-    const headers = {
-      'Authorization': `Bearer ${account.accessToken}`,
-      'Content-Type': 'application/json',
-    };
-
-    const response = await axios.put(
-      `${ML_API_BASE}/items/${itemId}`,
-      updateData,
-      { headers }
-    );
+    // Update item using SDK
+    const response = await sdkManager.updateItem(accountId, itemId, updateData);
 
     logger.info({
       action: 'UPDATE_KIT',
@@ -307,24 +237,16 @@ router.put('/:accountId/:itemId', authenticateToken, validateMLToken('accountId'
       userId: req.user.userId,
     });
 
-    res.json({
-      success: true,
+    sendSuccess(res, {
       message: 'Kit updated successfully',
-      data: response.data,
+      data: response,
     });
   } catch (error) {
-    logger.error({
+    handleError(res, 500, 'Failed to update kit', error, {
       action: 'UPDATE_KIT_ERROR',
       accountId: req.params.accountId,
       itemId: req.params.itemId,
-      userId: req.user.userId,
-      error: error.response?.data || error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      message: 'Failed to update kit',
-      error: error.response?.data?.message || error.message,
+      userId: req.user.userId
     });
   }
 });
@@ -337,7 +259,6 @@ router.put('/:accountId/:itemId/components', authenticateToken, validateMLToken(
   try {
     const { accountId, itemId } = req.params;
     const { components } = req.body;
-    const account = req.mlAccount;
 
     if (!components || !Array.isArray(components)) {
       return res.status(400).json({
@@ -346,16 +267,11 @@ router.put('/:accountId/:itemId/components', authenticateToken, validateMLToken(
       });
     }
 
-    const headers = {
-      'Authorization': `Bearer ${account.accessToken}`,
-      'Content-Type': 'application/json',
-    };
-
-    // Get current item to merge attributes
-    const currentItem = await axios.get(`${ML_API_BASE}/items/${itemId}`, { headers });
+    // Get current item to merge attributes using SDK
+    const currentItem = await sdkManager.getItem(accountId, itemId);
     
     // Filter out old kit component attributes
-    const existingAttributes = (currentItem.data.attributes || [])
+    const existingAttributes = (currentItem.attributes || [])
       .filter(attr => !attr.id.includes('KIT_COMPONENT'));
 
     // Add new component attributes
@@ -367,11 +283,10 @@ router.put('/:accountId/:itemId/components', authenticateToken, validateMLToken(
       });
     });
 
-    const response = await axios.put(
-      `${ML_API_BASE}/items/${itemId}`,
-      { attributes: newAttributes },
-      { headers }
-    );
+    // Update item using SDK
+    const response = await sdkManager.updateItem(accountId, itemId, {
+      attributes: newAttributes
+    });
 
     logger.info({
       action: 'UPDATE_KIT_COMPONENTS',
@@ -381,28 +296,20 @@ router.put('/:accountId/:itemId/components', authenticateToken, validateMLToken(
       componentsCount: components.length,
     });
 
-    res.json({
-      success: true,
+    sendSuccess(res, {
       message: 'Kit components updated successfully',
       data: {
         item_id: itemId,
         components,
-        item: response.data,
+        item: response,
       },
     });
   } catch (error) {
-    logger.error({
+    handleError(res, 500, 'Failed to update kit components', error, {
       action: 'UPDATE_KIT_COMPONENTS_ERROR',
       accountId: req.params.accountId,
       itemId: req.params.itemId,
-      userId: req.user.userId,
-      error: error.response?.data || error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      message: 'Failed to update kit components',
-      error: error.response?.data?.message || error.message,
+      userId: req.user.userId
     });
   }
 });
@@ -414,18 +321,11 @@ router.put('/:accountId/:itemId/components', authenticateToken, validateMLToken(
 router.delete('/:accountId/:itemId', authenticateToken, validateMLToken('accountId'), async (req, res) => {
   try {
     const { accountId, itemId } = req.params;
-    const account = req.mlAccount;
 
-    const headers = {
-      'Authorization': `Bearer ${account.accessToken}`,
-      'Content-Type': 'application/json',
-    };
-
-    const response = await axios.put(
-      `${ML_API_BASE}/items/${itemId}`,
-      { status: 'closed' },
-      { headers }
-    );
+    // Close item using SDK
+    const response = await sdkManager.updateItem(accountId, itemId, {
+      status: 'closed'
+    });
 
     logger.info({
       action: 'DELETE_KIT',
@@ -434,8 +334,7 @@ router.delete('/:accountId/:itemId', authenticateToken, validateMLToken('account
       userId: req.user.userId,
     });
 
-    res.json({
-      success: true,
+    sendSuccess(res, {
       message: 'Kit closed successfully',
       data: {
         item_id: itemId,
@@ -443,18 +342,11 @@ router.delete('/:accountId/:itemId', authenticateToken, validateMLToken('account
       },
     });
   } catch (error) {
-    logger.error({
+    handleError(res, 500, 'Failed to close kit', error, {
       action: 'DELETE_KIT_ERROR',
       accountId: req.params.accountId,
       itemId: req.params.itemId,
-      userId: req.user.userId,
-      error: error.response?.data || error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      message: 'Failed to close kit',
-      error: error.response?.data?.message || error.message,
+      userId: req.user.userId
     });
   }
 });
@@ -467,22 +359,18 @@ router.post('/:accountId/:itemId/relist', authenticateToken, validateMLToken('ac
   try {
     const { accountId, itemId } = req.params;
     const { price, quantity } = req.body;
-    const account = req.mlAccount;
-
-    const headers = {
-      'Authorization': `Bearer ${account.accessToken}`,
-      'Content-Type': 'application/json',
-    };
 
     const relistData = {};
     if (price) relistData.price = price;
     if (quantity) relistData.quantity = quantity;
 
-    const response = await axios.post(
-      `${ML_API_BASE}/items/${itemId}/relist`,
-      relistData,
-      { headers }
-    );
+    // Relist item using SDK execute
+    const response = await sdkManager.execute(accountId, async (sdk) => {
+      return await sdk.axiosInstance.post(
+        `/items/${itemId}/relist`,
+        relistData
+      );
+    });
 
     logger.info({
       action: 'RELIST_KIT',
@@ -492,24 +380,16 @@ router.post('/:accountId/:itemId/relist', authenticateToken, validateMLToken('ac
       userId: req.user.userId,
     });
 
-    res.json({
-      success: true,
+    sendSuccess(res, {
       message: 'Kit relisted successfully',
       data: response.data,
     });
   } catch (error) {
-    logger.error({
+    handleError(res, 500, 'Failed to relist kit', error, {
       action: 'RELIST_KIT_ERROR',
       accountId: req.params.accountId,
       itemId: req.params.itemId,
-      userId: req.user.userId,
-      error: error.response?.data || error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      message: 'Failed to relist kit',
-      error: error.response?.data?.message || error.message,
+      userId: req.user.userId
     });
   }
 });
