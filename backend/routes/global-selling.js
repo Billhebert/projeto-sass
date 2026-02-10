@@ -13,14 +13,11 @@
 
 const express = require('express');
 const router = express.Router();
-const axios = require('axios');
 const logger = require('../logger');
 const sdkManager = require("../services/sdk-manager");
 const MLAccount = require('../db/models/MLAccount');
 const { authenticateToken } = require('../middleware/auth');
 const { handleError, sendSuccess } = require('../middleware/response-helpers');
-
-const ML_API_BASE = 'https://api.mercadolibre.com';
 
 // Available CBT countries
 const CBT_COUNTRIES = [
@@ -68,53 +65,40 @@ async function getMLAccount(req, res, next) {
  */
 router.get('/:accountId/status', authenticateToken, getMLAccount, async (req, res) => {
   try {
-    const { accessToken, mlUserId } = req.mlAccount;
+    const { accountId } = req.params;
+    const mlUserId = req.mlAccount.mlUserId;
 
-    // Check if user is enabled for global selling
-    const userResponse = await axios.get(
-      `${ML_API_BASE}/users/${mlUserId}`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      }
-    );
+    // Get user data using SDK
+    const userData = await sdkManager.getUser(accountId, mlUserId);
 
     // Check marketplace availability
     let marketplaceStatus = [];
     try {
-      const marketplaceResponse = await axios.get(
-        `${ML_API_BASE}/marketplace/users/${mlUserId}`,
-        {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        }
-      );
-      marketplaceStatus = marketplaceResponse.data || [];
+      marketplaceStatus = await sdkManager.execute(accountId, async (sdk) => {
+        const response = await sdk.axiosInstance.get(
+          `/marketplace/users/${mlUserId}`
+        );
+        return response.data || [];
+      });
     } catch (e) {
-      // Marketplace endpoint may not be available for all users
       logger.info('Marketplace endpoint not available:', { userId: mlUserId });
     }
 
-    res.json({
-      success: true,
-      data: {
-        user: {
-          id: userResponse.data.id,
-          nickname: userResponse.data.nickname,
-          siteId: userResponse.data.site_id,
-          sellerReputation: userResponse.data.seller_reputation,
-        },
-        globalSellingEnabled: marketplaceStatus.length > 0,
-        availableCountries: CBT_COUNTRIES.filter(c => c.code !== userResponse.data.site_id),
-        activeMarketplaces: marketplaceStatus,
+    sendSuccess(res, {
+      user: {
+        id: userData.id,
+        nickname: userData.nickname,
+        siteId: userData.site_id,
+        sellerReputation: userData.seller_reputation,
       },
+      globalSellingEnabled: marketplaceStatus.length > 0,
+      availableCountries: CBT_COUNTRIES.filter(c => c.code !== userData.site_id),
+      activeMarketplaces: marketplaceStatus,
     });
   } catch (error) {
-    logger.error('Error fetching global selling status:', {
-      error: error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
+    handleError(res, 500, 'Failed to fetch global selling status', error, {
+      action: 'FETCH_GLOBAL_SELLING_STATUS_ERROR',
+      accountId: req.params.accountId
     });
   }
 });
@@ -150,48 +134,37 @@ router.get('/:accountId/countries', authenticateToken, getMLAccount, async (req,
  */
 router.get('/:accountId/items', authenticateToken, getMLAccount, async (req, res) => {
   try {
-    const { accessToken, mlUserId } = req.mlAccount;
+    const { accountId } = req.params;
     const { offset = 0, limit = 50, country } = req.query;
+    const mlUserId = req.mlAccount.mlUserId;
 
-    // Get user's items
-    const itemsResponse = await axios.get(
-      `${ML_API_BASE}/users/${mlUserId}/items/search`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-        params: {
-          offset,
-          limit,
-          status: 'active',
-        },
-      }
-    );
+    // Get user's items using SDK
+    const searchData = await sdkManager.getAllUserItems(accountId, mlUserId, {
+      offset,
+      limit,
+      status: 'active'
+    });
 
-    const itemIds = itemsResponse.data.results || [];
+    const itemIds = searchData.results || [];
 
-    // Get details for each item including global publishing info
+    // Get details for each item using SDK
     const itemDetails = await Promise.all(
       itemIds.map(async (itemId) => {
         try {
-          const itemResponse = await axios.get(
-            `${ML_API_BASE}/items/${itemId}`,
-            {
-              headers: { Authorization: `Bearer ${accessToken}` },
-            }
-          );
+          const item = await sdkManager.getItem(accountId, itemId);
 
           // Check for global variations/publications
           let globalPublications = [];
           try {
-            const globalResponse = await axios.get(
-              `${ML_API_BASE}/items/${itemId}/variations`,
-              {
-                headers: { Authorization: `Bearer ${accessToken}` },
-              }
-            );
-            // Check if item has global selling variations
-            if (globalResponse.data?.global_item_id) {
+            const variations = await sdkManager.execute(accountId, async (sdk) => {
+              const response = await sdk.axiosInstance.get(
+                `/items/${itemId}/variations`
+              );
+              return response.data;
+            });
+            if (variations?.global_item_id) {
               globalPublications.push({
-                globalItemId: globalResponse.data.global_item_id,
+                globalItemId: variations.global_item_id,
               });
             }
           } catch (e) {
@@ -199,15 +172,15 @@ router.get('/:accountId/items', authenticateToken, getMLAccount, async (req, res
           }
 
           return {
-            id: itemResponse.data.id,
-            title: itemResponse.data.title,
-            price: itemResponse.data.price,
-            currency: itemResponse.data.currency_id,
-            thumbnail: itemResponse.data.thumbnail,
-            status: itemResponse.data.status,
-            availableQuantity: itemResponse.data.available_quantity,
-            soldQuantity: itemResponse.data.sold_quantity,
-            permalink: itemResponse.data.permalink,
+            id: item.id,
+            title: item.title,
+            price: item.price,
+            currency: item.currency_id,
+            thumbnail: item.thumbnail,
+            status: item.status,
+            availableQuantity: item.available_quantity,
+            soldQuantity: item.sold_quantity,
+            permalink: item.permalink,
             globalPublications,
           };
         } catch (e) {
@@ -216,18 +189,14 @@ router.get('/:accountId/items', authenticateToken, getMLAccount, async (req, res
       })
     );
 
-    res.json({
-      success: true,
-      data: {
-        items: itemDetails.filter(i => i !== null),
-        paging: itemsResponse.data.paging,
-      },
+    sendSuccess(res, {
+      items: itemDetails.filter(i => i !== null),
+      paging: searchData.paging,
     });
   } catch (error) {
-    logger.error('Error fetching global items:', { error: error.message });
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
+    handleError(res, 500, 'Failed to fetch global items', error, {
+      action: 'FETCH_GLOBAL_ITEMS_ERROR',
+      accountId: req.params.accountId
     });
   }
 });
@@ -238,7 +207,7 @@ router.get('/:accountId/items', authenticateToken, getMLAccount, async (req, res
  */
 router.post('/:accountId/items', authenticateToken, getMLAccount, async (req, res) => {
   try {
-    const { accessToken } = req.mlAccount;
+    const { accountId } = req.params;
     const {
       item_id,
       target_sites,
@@ -269,40 +238,30 @@ router.post('/:accountId/items', authenticateToken, getMLAccount, async (req, re
       return publication;
     });
 
-    // POST to global items endpoint
-    const response = await axios.post(
-      `${ML_API_BASE}/global/items`,
-      {
-        item_id,
-        publications,
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
+    // POST to global items endpoint using SDK execute
+    const response = await sdkManager.execute(accountId, async (sdk) => {
+      return await sdk.axiosInstance.post(
+        `/global/items`,
+        {
+          item_id,
+          publications,
+        }
+      );
+    });
 
     logger.info('Item published globally:', {
       itemId: item_id,
       targetSites: target_sites,
     });
 
-    res.json({
-      success: true,
+    sendSuccess(res, {
       data: response.data,
       message: `Item published to ${target_sites.length} country(ies)`,
     });
   } catch (error) {
-    logger.error('Error publishing item globally:', {
-      error: error.message,
-      response: error.response?.data,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
+    handleError(res, 500, 'Failed to publish item globally', error, {
+      action: 'PUBLISH_GLOBAL_ITEM_ERROR',
+      accountId: req.params.accountId
     });
   }
 });
@@ -313,41 +272,31 @@ router.post('/:accountId/items', authenticateToken, getMLAccount, async (req, re
  */
 router.delete('/:accountId/items/:itemId/:siteId', authenticateToken, getMLAccount, async (req, res) => {
   try {
-    const { itemId, siteId } = req.params;
-    const { accessToken } = req.mlAccount;
+    const { accountId, itemId, siteId } = req.params;
 
-    // Close the item in the target marketplace
-    const response = await axios.put(
-      `${ML_API_BASE}/items/${itemId}`,
-      {
-        status: 'closed',
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-          'X-Site-Id': siteId,
-        },
-      }
-    );
+    // Close the item in the target marketplace using SDK
+    const response = await sdkManager.execute(accountId, async (sdk) => {
+      return await sdk.axiosInstance.put(
+        `/items/${itemId}`,
+        { status: 'closed' },
+        {
+          headers: { 'X-Site-Id': siteId }
+        }
+      );
+    });
 
     logger.info('Item removed from marketplace:', {
       itemId,
       siteId,
     });
 
-    res.json({
-      success: true,
+    sendSuccess(res, {
       message: `Item removed from ${siteId}`,
     });
   } catch (error) {
-    logger.error('Error removing item from marketplace:', {
-      error: error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
+    handleError(res, 500, 'Failed to remove item from marketplace', error, {
+      action: 'REMOVE_GLOBAL_ITEM_ERROR',
+      accountId: req.params.accountId
     });
   }
 });
@@ -358,51 +307,44 @@ router.delete('/:accountId/items/:itemId/:siteId', authenticateToken, getMLAccou
  */
 router.get('/:accountId/shipments', authenticateToken, getMLAccount, async (req, res) => {
   try {
-    const { accessToken, mlUserId } = req.mlAccount;
+    const { accountId } = req.params;
     const { offset = 0, limit = 50, status } = req.query;
+    const mlUserId = req.mlAccount.mlUserId;
 
     const params = {
       offset,
       limit,
+      seller: mlUserId,
     };
 
     if (status) {
       params.status = status;
     }
 
-    // Get marketplace shipments
-    const response = await axios.get(
-      `${ML_API_BASE}/marketplace/shipments/search`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-        params: {
-          ...params,
-          seller: mlUserId,
-        },
-      }
-    );
-
-    res.json({
-      success: true,
-      data: response.data,
+    // Get marketplace shipments using SDK execute
+    const response = await sdkManager.execute(accountId, async (sdk) => {
+      return await sdk.axiosInstance.get(
+        `/marketplace/shipments/search`,
+        { params }
+      );
     });
+
+    sendSuccess(res, response.data);
   } catch (error) {
     logger.error('Error fetching international shipments:', {
       error: error.message,
     });
 
-    // Return empty array if endpoint not available
     if (error.response?.status === 404) {
-      return res.json({
-        success: true,
-        data: { results: [], paging: { total: 0 } },
-        message: 'No international shipments found',
+      return sendSuccess(res, {
+        results: [],
+        paging: { total: 0 }
       });
     }
 
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
+    handleError(res, 500, 'Failed to fetch international shipments', error, {
+      action: 'FETCH_GLOBAL_SHIPMENTS_ERROR',
+      accountId: req.params.accountId
     });
   }
 });
@@ -413,29 +355,21 @@ router.get('/:accountId/shipments', authenticateToken, getMLAccount, async (req,
  */
 router.get('/:accountId/shipments/:shipmentId', authenticateToken, getMLAccount, async (req, res) => {
   try {
-    const { shipmentId } = req.params;
-    const { accessToken } = req.mlAccount;
+    const { accountId, shipmentId } = req.params;
 
-    const response = await axios.get(
-      `${ML_API_BASE}/marketplace/shipments/${shipmentId}`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      }
-    );
-
-    res.json({
-      success: true,
-      data: response.data,
+    // Get shipment details using SDK execute
+    const response = await sdkManager.execute(accountId, async (sdk) => {
+      return await sdk.axiosInstance.get(
+        `/marketplace/shipments/${shipmentId}`
+      );
     });
+
+    sendSuccess(res, response.data);
   } catch (error) {
-    logger.error('Error fetching shipment details:', {
-      error: error.message,
-      shipmentId: req.params.shipmentId,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
+    handleError(res, 500, 'Failed to fetch shipment details', error, {
+      action: 'FETCH_SHIPMENT_DETAILS_ERROR',
+      accountId: req.params.accountId,
+      shipmentId: req.params.shipmentId
     });
   }
 });
@@ -531,8 +465,9 @@ router.get('/:accountId/shipments/:shipmentId/label', authenticateToken, getMLAc
  */
 router.get('/:accountId/orders', authenticateToken, getMLAccount, async (req, res) => {
   try {
-    const { accessToken, mlUserId } = req.mlAccount;
+    const { accountId } = req.params;
     const { offset = 0, limit = 50, status } = req.query;
+    const mlUserId = req.mlAccount.mlUserId;
 
     const params = {
       seller: mlUserId,
@@ -544,35 +479,30 @@ router.get('/:accountId/orders', authenticateToken, getMLAccount, async (req, re
       params['order.status'] = status;
     }
 
-    // Get marketplace orders (international)
-    const response = await axios.get(
-      `${ML_API_BASE}/marketplace/orders/search`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-        params,
-      }
-    );
-
-    res.json({
-      success: true,
-      data: response.data,
+    // Get marketplace orders (international) using SDK execute
+    const response = await sdkManager.execute(accountId, async (sdk) => {
+      return await sdk.axiosInstance.get(
+        `/marketplace/orders/search`,
+        { params }
+      );
     });
+
+    sendSuccess(res, response.data);
   } catch (error) {
     logger.error('Error fetching international orders:', {
       error: error.message,
     });
 
     if (error.response?.status === 404) {
-      return res.json({
-        success: true,
-        data: { results: [], paging: { total: 0 } },
-        message: 'No international orders found',
+      return sendSuccess(res, {
+        results: [],
+        paging: { total: 0 }
       });
     }
 
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
+    handleError(res, 500, 'Failed to fetch international orders', error, {
+      action: 'FETCH_GLOBAL_ORDERS_ERROR',
+      accountId: req.params.accountId
     });
   }
 });
@@ -583,33 +513,25 @@ router.get('/:accountId/orders', authenticateToken, getMLAccount, async (req, re
  */
 router.get('/:accountId/working-days/:siteId', authenticateToken, getMLAccount, async (req, res) => {
   try {
-    const { siteId } = req.params;
-    const { accessToken } = req.mlAccount;
+    const { accountId, siteId } = req.params;
     const { date_from, date_to } = req.query;
 
-    const response = await axios.get(
-      `${ML_API_BASE}/sites/${siteId}/working_days`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-        params: {
-          date_from,
-          date_to,
-        },
-      }
-    );
-
-    res.json({
-      success: true,
-      data: response.data,
+    // Get working days using SDK execute
+    const response = await sdkManager.execute(accountId, async (sdk) => {
+      return await sdk.axiosInstance.get(
+        `/sites/${siteId}/working_days`,
+        {
+          params: { date_from, date_to }
+        }
+      );
     });
+
+    sendSuccess(res, response.data);
   } catch (error) {
-    logger.error('Error fetching working days:', {
-      error: error.message,
-    });
-
-    res.status(error.response?.status || 500).json({
-      success: false,
-      error: error.response?.data?.message || error.message,
+    handleError(res, 500, 'Failed to fetch working days', error, {
+      action: 'FETCH_WORKING_DAYS_ERROR',
+      accountId: req.params.accountId,
+      siteId: req.params.siteId
     });
   }
 });
