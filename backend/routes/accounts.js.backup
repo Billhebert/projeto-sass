@@ -7,7 +7,7 @@
  */
 
 const express = require('express');
-const { handleError, sendSuccess } = require('../middleware/response-helpers');
+const axios = require('axios');
 
 const router = express.Router();
 
@@ -18,15 +18,33 @@ const {
   deleteAccount
 } = require('../db/accounts');
 
+const ML_API_BASE = 'https://api.mercadolibre.com';
+
 /**
  * GET /api/accounts
  * 
  * List all connected accounts with their status and summary
+ * 
+ * Response:
+ * {
+ *   accounts: [
+ *     {
+ *       id: string,
+ *       userId: number,
+ *       nickname: string,
+ *       email: string,
+ *       status: string,
+ *       lastSyncTime: string,
+ *       lastSyncStatus: string
+ *     }
+ *   ]
+ * }
  */
 router.get('/', async (req, res, next) => {
   try {
     const accounts = await getAllAccounts();
 
+    // Filter out sensitive data
     const safeAccounts = accounts.map(account => ({
       id: account.id,
       userId: account.userId,
@@ -56,6 +74,11 @@ router.get('/', async (req, res, next) => {
  * GET /api/accounts/:accountId
  * 
  * Get details of a specific account
+ * 
+ * Response:
+ * {
+ *   account: { ... }
+ * }
  */
 router.get('/:accountId', async (req, res, next) => {
   try {
@@ -70,6 +93,7 @@ router.get('/:accountId', async (req, res, next) => {
       });
     }
 
+    // Return safe data without tokens
     res.json({
       account: {
         id: account.id,
@@ -97,6 +121,7 @@ router.get('/:accountId', async (req, res, next) => {
  * GET /api/accounts/:accountId/summary
  * 
  * Get account summary from Mercado Livre
+ * Includes user metrics, reputation, sales info
  */
 router.get('/:accountId/summary', async (req, res, next) => {
   try {
@@ -117,8 +142,8 @@ router.get('/:accountId/summary', async (req, res, next) => {
       });
     }
 
-    const sdkManager = require("../services/sdk-manager");
-    const summary = await sdkManager.getUser(accountId, account.userId);
+    // Fetch user summary from ML
+    const summary = await getUserSummary(account.accessToken, account.userId);
 
     res.json({
       accountId: account.id,
@@ -148,6 +173,7 @@ router.delete('/:accountId', async (req, res, next) => {
       });
     }
 
+    // Delete the account
     await deleteAccount(accountId);
 
     res.json({
@@ -161,5 +187,31 @@ router.delete('/:accountId', async (req, res, next) => {
     next(error);
   }
 });
+
+// ============================================
+// HELPER FUNCTIONS
+// ============================================
+
+/**
+ * Get user summary from Mercado Livre
+ */
+async function getUserSummary(accessToken, userId) {
+  try {
+    const response = await axios.get(
+      `${ML_API_BASE}/users/${userId}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        },
+        timeout: 15000
+      }
+    );
+
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching user summary:', error.message);
+    throw new Error(`Failed to get user summary: ${error.message}`);
+  }
+}
 
 module.exports = router;

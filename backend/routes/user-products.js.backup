@@ -20,19 +20,66 @@
  */
 
 const express = require('express');
+const axios = require('axios');
 const logger = require('../logger');
 const sdkManager = require("../services/sdk-manager");
 const { authenticateToken } = require('../middleware/auth');
 const { validateMLToken } = require('../middleware/ml-token-validation');
-const { handleError, sendSuccess, buildHeaders } = require('../middleware/response-helpers');
 
 const router = express.Router();
 
 const ML_API_BASE = 'https://api.mercadolibre.com';
 
+// ============================================================================
+// CORE HELPERS - Used across all endpoints
+// ============================================================================
+
+/**
+ * Handle and log errors with consistent response format
+ * @param {Object} res - Express response object
+ * @param {number} statusCode - HTTP status code (default: 500)
+ * @param {string} message - Error message to send to client
+ * @param {Error} error - Original error object
+ * @param {Object} context - Additional logging context
+ */
+const handleError = (res, statusCode = 500, message, error = null, context = {}) => {
+  logger.error({
+    action: context.action || 'UNKNOWN_ERROR',
+    error: error?.message || message,
+    statusCode,
+    ...context,
+  });
+
+  const response = { success: false, message };
+  if (error?.message) response.error = error.message;
+  res.status(statusCode).json(response);
+};
+
+/**
+ * Send success response with consistent format
+ * @param {Object} res - Express response object
+ * @param {*} data - Response data
+ * @param {string} message - Optional success message
+ * @param {number} statusCode - HTTP status code (default: 200)
+ */
+const sendSuccess = (res, data, message = null, statusCode = 200) => {
+  const response = { success: true, data };
+  if (message) response.message = message;
+  res.status(statusCode).json(response);
+};
+
+/**
+ * Build authorization headers for ML API
+ * @param {string} accessToken - ML API access token
+ * @returns {Object} Headers object
+ */
+const buildHeaders = (accessToken) => ({
+  'Authorization': `Bearer ${accessToken}`,
+  'Content-Type': 'application/json',
+});
+
 /**
  * Get and validate ML account from request
- * NOTE: Custom implementation (differs from centralized version)
  * @param {Object} req - Express request object
  * @param {string} accountId - Account ID from params
  * @returns {Object} ML account object
@@ -56,26 +103,27 @@ const getAndValidateAccount = async (req, accountId) => {
  * @param {number} limit - Limit of items to fetch (default: 20)
  * @returns {Promise<Object[]>} Array of products with details
  */
-const fetchProductsWithDetails = async (itemIds, accountId, limit = 20) => {
-  const sdk = await sdkManager.getSDK(accountId);
+const fetchProductsWithDetails = async (itemIds, headers, limit = 20) => {
   const products = await Promise.all(
     itemIds.slice(0, limit).map(async (itemId) => {
       try {
-        const itemData = await sdk.getItem(itemId);
-        const stockData = await sdk.get(`/items/${itemId}/stock`).catch(() => null);
+        const [itemRes, inventoryRes] = await Promise.all([
+          axios.get(`${ML_API_BASE}/items/${itemId}`, { headers }),
+          axios.get(`${ML_API_BASE}/items/${itemId}/stock`, { headers }).catch(() => ({ data: null })),
+        ]);
 
         return {
           item_id: itemId,
-          title: itemData.title,
-          status: itemData.status,
-          available_quantity: itemData.available_quantity,
-          sold_quantity: itemData.sold_quantity,
-          price: itemData.price,
-          currency_id: itemData.currency_id,
-          catalog_product_id: itemData.catalog_product_id,
-          inventory: stockData,
-          variations: itemData.variations?.length || 0,
-          shipping: itemData.shipping,
+          title: itemRes.data.title,
+          status: itemRes.data.status,
+          available_quantity: itemRes.data.available_quantity,
+          sold_quantity: itemRes.data.sold_quantity,
+          price: itemRes.data.price,
+          currency_id: itemRes.data.currency_id,
+          catalog_product_id: itemRes.data.catalog_product_id,
+          inventory: inventoryRes.data,
+          variations: itemRes.data.variations?.length || 0,
+          shipping: itemRes.data.shipping,
         };
       } catch (err) {
         return null;
@@ -150,21 +198,29 @@ const buildStockLocations = (itemId, itemData, locationsData) => ({
  * @param {number} limit - Limit of items (default: 100)
  * @returns {Promise<Object[]>} Items with stock info
  */
-const fetchItemsWithStock = async (accountId, mlUserId, limit = 100) => {
-  const sdk = await sdkManager.getSDK(accountId);
-  const searchResult = await sdk.getUserItems(mlUserId, { limit });
-  
-  const itemIds = searchResult.data || [];
+const fetchItemsWithStock = async (headers, mlUserId, limit = 100) => {
+  const response = await axios.get(
+    `${ML_API_BASE}/users/${mlUserId}/items/search`,
+    {
+      headers,
+      params: {
+        status: 'active',
+        limit,
+      },
+    }
+  );
+
+  const itemIds = response.data.results || [];
 
   const itemsWithStock = await Promise.all(
     itemIds.map(async (itemId) => {
       try {
-        const itemData = await sdk.getItem(itemId);
+        const itemRes = await axios.get(`${ML_API_BASE}/items/${itemId}`, { headers });
         return {
           item_id: itemId,
-          title: itemData.title,
-          available_quantity: itemData.available_quantity,
-          status: itemData.status,
+          title: itemRes.data.title,
+          available_quantity: itemRes.data.available_quantity,
+          status: itemRes.data.status,
         };
       } catch (err) {
         return null;
@@ -197,17 +253,21 @@ router.get('/:accountId', authenticateToken, validateMLToken('accountId'), async
     const { limit = 50, offset = 0, status } = req.query;
     const account = await getAndValidateAccount(req, accountId);
 
+    const headers = buildHeaders(account.accessToken);
+
     const params = {
       limit: parseInt(limit),
       offset: parseInt(offset),
     };
     if (status) params.status = status;
 
-    const sdk = await sdkManager.getSDK(accountId);
-    const searchResult = await sdk.getUserItems(account.mlUserId, params);
+    const response = await axios.get(
+      `${ML_API_BASE}/users/${account.mlUserId}/items/search`,
+      { headers, params }
+    );
 
-    const itemIds = searchResult.data || searchResult.results || [];
-    const products = await fetchProductsWithDetails(itemIds, accountId, 20);
+    const itemIds = response.data.results || [];
+    const products = await fetchProductsWithDetails(itemIds, headers, 20);
 
     logger.info({
       action: 'LIST_USER_PRODUCTS',
@@ -218,10 +278,10 @@ router.get('/:accountId', authenticateToken, validateMLToken('accountId'), async
 
     sendSuccess(res, {
       products,
-      paging: searchResult.paging,
+      paging: response.data.paging,
     });
   } catch (error) {
-    handleError(res, error.statusCode || 500, 'Failed to list user products', error, {
+    handleError(res, error.response?.status || 500, 'Failed to list user products', error, {
       action: 'LIST_USER_PRODUCTS_ERROR',
       accountId: req.params.accountId,
       userId: req.user.userId,
@@ -237,9 +297,12 @@ router.get('/:accountId/product/:productId', authenticateToken, validateMLToken(
   try {
     const { accountId, productId } = req.params;
     const account = await getAndValidateAccount(req, accountId);
-    const sdk = await sdkManager.getSDK(accountId);
+    const headers = buildHeaders(account.accessToken);
 
-    const result = await sdk.get(`/products/${productId}`);
+    const response = await axios.get(
+      `${ML_API_BASE}/products/${productId}`,
+      { headers }
+    );
 
     logger.info({
       action: 'GET_PRODUCT_DETAILS',
@@ -248,9 +311,9 @@ router.get('/:accountId/product/:productId', authenticateToken, validateMLToken(
       userId: req.user.userId,
     });
 
-    sendSuccess(res, result);
+    sendSuccess(res, response.data);
   } catch (error) {
-    handleError(res, error.statusCode || 500, 'Failed to get product details', error, {
+    handleError(res, error.response?.status || 500, 'Failed to get product details', error, {
       action: 'GET_PRODUCT_DETAILS_ERROR',
       accountId: req.params.accountId,
       productId: req.params.productId,
@@ -267,15 +330,15 @@ router.get('/:accountId/inventory/:itemId', authenticateToken, validateMLToken('
   try {
     const { accountId, itemId } = req.params;
     const account = await getAndValidateAccount(req, accountId);
-    const sdk = await sdkManager.getSDK(accountId);
+    const headers = buildHeaders(account.accessToken);
 
-    const [itemData, stockData, warehouseData] = await Promise.all([
-      sdk.getItem(itemId),
-      sdk.get(`/items/${itemId}/stock`).catch(() => null),
-      sdk.get(`/items/${itemId}/stock/warehouses`).catch(() => null),
+    const [itemRes, stockRes, warehouseRes] = await Promise.all([
+      axios.get(`${ML_API_BASE}/items/${itemId}`, { headers }),
+      axios.get(`${ML_API_BASE}/items/${itemId}/stock`, { headers }).catch(() => ({ data: null })),
+      axios.get(`${ML_API_BASE}/items/${itemId}/stock/warehouses`, { headers }).catch(() => ({ data: null })),
     ]);
 
-    const inventory = buildInventorySummary(itemId, itemData, stockData, warehouseData);
+    const inventory = buildInventorySummary(itemId, itemRes.data, stockRes.data, warehouseRes.data);
 
     logger.info({
       action: 'GET_INVENTORY',
@@ -286,7 +349,7 @@ router.get('/:accountId/inventory/:itemId', authenticateToken, validateMLToken('
 
     sendSuccess(res, inventory);
   } catch (error) {
-    handleError(res, error.statusCode || 500, 'Failed to get inventory', error, {
+    handleError(res, error.response?.status || 500, 'Failed to get inventory', error, {
       action: 'GET_INVENTORY_ERROR',
       accountId: req.params.accountId,
       itemId: req.params.itemId,
@@ -304,7 +367,7 @@ router.put('/:accountId/inventory/:itemId', authenticateToken, validateMLToken('
     const { accountId, itemId } = req.params;
     const { available_quantity, variations } = req.body;
     const account = await getAndValidateAccount(req, accountId);
-    const sdk = await sdkManager.getSDK(accountId);
+    const headers = buildHeaders(account.accessToken);
 
     const updateData = {};
 
@@ -319,7 +382,11 @@ router.put('/:accountId/inventory/:itemId', authenticateToken, validateMLToken('
       }));
     }
 
-    const result = await sdk.updateItem(itemId, updateData);
+    const response = await axios.put(
+      `${ML_API_BASE}/items/${itemId}`,
+      updateData,
+      { headers }
+    );
 
     logger.info({
       action: 'UPDATE_INVENTORY',
@@ -331,14 +398,14 @@ router.put('/:accountId/inventory/:itemId', authenticateToken, validateMLToken('
 
     sendSuccess(res, {
       item_id: itemId,
-      available_quantity: result.available_quantity,
-      variations: result.variations?.map(v => ({
+      available_quantity: response.data.available_quantity,
+      variations: response.data.variations?.map(v => ({
         id: v.id,
         available_quantity: v.available_quantity,
       })),
     }, 'Inventory updated successfully');
   } catch (error) {
-    handleError(res, error.statusCode || 500, 'Failed to update inventory', error, {
+    handleError(res, error.response?.status || 500, 'Failed to update inventory', error, {
       action: 'UPDATE_INVENTORY_ERROR',
       accountId: req.params.accountId,
       itemId: req.params.itemId,
@@ -355,20 +422,23 @@ router.get('/:accountId/warehouses', authenticateToken, validateMLToken('account
   try {
     const { accountId } = req.params;
     const account = await getAndValidateAccount(req, accountId);
-    const sdk = await sdkManager.getSDK(accountId);
+    const headers = buildHeaders(account.accessToken);
 
-    const result = await sdk.get(`/users/${account.mlUserId}/warehouses`);
+    const response = await axios.get(
+      `${ML_API_BASE}/users/${account.mlUserId}/warehouses`,
+      { headers }
+    );
 
     logger.info({
       action: 'LIST_WAREHOUSES',
       accountId,
       userId: req.user.userId,
-      warehousesCount: result?.length || 0,
+      warehousesCount: response.data?.length || 0,
     });
 
-    sendSuccess(res, result);
+    sendSuccess(res, response.data);
   } catch (error) {
-    if (error.statusCode === 404) {
+    if (error.response?.status === 404) {
       logger.info({
         action: 'LIST_WAREHOUSES_NOT_FOUND',
         accountId: req.params.accountId,
@@ -377,7 +447,7 @@ router.get('/:accountId/warehouses', authenticateToken, validateMLToken('account
       return sendSuccess(res, [], 'No warehouses available for this account');
     }
 
-    handleError(res, error.statusCode || 500, 'Failed to list warehouses', error, {
+    handleError(res, error.response?.status || 500, 'Failed to list warehouses', error, {
       action: 'LIST_WAREHOUSES_ERROR',
       accountId: req.params.accountId,
       userId: req.user.userId,
@@ -393,14 +463,14 @@ router.get('/:accountId/fulfillment/:itemId', authenticateToken, validateMLToken
   try {
     const { accountId, itemId } = req.params;
     const account = await getAndValidateAccount(req, accountId);
-    const sdk = await sdkManager.getSDK(accountId);
+    const headers = buildHeaders(account.accessToken);
 
-    const [itemData, fulfillmentData] = await Promise.all([
-      sdk.getItem(itemId),
-      sdk.get(`/items/${itemId}/fulfillment`).catch(() => null),
+    const [itemRes, fulfillmentRes] = await Promise.all([
+      axios.get(`${ML_API_BASE}/items/${itemId}`, { headers }),
+      axios.get(`${ML_API_BASE}/items/${itemId}/fulfillment`, { headers }).catch(() => ({ data: null })),
     ]);
 
-    const fulfillmentInfo = buildFulfillmentInfo(itemId, itemData, fulfillmentData);
+    const fulfillmentInfo = buildFulfillmentInfo(itemId, itemRes.data, fulfillmentRes.data);
 
     logger.info({
       action: 'GET_FULFILLMENT_INFO',
@@ -412,7 +482,7 @@ router.get('/:accountId/fulfillment/:itemId', authenticateToken, validateMLToken
 
     sendSuccess(res, fulfillmentInfo);
   } catch (error) {
-    handleError(res, error.statusCode || 500, 'Failed to get fulfillment info', error, {
+    handleError(res, error.response?.status || 500, 'Failed to get fulfillment info', error, {
       action: 'GET_FULFILLMENT_INFO_ERROR',
       accountId: req.params.accountId,
       itemId: req.params.itemId,
@@ -429,13 +499,17 @@ router.post('/:accountId/fulfillment/:itemId', authenticateToken, validateMLToke
   try {
     const { accountId, itemId } = req.params;
     const account = await getAndValidateAccount(req, accountId);
-    const sdk = await sdkManager.getSDK(accountId);
+    const headers = buildHeaders(account.accessToken);
 
-    const result = await sdk.updateItem(itemId, {
-      shipping: {
-        logistic_type: 'fulfillment',
+    const response = await axios.put(
+      `${ML_API_BASE}/items/${itemId}`,
+      {
+        shipping: {
+          logistic_type: 'fulfillment',
+        },
       },
-    });
+      { headers }
+    );
 
     logger.info({
       action: 'OPT_IN_FULFILLMENT',
@@ -446,10 +520,10 @@ router.post('/:accountId/fulfillment/:itemId', authenticateToken, validateMLToke
 
     sendSuccess(res, {
       item_id: itemId,
-      logistic_type: result.shipping?.logistic_type,
+      logistic_type: response.data.shipping?.logistic_type,
     }, 'Item opted-in to fulfillment');
   } catch (error) {
-    handleError(res, error.statusCode || 500, 'Failed to opt-in to fulfillment', error, {
+    handleError(res, error.response?.status || 500, 'Failed to opt-in to fulfillment', error, {
       action: 'OPT_IN_FULFILLMENT_ERROR',
       accountId: req.params.accountId,
       itemId: req.params.itemId,
@@ -466,13 +540,17 @@ router.delete('/:accountId/fulfillment/:itemId', authenticateToken, validateMLTo
   try {
     const { accountId, itemId } = req.params;
     const account = await getAndValidateAccount(req, accountId);
-    const sdk = await sdkManager.getSDK(accountId);
+    const headers = buildHeaders(account.accessToken);
 
-    const result = await sdk.updateItem(itemId, {
-      shipping: {
-        logistic_type: 'cross_docking',
+    const response = await axios.put(
+      `${ML_API_BASE}/items/${itemId}`,
+      {
+        shipping: {
+          logistic_type: 'cross_docking',
+        },
       },
-    });
+      { headers }
+    );
 
     logger.info({
       action: 'OPT_OUT_FULFILLMENT',
@@ -483,10 +561,10 @@ router.delete('/:accountId/fulfillment/:itemId', authenticateToken, validateMLTo
 
     sendSuccess(res, {
       item_id: itemId,
-      logistic_type: result.shipping?.logistic_type,
+      logistic_type: response.data.shipping?.logistic_type,
     }, 'Item opted-out from fulfillment');
   } catch (error) {
-    handleError(res, error.statusCode || 500, 'Failed to opt-out from fulfillment', error, {
+    handleError(res, error.response?.status || 500, 'Failed to opt-out from fulfillment', error, {
       action: 'OPT_OUT_FULFILLMENT_ERROR',
       accountId: req.params.accountId,
       itemId: req.params.itemId,
@@ -495,18 +573,22 @@ router.delete('/:accountId/fulfillment/:itemId', authenticateToken, validateMLTo
   }
 });
 
+/**
+ * GET /api/user-products/:accountId/stock-locations/:itemId
+ * Get stock by location/warehouse
+ */
 router.get('/:accountId/stock-locations/:itemId', authenticateToken, validateMLToken('accountId'), async (req, res) => {
   try {
     const { accountId, itemId } = req.params;
     const account = await getAndValidateAccount(req, accountId);
-    const sdk = await sdkManager.getSDK(accountId);
+    const headers = buildHeaders(account.accessToken);
 
-    const [itemData, stockLocationsData] = await Promise.all([
-      sdk.getItem(itemId),
-      sdk.get(`/items/${itemId}/stock/warehouses`).catch(() => null),
+    const [itemRes, stockLocationsRes] = await Promise.all([
+      axios.get(`${ML_API_BASE}/items/${itemId}`, { headers }),
+      axios.get(`${ML_API_BASE}/items/${itemId}/stock/warehouses`, { headers }).catch(() => ({ data: null })),
     ]);
 
-    const stockLocations = buildStockLocations(itemId, itemData, stockLocationsData);
+    const stockLocations = buildStockLocations(itemId, itemRes.data, stockLocationsRes.data);
 
     logger.info({
       action: 'GET_STOCK_LOCATIONS',
@@ -517,7 +599,7 @@ router.get('/:accountId/stock-locations/:itemId', authenticateToken, validateMLT
 
     sendSuccess(res, stockLocations);
   } catch (error) {
-    handleError(res, error.statusCode || 500, 'Failed to get stock locations', error, {
+    handleError(res, error.response?.status || 500, 'Failed to get stock locations', error, {
       action: 'GET_STOCK_LOCATIONS_ERROR',
       accountId: req.params.accountId,
       itemId: req.params.itemId,
@@ -535,8 +617,9 @@ router.get('/:accountId/low-stock', authenticateToken, validateMLToken('accountI
     const { accountId } = req.params;
     const { threshold = 5 } = req.query;
     const account = await getAndValidateAccount(req, accountId);
+    const headers = buildHeaders(account.accessToken);
 
-    const itemsWithStock = await fetchItemsWithStock(accountId, account.mlUserId, 100);
+    const itemsWithStock = await fetchItemsWithStock(headers, account.mlUserId, 100);
     const lowStockItems = filterLowStockItems(itemsWithStock, threshold);
 
     logger.info({
@@ -553,7 +636,7 @@ router.get('/:accountId/low-stock', authenticateToken, validateMLToken('accountI
       total: lowStockItems.length,
     });
   } catch (error) {
-    handleError(res, error.statusCode || 500, 'Failed to get low stock items', error, {
+    handleError(res, error.response?.status || 500, 'Failed to get low stock items', error, {
       action: 'GET_LOW_STOCK_ITEMS_ERROR',
       accountId: req.params.accountId,
       userId: req.user.userId,

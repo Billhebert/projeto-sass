@@ -1,10 +1,11 @@
 const express = require('express');
+const axios = require('axios');
 const logger = require('../logger');
 const sdkManager = require("../services/sdk-manager");
 const { authenticateToken } = require('../middleware/auth');
-const { handleError, sendSuccess } = require('../middleware/response-helpers');
 
 const router = express.Router();
+const API_BASE_URL = process.env.ML_API_URL || 'https://api.mercadolibre.com';
 
 // Validation helpers
 const validateShipmentId = (shipmentId) => {
@@ -21,6 +22,7 @@ const validateShipmentCreation = (body) => {
     errors.push('Request body is required');
   }
   
+  // Validate required fields for shipment creation
   if (body.order_id !== undefined && isNaN(parseInt(body.order_id))) {
     errors.push('order_id must be a valid integer');
   }
@@ -37,8 +39,8 @@ router.get('/', authenticateToken, async (req, res) => {
   try {
     const { limit = 20, offset = 0, status, sort = 'date_desc' } = req.query;
     
+    // Get seller ID from user token
     const sellerId = req.user?.userId || req.user?.id;
-    const accountId = req.user?.accountId || sellerId;
     
     if (!sellerId) {
       return res.status(400).json({
@@ -47,6 +49,14 @@ router.get('/', authenticateToken, async (req, res) => {
       });
     }
     
+    const config = {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${req.user?.token || ''}`
+      }
+    };
+    
+    // Build query params
     const params = {
       seller: sellerId,
       limit: parseInt(limit),
@@ -57,6 +67,7 @@ router.get('/', authenticateToken, async (req, res) => {
       params.status = status;
     }
     
+    // Sort mapping
     const sortMapping = {
       'date_desc': 'date_created:desc',
       'date_asc': 'date_created:asc'
@@ -72,17 +83,23 @@ router.get('/', authenticateToken, async (req, res) => {
       status: params.status
     });
     
-    const shipments = await sdkManager.searchShipments(accountId, params);
+    const response = await axios({
+      method: 'GET',
+      url: `${API_BASE_URL}/shipments/search`,
+      ...config,
+      params,
+      timeout: 15000
+    });
     
-    const results = shipments.results || [];
+    const shipments = response.data.results || [];
     
-    logger.info(`SHIPPING - list_shipments: Success - Found ${results.length} shipments`);
+    logger.info(`SHIPPING - list_shipments: Success - Found ${shipments.length} shipments`);
     
     res.json({ 
       success: true, 
-      data: results,
+      data: shipments,
       pagination: {
-        total: shipments.paging?.total || 0,
+        total: response.data.paging?.total || 0,
         limit: parseInt(limit),
         offset: parseInt(offset)
       }
@@ -112,10 +129,12 @@ router.get('/:shipment_id', authenticateToken, async (req, res) => {
   try {
     const { shipment_id } = req.params;
     
+    // Skip if it's a known sub-route
     if (shipment_id === 'shipments' || shipment_id === 'options') {
       return res.status(404).json({ success: false, error: 'Not found' });
     }
     
+    // Validate shipment ID
     const idError = validateShipmentId(shipment_id);
     if (idError) {
       return res.status(400).json({
@@ -125,17 +144,26 @@ router.get('/:shipment_id', authenticateToken, async (req, res) => {
       });
     }
     
-    const accountId = req.user?.accountId || req.user?.userId;
+    const config = {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${req.user?.token || ''}`
+      }
+    };
     
     logger.info(`SHIPPING - get_shipment: Fetching shipment ${shipment_id}`);
     
-    const shipment = await sdkManager.execute(accountId, async (sdk) => {
-      return sdk.getShipment(shipment_id);
+    const response = await axios({
+      method: 'GET',
+      url: `${API_BASE_URL}/shipments/${shipment_id}`,
+      ...config,
+      params: req.query,
+      timeout: 10000
     });
     
     const enhancedData = {
-      ...shipment,
-      label_url: shipment.label_url || `https://api.mercadolibre.com/shipments/${shipment_id}/label`
+      ...response.data,
+      label_url: response.data.label_url || `${API_BASE_URL}/shipments/${shipment_id}/label`
     };
     
     logger.info(`SHIPPING - get_shipment: Success - Retrieved shipment ${shipment_id}`);
@@ -165,6 +193,7 @@ router.put('/:shipment_id', authenticateToken, async (req, res) => {
   try {
     const { shipment_id } = req.params;
     
+    // Validate shipment ID
     const idError = validateShipmentId(shipment_id);
     if (idError) {
       return res.status(400).json({
@@ -182,16 +211,25 @@ router.put('/:shipment_id', authenticateToken, async (req, res) => {
       });
     }
     
-    const accountId = req.user?.accountId || req.user?.userId;
+    const config = {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${req.user?.token || ''}`
+      }
+    };
     
     logger.info(`SHIPPING - update_shipment: Updating shipment ${shipment_id}`);
     
-    const shipment = await sdkManager.execute(accountId, async (sdk) => {
-      return sdk.updateShipment(shipment_id, req.body);
+    const response = await axios({
+      method: 'PUT',
+      url: `${API_BASE_URL}/shipments/${shipment_id}`,
+      ...config,
+      data: req.body,
+      timeout: 10000
     });
     
     logger.info(`SHIPPING - update_shipment: Success - Shipment ${shipment_id} updated`);
-    res.json({ success: true, data: shipment });
+    res.json({ success: true, data: response.data });
   } catch (error) {
     const statusCode = error.response?.status || 500;
     const errorData = error.response?.data || { message: error.message };
@@ -226,25 +264,33 @@ router.get('/:shipment_id/label', authenticateToken, async (req, res) => {
       });
     }
     
-    const accountId = req.user?.accountId || req.user?.userId;
+    const config = {
+      headers: {
+        'Authorization': `Bearer ${req.user?.token || ''}`
+      }
+    };
     
     logger.info(`SHIPPING - get_label: Generating label for shipment ${shipment_id}`);
     
     const format = req.query.format || 'url';
     
-    const label = await sdkManager.execute(accountId, async (sdk) => {
-      return sdk.getShipmentLabel(shipment_id, { format });
+    const response = await axios({
+      method: 'GET',
+      url: `${API_BASE_URL}/shipments/${shipment_id}/label`,
+      ...config,
+      params: { format },
+      timeout: 10000
     });
     
     logger.info(`SHIPPING - get_label: Success - Label generated for shipment ${shipment_id}`);
     
     if (format === 'pdf') {
       res.contentType('application/pdf');
-      res.send(label);
+      res.send(response.data);
     } else {
       res.json({ 
         success: true, 
-        data: label,
+        data: response.data,
         label_format: format
       });
     }
@@ -273,25 +319,34 @@ router.get('/options', authenticateToken, async (req, res) => {
   try {
     const { zip_code, dimensions, weight, item_id } = req.query;
     
+    const config = {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${req.user?.token || ''}`
+      }
+    };
+    
     const params = {};
     if (zip_code) params.zip_code = zip_code;
     if (dimensions) params.dimensions = dimensions;
     if (weight) params.weight = weight;
     if (item_id) params.item_id = item_id;
     
-    const accountId = req.user?.accountId || req.user?.userId;
-    
     logger.info(`SHIPPING - get_options: Fetching shipping options`);
     
-    const options = await sdkManager.execute(accountId, async (sdk) => {
-      return sdk.getShippingOptions(params);
+    const response = await axios({
+      method: 'GET',
+      url: `${API_BASE_URL}/sites/MLB/shipping_options`,
+      ...config,
+      params,
+      timeout: 10000
     });
     
-    logger.info(`SHIPPING - get_options: Success - Found ${options.length || 0} options`);
+    logger.info(`SHIPPING - get_options: Success - Found ${response.data.options?.length || 0} options`);
     
     res.json({ 
       success: true, 
-      data: options || []
+      data: response.data.options || response.data
     });
   } catch (error) {
     const statusCode = error.response?.status || 500;
@@ -317,6 +372,7 @@ router.get('/shipments/:shipment_id', authenticateToken, async (req, res) => {
   try {
     const { shipment_id } = req.params;
     
+    // Validate shipment ID
     const idError = validateShipmentId(shipment_id);
     if (idError) {
       return res.status(400).json({
@@ -326,17 +382,27 @@ router.get('/shipments/:shipment_id', authenticateToken, async (req, res) => {
       });
     }
     
-    const accountId = req.user?.accountId || req.user?.userId;
+    const config = {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${req.user?.token || ''}`
+      }
+    };
     
     logger.info(`SHIPPING - get_shipment: Fetching shipment ${shipment_id}`);
     
-    const shipment = await sdkManager.execute(accountId, async (sdk) => {
-      return sdk.getShipment(shipment_id);
+    const response = await axios({
+      method: 'GET',
+      url: `${API_BASE_URL}/shipments/${shipment_id}`,
+      ...config,
+      params: req.query,
+      timeout: 10000
     });
     
+    // Enhance response with label URL if available
     const enhancedData = {
-      ...shipment,
-      label_url: shipment.label_url || `https://api.mercadolibre.com/shipments/${shipment_id}/label`
+      ...response.data,
+      label_url: response.data.label_url || `${API_BASE_URL}/shipments/${shipment_id}/label`
     };
     
     logger.info(`SHIPPING - get_shipment: Success - Retrieved shipment ${shipment_id}`);
@@ -366,6 +432,7 @@ router.put('/shipments/:shipment_id', authenticateToken, async (req, res) => {
   try {
     const { shipment_id } = req.params;
     
+    // Validate shipment ID
     const idError = validateShipmentId(shipment_id);
     if (idError) {
       return res.status(400).json({
@@ -375,6 +442,7 @@ router.put('/shipments/:shipment_id', authenticateToken, async (req, res) => {
       });
     }
     
+    // Validate request body
     if (!req.body || Object.keys(req.body).length === 0) {
       return res.status(400).json({
         success: false,
@@ -383,18 +451,27 @@ router.put('/shipments/:shipment_id', authenticateToken, async (req, res) => {
       });
     }
     
-    const accountId = req.user?.accountId || req.user?.userId;
+    const config = {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${req.user?.token || ''}`
+      }
+    };
     
     logger.info(`SHIPPING - update_shipment: Updating shipment ${shipment_id}`, {
       updates: Object.keys(req.body).join(', ')
     });
     
-    const shipment = await sdkManager.execute(accountId, async (sdk) => {
-      return sdk.updateShipment(shipment_id, req.body);
+    const response = await axios({
+      method: 'PUT',
+      url: `${API_BASE_URL}/shipments/${shipment_id}`,
+      ...config,
+      data: req.body,
+      timeout: 10000
     });
     
     logger.info(`SHIPPING - update_shipment: Success - Shipment ${shipment_id} updated`);
-    res.json({ success: true, data: shipment });
+    res.json({ success: true, data: response.data });
   } catch (error) {
     const statusCode = error.response?.status || 500;
     const errorData = error.response?.data || { message: error.message };
@@ -418,6 +495,7 @@ router.put('/shipments/:shipment_id', authenticateToken, async (req, res) => {
  */
 router.post('/', authenticateToken, async (req, res) => {
   try {
+    // Validate request body
     const validationErrors = validateShipmentCreation(req.body);
     if (validationErrors.length > 0) {
       return res.status(400).json({
@@ -427,24 +505,34 @@ router.post('/', authenticateToken, async (req, res) => {
       });
     }
     
-    const accountId = req.user?.accountId || req.user?.userId;
+    const config = {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${req.user?.token || ''}`
+      }
+    };
     
     logger.info(`SHIPPING - create_shipment: Creating new shipment`, {
       order_id: req.body.order_id,
       carrier: req.body.carrier_id
     });
     
-    const shipment = await sdkManager.execute(accountId, async (sdk) => {
-      return sdk.createShipment(req.body);
+    const response = await axios({
+      method: 'POST',
+      url: `${API_BASE_URL}/shipments`,
+      ...config,
+      data: req.body,
+      timeout: 10000
     });
     
+    // Enhance response with label URL
     const enhancedData = {
-      ...shipment,
-      label_url: shipment.label_url || `https://api.mercadolibre.com/shipments/${shipment.id}/label`,
+      ...response.data,
+      label_url: response.data.label_url || `${API_BASE_URL}/shipments/${response.data.id}/label`,
       label_generated_at: new Date().toISOString()
     };
     
-    logger.info(`SHIPPING - create_shipment: Success - Shipment created with ID ${shipment.id}`, {
+    logger.info(`SHIPPING - create_shipment: Success - Shipment created with ID ${response.data.id}`, {
       order_id: req.body.order_id,
       label_available: !!enhancedData.label_url
     });
@@ -454,7 +542,7 @@ router.post('/', authenticateToken, async (req, res) => {
       data: enhancedData,
       label_info: {
         label_url: enhancedData.label_url,
-        tracking_number: shipment.tracking_number,
+        tracking_number: response.data.tracking_number,
         carrier: req.body.carrier_id
       }
     });
@@ -483,6 +571,7 @@ router.get('/shipments/:shipment_id/label', authenticateToken, async (req, res) 
   try {
     const { shipment_id } = req.params;
     
+    // Validate shipment ID
     const idError = validateShipmentId(shipment_id);
     if (idError) {
       return res.status(400).json({
@@ -492,25 +581,36 @@ router.get('/shipments/:shipment_id/label', authenticateToken, async (req, res) 
       });
     }
     
-    const accountId = req.user?.accountId || req.user?.userId;
+    const config = {
+      headers: {
+        'Authorization': `Bearer ${req.user?.token || ''}`
+      }
+    };
     
     logger.info(`SHIPPING - get_label: Generating label for shipment ${shipment_id}`);
     
-    const format = req.query.format || 'url';
+    // Support both PDF and URL format
+    const format = req.query.format || 'url'; // 'url', 'pdf', 'base64'
     
-    const label = await sdkManager.execute(accountId, async (sdk) => {
-      return sdk.getShipmentLabel(shipment_id, { format });
+    const response = await axios({
+      method: 'GET',
+      url: `${API_BASE_URL}/shipments/${shipment_id}/label`,
+      ...config,
+      params: { format },
+      timeout: 10000
     });
     
     logger.info(`SHIPPING - get_label: Success - Label generated for shipment ${shipment_id}`);
     
     if (format === 'pdf') {
+      // Return PDF file
       res.contentType('application/pdf');
-      res.send(label);
+      res.send(response.data);
     } else {
+      // Return URL or base64
       res.json({ 
         success: true, 
-        data: label,
+        data: response.data,
         label_format: format
       });
     }
@@ -530,6 +630,5 @@ router.get('/shipments/:shipment_id/label', authenticateToken, async (req, res) 
     });
   }
 });
-
 
 module.exports = router;

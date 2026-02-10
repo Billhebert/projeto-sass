@@ -1,10 +1,11 @@
 const express = require('express');
+const axios = require('axios');
 const logger = require('../logger');
 const sdkManager = require("../services/sdk-manager");
 const { authenticateToken } = require('../middleware/auth');
-const { handleError, sendSuccess } = require('../middleware/response-helpers');
 
 const router = express.Router();
+const API_BASE_URL = process.env.ML_API_URL || 'https://api.mercadolibre.com';
 
 // Valid rating values (1-5 stars)
 const VALID_RATINGS = [1, 2, 3, 4, 5];
@@ -87,8 +88,8 @@ router.get('/', authenticateToken, async (req, res) => {
   try {
     const { limit = 20, offset = 0, rating, type } = req.query;
     
+    // Get seller ID from user token
     const sellerId = req.user?.userId || req.user?.id;
-    const accountId = req.user?.accountId || sellerId;
     
     if (!sellerId) {
       return res.status(400).json({
@@ -97,6 +98,7 @@ router.get('/', authenticateToken, async (req, res) => {
       });
     }
     
+    // Validate filters
     const filterErrors = validateReviewFilters(req.query);
     if (filterErrors.length > 0) {
       return res.status(400).json({
@@ -106,6 +108,14 @@ router.get('/', authenticateToken, async (req, res) => {
       });
     }
     
+    const config = {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${req.user?.token || ''}`
+      }
+    };
+    
+    // Build query params
     const params = {
       limit: parseInt(limit),
       offset: parseInt(offset)
@@ -126,12 +136,17 @@ router.get('/', authenticateToken, async (req, res) => {
       type: params.type
     });
     
-    const feedback = await sdkManager.execute(accountId, async (sdk) => {
-      return sdk.getUserFeedback(sellerId, params);
+    const response = await axios({
+      method: 'GET',
+      url: `${API_BASE_URL}/users/${sellerId}/feedback`,
+      ...config,
+      params,
+      timeout: 15000
     });
     
-    const feedbackList = feedback.feedback || feedback.results || [];
+    const feedbackList = response.data.feedback || response.data.results || [];
     
+    // Calculate stats
     const stats = {
       total: feedbackList.length,
       positive: feedbackList.filter(f => f.type === 'positive' || f.rating >= 4).length,
@@ -149,7 +164,7 @@ router.get('/', authenticateToken, async (req, res) => {
       data: feedbackList,
       stats,
       pagination: {
-        total: feedback.paging?.total || feedbackList.length,
+        total: response.data.paging?.total || feedbackList.length,
         limit: parseInt(limit),
         offset: parseInt(offset)
       }
@@ -179,6 +194,7 @@ router.get('/items/:item_id/reviews', async (req, res) => {
   try {
     const { item_id } = req.params;
     
+    // Validate item ID
     const itemIdError = validateItemId(item_id);
     if (itemIdError) {
       return res.status(400).json({
@@ -188,6 +204,7 @@ router.get('/items/:item_id/reviews', async (req, res) => {
       });
     }
     
+    // Validate filters
     const filterErrors = validateReviewFilters(req.query);
     if (filterErrors.length > 0) {
       return res.status(400).json({
@@ -197,10 +214,17 @@ router.get('/items/:item_id/reviews', async (req, res) => {
       });
     }
     
+    // Set default pagination values
     const params = {
       ...req.query,
       limit: req.query.limit || 20,
       offset: req.query.offset || 0
+    };
+    
+    const config = {
+      headers: {
+        'Content-Type': 'application/json'
+      }
     };
     
     logger.info(`FEEDBACK_REVIEWS - get_item_reviews: Fetching reviews for item ${item_id}`, {
@@ -209,22 +233,29 @@ router.get('/items/:item_id/reviews', async (req, res) => {
       rating_filter: params.rating
     });
     
-    const reviews = await sdkManager.getItemReviews(item_id, item_id, params);
+    const response = await axios({
+      method: 'GET',
+      url: `${API_BASE_URL}/items/${item_id}/reviews`,
+      ...config,
+      params,
+      timeout: 10000
+    });
     
+    // Calculate review statistics
     const stats = {
-      total_reviews: reviews.reviews?.length || 0,
-      average_rating: reviews.average_rating || 0
+      total_reviews: response.data.reviews?.length || 0,
+      average_rating: response.data.average_rating || 0
     };
     
     logger.info(`FEEDBACK_REVIEWS - get_item_reviews: Success - Found ${stats.total_reviews} reviews`);
     res.json({ 
       success: true, 
-      data: reviews,
+      data: response.data,
       stats,
       pagination: {
         limit: params.limit,
         offset: params.offset,
-        total: reviews.total_reviews || 0
+        total: response.data.total_reviews || 0
       }
     });
   } catch (error) {
@@ -250,6 +281,7 @@ router.get('/items/:item_id/reviews', async (req, res) => {
  */
 router.post('/feedback', authenticateToken, async (req, res) => {
   try {
+    // Validate request body
     const validationErrors = validateFeedbackCreation(req.body);
     if (validationErrors.length > 0) {
       return res.status(400).json({
@@ -259,19 +291,24 @@ router.post('/feedback', authenticateToken, async (req, res) => {
       });
     }
     
-    const accountId = req.user?.accountId || req.user?.userId;
+    const config = {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${req.user?.token || ''}`
+      }
+    };
     
     logger.info(`FEEDBACK_REVIEWS - create_feedback: Creating feedback for order ${req.body.order_id}`, {
       rating: req.body.rating,
       type: req.body.type
     });
     
-    const feedback = await sdkManager.execute(accountId, async (sdk) => {
-      return sdk.createFeedback(req.body.order_id, {
-        rating: req.body.rating,
-        type: req.body.type,
-        comment: req.body.comment,
-      });
+    const response = await axios({
+      method: 'POST',
+      url: `${API_BASE_URL}/feedback`,
+      ...config,
+      data: req.body,
+      timeout: 10000
     });
     
     logger.info(`FEEDBACK_REVIEWS - create_feedback: Success - Feedback created`, {
@@ -281,7 +318,7 @@ router.post('/feedback', authenticateToken, async (req, res) => {
     
     res.status(201).json({ 
       success: true, 
-      data: feedback,
+      data: response.data,
       feedback_summary: {
         order_id: req.body.order_id,
         rating: req.body.rating,
@@ -314,6 +351,7 @@ router.get('/users/:user_id/reviews', async (req, res) => {
   try {
     const { user_id } = req.params;
     
+    // Validate user ID
     const userIdError = validateUserId(user_id);
     if (userIdError) {
       return res.status(400).json({
@@ -323,6 +361,7 @@ router.get('/users/:user_id/reviews', async (req, res) => {
       });
     }
     
+    // Validate filters
     const filterErrors = validateReviewFilters(req.query);
     if (filterErrors.length > 0) {
       return res.status(400).json({
@@ -332,10 +371,17 @@ router.get('/users/:user_id/reviews', async (req, res) => {
       });
     }
     
+    // Set default pagination values
     const params = {
       ...req.query,
       limit: req.query.limit || 20,
       offset: req.query.offset || 0
+    };
+    
+    const config = {
+      headers: {
+        'Content-Type': 'application/json'
+      }
     };
     
     logger.info(`FEEDBACK_REVIEWS - get_seller_reviews: Fetching reviews for user ${user_id}`, {
@@ -343,25 +389,32 @@ router.get('/users/:user_id/reviews', async (req, res) => {
       offset: params.offset
     });
     
-    const reviews = await sdkManager.getUserReviews(user_id, params);
+    const response = await axios({
+      method: 'GET',
+      url: `${API_BASE_URL}/users/${user_id}/reviews`,
+      ...config,
+      params,
+      timeout: 10000
+    });
     
+    // Calculate seller reputation stats
     const stats = {
-      total_reviews: reviews.reviews?.length || 0,
-      average_rating: reviews.average_rating || 0,
-      positive_count: reviews.positive_count || 0,
-      neutral_count: reviews.neutral_count || 0,
-      negative_count: reviews.negative_count || 0
+      total_reviews: response.data.reviews?.length || 0,
+      average_rating: response.data.average_rating || 0,
+      positive_count: response.data.positive_count || 0,
+      neutral_count: response.data.neutral_count || 0,
+      negative_count: response.data.negative_count || 0
     };
     
     logger.info(`FEEDBACK_REVIEWS - get_seller_reviews: Success - Found ${stats.total_reviews} seller reviews`);
     res.json({ 
       success: true, 
-      data: reviews,
+      data: response.data,
       seller_stats: stats,
       pagination: {
         limit: params.limit,
         offset: params.offset,
-        total: reviews.total_reviews || 0
+        total: response.data.total_reviews || 0
       }
     });
   } catch (error) {
@@ -380,6 +433,5 @@ router.get('/users/:user_id/reviews', async (req, res) => {
     });
   }
 });
-
 
 module.exports = router;

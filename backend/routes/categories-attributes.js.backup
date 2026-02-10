@@ -1,9 +1,10 @@
 const express = require('express');
+const axios = require('axios');
 const logger = require('../logger');
 const sdkManager = require("../services/sdk-manager");
-const { handleError, sendSuccess } = require('../middleware/response-helpers');
 
 const router = express.Router();
+const API_BASE_URL = process.env.ML_API_URL || 'https://api.mercadolibre.com';
 
 // In-memory cache with TTL (Time To Live)
 const cache = new Map();
@@ -510,6 +511,5 @@ router.get('/cache/stats', async (req, res) => {
     });
   }
 });
-
 
 module.exports = router;

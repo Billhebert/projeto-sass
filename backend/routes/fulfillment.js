@@ -1,25 +1,14 @@
 /**
  * Fulfillment Routes (Envios Full)
  * Mercado Livre Fulfillment API Integration
- *
- * Endpoints:
- * - GET /api/fulfillment/:accountId/inventory/:inventoryId - Get inventory stock info
- * - GET /api/fulfillment/:accountId/inventory/:inventoryId/details - Get stock with conditions
- * - GET /api/fulfillment/:accountId/operations - Search stock operations
- * - GET /api/fulfillment/:accountId/operations/:operationId - Get operation details
- * - GET /api/fulfillment/:accountId/items - Get all fulfillment items for seller
- * - GET /api/fulfillment/:accountId/summary - Get fulfillment summary/dashboard
  */
 
 const express = require("express");
 const router = express.Router();
-const axios = require("axios");
 const logger = require("../logger");
 const sdkManager = require("../services/sdk-manager");
 const MLAccount = require("../db/models/MLAccount");
 const { authenticateToken } = require("../middleware/auth");
-
-const ML_API_BASE = "https://api.mercadolibre.com";
 
 // ============================================
 // UNIFIED HELPER FUNCTIONS (CORE)
@@ -55,13 +44,6 @@ function handleError(res, statusCode, message, error, action, context = {}) {
 }
 
 /**
- * Build authorization headers
- */
-function buildHeaders(accessToken) {
-  return { Authorization: `Bearer ${accessToken}` };
-}
-
-/**
  * Get ML Account with validation
  */
 async function getAndValidateAccount(accountId, userId) {
@@ -72,28 +54,14 @@ async function getAndValidateAccount(accountId, userId) {
 }
 
 /**
- * Fetch item details
- */
-async function fetchItem(itemId, headers) {
-  try {
-    const response = await axios.get(`${ML_API_BASE}/items/${itemId}`, { headers });
-    return response.data;
-  } catch (error) {
-    return null;
-  }
-}
-
-/**
  * Fetch inventory stock
  */
-async function fetchInventoryStock(inventoryId, headers, includeConditions = false) {
+async function fetchInventoryStock(inventoryId, accountId, includeConditions = false) {
   try {
     const params = includeConditions ? { include_attributes: "conditions" } : {};
-    const response = await axios.get(
-      `${ML_API_BASE}/inventories/${inventoryId}/stock/fulfillment`,
-      { headers, params }
-    );
-    return response.data;
+    return await sdkManager.execute(accountId, async (sdk) => {
+      return sdk.getFulfillmentInventoryStock(inventoryId, params);
+    });
   } catch (error) {
     return null;
   }
@@ -120,41 +88,6 @@ function buildOperationParams(query, mlUserId) {
   if (query.scroll) params.scroll = query.scroll;
 
   return params;
-}
-
-/**
- * Fetch items with fulfillment details
- */
-async function fetchFulfillmentItems(itemIds, headers, limit = 50) {
-  const itemDetails = await Promise.all(
-    itemIds.map((id) =>
-      axios
-        .get(`${ML_API_BASE}/items/${id}`, { headers })
-        .catch(() => null)
-    )
-  );
-
-  return itemDetails
-    .filter((r) => r !== null && r.data.inventory_id)
-    .map((r) => ({
-      id: r.data.id,
-      title: r.data.title,
-      price: r.data.price,
-      currencyId: r.data.currency_id,
-      thumbnail: r.data.thumbnail,
-      permalink: r.data.permalink,
-      status: r.data.status,
-      availableQuantity: r.data.available_quantity,
-      soldQuantity: r.data.sold_quantity,
-      inventoryId: r.data.inventory_id,
-      logisticType: r.data.shipping?.logistic_type,
-      variations: r.data.variations?.map((v) => ({
-        id: v.id,
-        inventoryId: v.inventory_id,
-        attributeCombinations: v.attribute_combinations,
-        availableQuantity: v.available_quantity,
-      })),
-    }));
 }
 
 /**
@@ -219,47 +152,6 @@ function countOperationsByType(operations) {
   return count;
 }
 
-/**
- * Fetch all items with pagination
- */
-async function fetchAllItems(headers, mlUserId, fetchAll = false) {
-  let itemIds = [];
-
-  if (fetchAll) {
-    let currentOffset = 0;
-    const batchSize = 50;
-
-    while (true) {
-      const response = await axios.get(
-        `${ML_API_BASE}/users/${mlUserId}/items/search`,
-        {
-          headers,
-          params: { status: "active", limit: batchSize, offset: currentOffset },
-        },
-      );
-
-      const batch = response.data.results || [];
-      if (batch.length === 0) break;
-
-      itemIds.push(...batch);
-      currentOffset += batchSize;
-
-      if (currentOffset >= (response.data.paging?.total || 0)) break;
-    }
-  } else {
-    const response = await axios.get(
-      `${ML_API_BASE}/users/${mlUserId}/items/search`,
-      {
-        headers,
-        params: { status: "active", limit: 100, offset: 0 },
-      },
-    );
-    itemIds = response.data.results || [];
-  }
-
-  return itemIds;
-}
-
 // ============================================
 // FULFILLMENT ENDPOINTS
 // ============================================
@@ -301,11 +193,9 @@ router.get(
   validateMLAccount,
   async (req, res) => {
     try {
-      const { inventoryId } = req.params;
-      const { accessToken } = req.mlAccount;
-      const headers = buildHeaders(accessToken);
+      const { inventoryId, accountId } = req.params;
 
-      const stock = await fetchInventoryStock(inventoryId, headers);
+      const stock = await fetchInventoryStock(inventoryId, accountId);
       if (!stock) {
         return sendSuccess(res, null, "Inventory not found or not in fulfillment", 404);
       }
@@ -336,11 +226,9 @@ router.get(
   validateMLAccount,
   async (req, res) => {
     try {
-      const { inventoryId } = req.params;
-      const { accessToken } = req.mlAccount;
-      const headers = buildHeaders(accessToken);
+      const { inventoryId, accountId } = req.params;
 
-      const stock = await fetchInventoryStock(inventoryId, headers, true);
+      const stock = await fetchInventoryStock(inventoryId, accountId, true);
       if (!stock) {
         return sendSuccess(res, null, "Failed to fetch inventory details", 500);
       }
@@ -368,16 +256,14 @@ router.get(
   validateMLAccount,
   async (req, res) => {
     try {
-      const { accessToken, mlUserId } = req.mlAccount;
-      const headers = buildHeaders(accessToken);
-      const params = buildOperationParams(req.query, mlUserId);
+      const { accountId } = req.params;
+      const params = buildOperationParams(req.query, req.mlAccount.mlUserId);
 
-      const response = await axios.get(
-        `${ML_API_BASE}/stock/fulfillment/operations/search`,
-        { headers, params }
-      );
+      const operations = await sdkManager.execute(accountId, async (sdk) => {
+        return sdk.searchFulfillmentOperations(params);
+      });
 
-      return sendSuccess(res, { data: response.data });
+      return sendSuccess(res, { data: operations });
     } catch (error) {
       const statusCode = error.response?.status || 500;
       const message = statusCode === 400 ? "Invalid search parameters" : "Failed to search operations";
@@ -403,16 +289,13 @@ router.get(
   validateMLAccount,
   async (req, res) => {
     try {
-      const { operationId } = req.params;
-      const { accessToken } = req.mlAccount;
-      const headers = buildHeaders(accessToken);
+      const { operationId, accountId } = req.params;
 
-      const response = await axios.get(
-        `${ML_API_BASE}/stock/fulfillment/operations/${operationId}`,
-        { headers }
-      );
+      const operation = await sdkManager.execute(accountId, async (sdk) => {
+        return sdk.getFulfillmentOperation(operationId);
+      });
 
-      return sendSuccess(res, { data: response.data });
+      return sendSuccess(res, { data: operation });
     } catch (error) {
       const statusCode = error.response?.status || 500;
       const message = statusCode === 404 ? "Operation not found" : "Failed to fetch operation";
@@ -438,33 +321,21 @@ router.get(
   validateMLAccount,
   async (req, res) => {
     try {
-      const { accessToken, mlUserId } = req.mlAccount;
+      const { accountId } = req.params;
       const { limit = 50, offset = 0 } = req.query;
-      const headers = buildHeaders(accessToken);
 
-      const response = await axios.get(
-        `${ML_API_BASE}/users/${mlUserId}/items/search`,
-        {
-          headers,
-          params: { status: "active", limit, offset },
-        },
-      );
+      const itemsResponse = await sdkManager.getAllUserItems(accountId, req.mlAccount.mlUserId, {
+        status: "active",
+        limit,
+        offset,
+      });
 
-      const itemIds = response.data.results || [];
-      if (itemIds.length === 0) {
-        return sendSuccess(res, {
-          items: [],
-          paging: response.data.paging,
-        });
-      }
-
-      const fulfillmentItems = await fetchFulfillmentItems(itemIds, headers);
+      const itemIds = itemsResponse.results || [];
 
       return sendSuccess(res, {
-        items: fulfillmentItems,
+        items: itemIds,
         totalItems: itemIds.length,
-        fulfillmentItems: fulfillmentItems.length,
-        paging: response.data.paging,
+        paging: itemsResponse.paging,
       });
     } catch (error) {
       return handleError(
@@ -488,32 +359,23 @@ router.get(
   validateMLAccount,
   async (req, res) => {
     try {
-      const { accessToken, mlUserId } = req.mlAccount;
-      const headers = buildHeaders(accessToken);
+      const { accountId } = req.params;
 
-      // Get items
-      const itemsResponse = await axios.get(
-        `${ML_API_BASE}/users/${mlUserId}/items/search`,
-        {
-          headers,
-          params: { status: "active", limit: 100 },
-        },
-      );
+      const itemsResponse = await sdkManager.getAllUserItems(accountId, req.mlAccount.mlUserId, {
+        status: "active",
+        limit: 100,
+      });
 
-      const itemIds = itemsResponse.data.results || [];
-      const itemDetails = await Promise.all(
-        itemIds.slice(0, 50).map((id) =>
-          axios.get(`${ML_API_BASE}/items/${id}`, { headers }).catch(() => null)
-        )
-      );
+      const itemIds = itemsResponse.results || [];
 
-      const fulfillmentItems = itemDetails
-        .filter((r) => r !== null && r.data.inventory_id)
-        .map((r) => r.data);
+      const fulfillmentItems = itemIds.filter(id => {
+        const item = sdkManager.execute(accountId, async (sdk) => sdk.getItem(id));
+        return item?.inventory_id;
+      });
 
-      // Get stock for fulfillment items
-      const stockPromises = fulfillmentItems.slice(0, 20).map(async (item) => {
-        const stock = await fetchInventoryStock(item.inventory_id, headers);
+      const stockPromises = fulfillmentItems.slice(0, 20).map(async (itemId) => {
+        const item = await sdkManager.execute(accountId, async (sdk) => sdk.getItem(itemId));
+        const stock = await fetchInventoryStock(item.inventory_id, accountId);
         return {
           itemId: item.id,
           title: item.title,
@@ -525,26 +387,21 @@ router.get(
       const stockInfo = await Promise.all(stockPromises);
       const aggregated = aggregateStockInfo(stockInfo);
 
-      // Get recent operations
       const today = new Date();
       const sevenDaysAgo = new Date(today);
       sevenDaysAgo.setDate(today.getDate() - 7);
 
       let recentOperations = [];
       try {
-        const opsResponse = await axios.get(
-          `${ML_API_BASE}/stock/fulfillment/operations/search`,
-          {
-            headers,
-            params: {
-              seller_id: mlUserId,
-              date_from: sevenDaysAgo.toISOString().split("T")[0],
-              date_to: today.toISOString().split("T")[0],
-              limit: 20,
-            },
-          },
-        );
-        recentOperations = opsResponse.data.results || [];
+        const opsResponse = await sdkManager.execute(accountId, async (sdk) => {
+          return sdk.searchFulfillmentOperations({
+            seller_id: req.mlAccount.mlUserId,
+            date_from: sevenDaysAgo.toISOString().split("T")[0],
+            date_to: today.toISOString().split("T")[0],
+            limit: 20,
+          });
+        });
+        recentOperations = opsResponse.results || [];
       } catch (err) {
         logger.warn({ action: "FETCH_OPERATIONS_WARNING", error: err.message });
       }
@@ -554,7 +411,7 @@ router.get(
       return sendSuccess(res, {
         overview: {
           totalFulfillmentItems: fulfillmentItems.length,
-          totalActiveItems: itemsResponse.data.paging?.total || itemIds.length,
+          totalActiveItems: itemsResponse.paging?.total || itemIds.length,
           fulfillmentPercentage:
             itemIds.length > 0
               ? ((fulfillmentItems.length / itemIds.length) * 100).toFixed(1)
@@ -604,11 +461,9 @@ router.get(
   validateMLAccount,
   async (req, res) => {
     try {
-      const { itemId } = req.params;
-      const { accessToken } = req.mlAccount;
-      const headers = buildHeaders(accessToken);
+      const { itemId, accountId } = req.params;
 
-      const item = await fetchItem(itemId, headers);
+      const item = await sdkManager.getItem(accountId, itemId);
       if (!item) {
         return sendSuccess(res, null, "Item not found", 404);
       }
@@ -624,7 +479,7 @@ router.get(
         }, "This item is not in fulfillment", 400);
       }
 
-      const stock = await fetchInventoryStock(inventoryId, headers, true);
+      const stock = await fetchInventoryStock(inventoryId, accountId, true);
 
       return sendSuccess(res, {
         item: {
@@ -662,40 +517,33 @@ router.get(
   validateMLAccount,
   async (req, res) => {
     try {
-      const { accessToken, mlUserId } = req.mlAccount;
+      const { accountId } = req.params;
       const { all, limit = 100, offset = 0 } = req.query;
-      const headers = buildHeaders(accessToken);
 
-      const itemIds = await fetchAllItems(headers, mlUserId, all === "true");
+      const itemsResponse = await sdkManager.getAllUserItems(accountId, req.mlAccount.mlUserId, {
+        status: "active",
+        limit: all === "true" ? 100 : limit,
+        offset: all === "true" ? 0 : offset,
+      });
 
-      if (itemIds.length === 0) {
-        return sendSuccess(res, {
-          inventory: [],
-          paging: { total: 0, limit: parseInt(limit), offset: parseInt(offset) },
-        });
-      }
+      const itemIds = itemsResponse.results || [];
 
-      const itemDetails = await Promise.all(
-        itemIds.slice(0, 100).map((id) =>
-          axios.get(`${ML_API_BASE}/items/${id}`, { headers }).catch(() => null)
-        )
-      );
-
-      const inventory = itemDetails
-        .filter((r) => r !== null)
-        .map((r) => ({
-          id: r.data.id,
-          title: r.data.title,
-          price: r.data.price,
-          currency_id: r.data.currency_id,
-          thumbnail: r.data.thumbnail,
-          available_quantity: r.data.available_quantity,
-          sold_quantity: r.data.sold_quantity,
-          status: r.data.status,
-          inventory_id: r.data.inventory_id,
-          logistic_type: r.data.shipping?.logistic_type,
-          in_fulfillment: !!r.data.inventory_id,
-        }));
+      const inventory = itemIds.slice(0, 100).map(id => {
+        const item = sdkManager.execute(accountId, async (sdk) => sdk.getItem(id));
+        return {
+          id: item.id,
+          title: item.title,
+          price: item.price,
+          currency_id: item.currency_id,
+          thumbnail: item.thumbnail,
+          available_quantity: item.available_quantity,
+          sold_quantity: item.sold_quantity,
+          status: item.status,
+          inventory_id: item.inventory_id,
+          logistic_type: item.shipping?.logistic_type,
+          in_fulfillment: !!item.inventory_id,
+        };
+      });
 
       const summary = calculateInventorySummary(inventory);
 
@@ -707,7 +555,6 @@ router.get(
     } catch (error) {
       logger.warn({ action: "FETCH_INVENTORY_WARNING", error: error.message });
 
-      // Return fallback
       return sendSuccess(res, {
         inventory: [],
         paging: { total: 0, offset: 0, limit: 100 },
@@ -727,33 +574,33 @@ router.get(
   validateMLAccount,
   async (req, res) => {
     try {
-      const { accessToken, mlUserId } = req.mlAccount;
+      const { accountId } = req.params;
       const { limit = 100, offset = 0 } = req.query;
-      const headers = buildHeaders(accessToken);
 
-      const ordersResponse = await axios.get(`${ML_API_BASE}/orders/search`, {
-        headers,
-        params: { seller: mlUserId, limit, offset, sort: "date_desc" },
+      const orders = await sdkManager.searchOrders(accountId, {
+        seller: req.mlAccount.mlUserId,
+        limit,
+        offset,
+        sort: "date_desc",
       });
 
-      const orders = ordersResponse.data.results || [];
+      const orderResults = orders.results || [];
 
       const shipments = await Promise.all(
-        orders.slice(0, 10).map(async (order) => {
+        orderResults.slice(0, 10).map(async (order) => {
           if (!order.shipping?.id) return null;
           try {
-            const shipRes = await axios.get(
-              `${ML_API_BASE}/shipments/${order.shipping.id}`,
-              { headers }
-            );
+            const shipRes = await sdkManager.execute(accountId, async (sdk) => {
+              return sdk.getShipment(order.shipping.id);
+            });
             return {
-              id: shipRes.data.id,
+              id: shipRes.id,
               order_id: order.id,
-              status: shipRes.data.status,
-              substatus: shipRes.data.substatus,
-              date_created: shipRes.data.date_created,
-              receiver_address: shipRes.data.receiver_address,
-              logistic_type: shipRes.data.logistic_type,
+              status: shipRes.status,
+              substatus: shipRes.substatus,
+              date_created: shipRes.date_created,
+              receiver_address: shipRes.receiver_address,
+              logistic_type: shipRes.logistic_type,
             };
           } catch (e) {
             return null;
@@ -763,12 +610,11 @@ router.get(
 
       return sendSuccess(res, {
         shipments: shipments.filter((s) => s !== null),
-        paging: ordersResponse.data.paging,
+        paging: orders.paging,
       });
     } catch (error) {
       logger.warn({ action: "FETCH_SHIPMENTS_WARNING", error: error.message });
 
-      // Return fallback
       return sendSuccess(res, {
         shipments: [],
         paging: { total: 0, offset: 0, limit: 20 },
@@ -787,35 +633,35 @@ router.get(
   validateMLAccount,
   async (req, res) => {
     try {
-      const { accessToken, mlUserId } = req.mlAccount;
-      const headers = buildHeaders(accessToken);
+      const { accountId } = req.params;
 
-      const itemsResponse = await axios.get(
-        `${ML_API_BASE}/users/${mlUserId}/items/search`,
-        {
-          headers,
-          params: { status: "active", limit: 100 },
-        },
+      const itemsResponse = await sdkManager.getAllUserItems(accountId, req.mlAccount.mlUserId, {
+        status: "active",
+        limit: 100,
+      });
+
+      const itemIds = itemsResponse.results || [];
+
+      const items = await Promise.all(
+        itemIds.slice(0, 100).map(async (id) => {
+          try {
+            return await sdkManager.getItem(accountId, id);
+          } catch (e) {
+            return null;
+          }
+        })
       );
 
-      const itemIds = itemsResponse.data.results || [];
-
-      const itemDetails = await Promise.all(
-        itemIds.slice(0, 100).map((id) =>
-          axios.get(`${ML_API_BASE}/items/${id}`, { headers }).catch(() => null)
-        )
-      );
-
-      const items = itemDetails.filter((r) => r !== null).map((r) => r.data);
+      const validItems = items.filter(i => i !== null);
 
       const stats = {
-        totalItems: items.length,
-        inFulfillment: items.filter((i) => i.inventory_id).length,
-        outOfStock: items.filter((i) => i.available_quantity === 0).length,
-        lowStock: items.filter(
+        totalItems: validItems.length,
+        inFulfillment: validItems.filter((i) => i.inventory_id).length,
+        outOfStock: validItems.filter((i) => i.available_quantity === 0).length,
+        lowStock: validItems.filter(
           (i) => i.available_quantity > 0 && i.available_quantity <= 5,
         ).length,
-        totalStock: items.reduce(
+        totalStock: validItems.reduce(
           (sum, i) => sum + (i.available_quantity || 0),
           0,
         ),
@@ -825,7 +671,6 @@ router.get(
     } catch (error) {
       logger.warn({ action: "FETCH_STATS_WARNING", error: error.message });
 
-      // Return fallback
       return sendSuccess(res, {
         stats: {
           totalItems: 0,

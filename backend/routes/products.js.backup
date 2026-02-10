@@ -11,6 +11,7 @@
  */
 
 const express = require("express");
+const axios = require("axios");
 const logger = require("../logger");
 const sdkManager = require("../services/sdk-manager");
 const { authenticateToken } = require("../middleware/auth");
@@ -19,6 +20,8 @@ const Product = require("../db/models/Product");
 const MLAccount = require("../db/models/MLAccount");
 
 const router = express.Router();
+
+const ML_API_BASE = "https://api.mercadolibre.com";
 
 // ============================================================================
 // CORE HELPER FUNCTIONS
@@ -48,6 +51,16 @@ function handleError(res, statusCode, message, error, action, context = {}) {
     message,
     error: error.message || error,
   });
+}
+
+/**
+ * Build authorization headers
+ */
+function buildHeaders(accessToken) {
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+  };
 }
 
 /**
@@ -202,13 +215,15 @@ function calculateCompetitorStats(competitors) {
 /**
  * Fetch competitors by catalog product ID
  */
-async function fetchCompetitorsByCatalog(productId, catalogId, accountId) {
-  const competitors = await sdkManager.searchByQuery(accountId, catalogId, {
-    catalog_product_id: catalogId,
-    limit: 50,
+async function fetchCompetitorsByCatalog(productId, catalogId, headers, SITE_ID) {
+  const searchRes = await axios.get(`${ML_API_BASE}/sites/${SITE_ID}/search`, {
+    params: {
+      catalog_product_id: catalogId,
+      limit: 50,
+    },
   });
 
-  return competitors
+  return searchRes.data.results
     .filter((item) => item.id !== productId)
     .map(formatCompetitor)
     .sort((a, b) => a.price - b.price);
@@ -217,12 +232,15 @@ async function fetchCompetitorsByCatalog(productId, catalogId, accountId) {
 /**
  * Fetch competitors by product title
  */
-async function fetchCompetitorsByTitle(productId, title, accountId) {
-  const competitors = await sdkManager.searchByQuery(accountId, title, {
-    limit: 50,
+async function fetchCompetitorsByTitle(productId, title, headers, SITE_ID) {
+  const searchRes = await axios.get(`${ML_API_BASE}/sites/${SITE_ID}/search`, {
+    params: {
+      q: title,
+      limit: 50,
+    },
   });
 
-  return competitors
+  return searchRes.data.results
     .filter(
       (item) =>
         item.id !== productId &&
@@ -231,7 +249,7 @@ async function fetchCompetitorsByTitle(productId, title, accountId) {
     .map(formatCompetitor)
     .sort((a, b) => a.price - b.price);
 }
- 
+
 /**
  * GET /api/products
  * List all products for the authenticated user
@@ -260,7 +278,7 @@ router.get("/", authenticateToken, async (req, res) => {
     });
   }
 });
- 
+
 /**
  * GET /api/products/:accountId/stats
  * Get product statistics for an account
@@ -329,7 +347,7 @@ router.get("/:accountId", authenticateToken, async (req, res) => {
     });
   }
 });
- 
+
 /**
  * GET /api/products/:accountId/:productId
  * Get detailed product information
@@ -359,7 +377,7 @@ router.get("/:accountId/:productId", authenticateToken, async (req, res) => {
     });
   }
 });
- 
+
 /**
  * GET /api/products/:accountId/:productId/competitors
  * Get competitors for a specific product
@@ -371,15 +389,24 @@ router.get(
   async (req, res) => {
     try {
       const { accountId, productId } = req.params;
+      const account = req.mlAccount;
+      const SITE_ID = 'MLB'; // Default for Brazil
 
-      const product = await sdkManager.getItem(accountId, productId);
+      const headers = buildHeaders(account.accessToken);
 
+      // Get the product first
+      const productRes = await axios.get(`${ML_API_BASE}/items/${productId}`, {
+        headers,
+      });
+
+      const product = productRes.data;
       let competitors = [];
 
+      // Fetch competitors by catalog ID or title
       if (product.catalog_product_id) {
-        competitors = await fetchCompetitorsByCatalog(productId, product.catalog_product_id, accountId);
+        competitors = await fetchCompetitorsByCatalog(productId, product.catalog_product_id, headers, SITE_ID);
       } else {
-        competitors = await fetchCompetitorsByTitle(productId, product.title, accountId);
+        competitors = await fetchCompetitorsByTitle(productId, product.title, headers, SITE_ID);
       }
 
       logger.info({
@@ -441,7 +468,7 @@ router.post(
         timestamp: new Date().toISOString(),
       });
 
-      const mlProducts = await fetchMLProducts(account.mlUserId, accountId, { all });
+      const mlProducts = await fetchMLProducts(account.mlUserId, account.accessToken, { all });
       const savedProducts = await saveProducts(accountId, req.user.userId, mlProducts);
 
       logger.info({
@@ -515,8 +542,9 @@ router.delete("/:accountId/:productId", authenticateToken, async (req, res) => {
 /**
  * Fetch products from Mercado Livre API
  */
-async function fetchMLProducts(mlUserId, accountId, options = {}) {
+async function fetchMLProducts(mlUserId, accessToken, options = {}) {
   try {
+    const headers = buildHeaders(accessToken);
     const { all = false } = options;
 
     let allItemIds = [];
@@ -524,15 +552,16 @@ async function fetchMLProducts(mlUserId, accountId, options = {}) {
     const limit = 50;
     let total = 0;
 
+    // Fetch all item IDs with pagination
     do {
-      const items = await sdkManager.getAllUserItems(accountId, mlUserId, {
-        limit,
-        offset,
-      });
+      const response = await axios.get(
+        `${ML_API_BASE}/users/${mlUserId}/items/search?limit=${limit}&offset=${offset}`,
+        { headers },
+      );
 
-      const itemIds = items.results || [];
+      const itemIds = response.data.results || [];
       allItemIds = allItemIds.concat(itemIds);
-      total = items.paging?.total || itemIds.length;
+      total = response.data.paging?.total || itemIds.length;
       offset += limit;
 
       logger.info({
@@ -555,6 +584,7 @@ async function fetchMLProducts(mlUserId, accountId, options = {}) {
       totalItems: allItemIds.length,
     });
 
+    // Fetch detailed info for each item in batches
     const detailedProducts = [];
     const batchSize = 20;
 
@@ -562,11 +592,21 @@ async function fetchMLProducts(mlUserId, accountId, options = {}) {
       const batch = allItemIds.slice(i, i + batchSize);
 
       try {
-        const products = await sdkManager.getItemsByIds(accountId, batch);
+        const multigetResponse = await axios.get(
+          `${ML_API_BASE}/items?ids=${batch.join(",")}`,
+          { headers },
+        );
 
-        for (const item of products) {
-          if (item) {
-            detailedProducts.push(item);
+        for (const item of multigetResponse.data) {
+          if (item.code === 200 && item.body) {
+            detailedProducts.push(item.body);
+          } else {
+            logger.warn({
+              action: "FETCH_PRODUCT_SKIPPED",
+              itemId: batch[multigetResponse.data.indexOf(item)],
+              code: item.code,
+              error: item.body?.message,
+            });
           }
         }
       } catch (batchError) {
@@ -576,18 +616,19 @@ async function fetchMLProducts(mlUserId, accountId, options = {}) {
         });
 
         const batchResults = await Promise.all(
-          batch.map(async (itemId) => {
-            try {
-              return await sdkManager.getItem(accountId, itemId);
-            } catch (error) {
-              logger.warn({
-                action: "FETCH_PRODUCT_DETAILS_ERROR",
-                itemId,
-                error: error.message,
-              });
-              return null;
-            }
-          }),
+          batch.map((itemId) =>
+            axios
+              .get(`${ML_API_BASE}/items/${itemId}`, { headers })
+              .then((res) => res.data)
+              .catch((error) => {
+                logger.warn({
+                  action: "FETCH_PRODUCT_DETAILS_ERROR",
+                  itemId,
+                  error: error.message,
+                });
+                return null;
+              }),
+          ),
         );
 
         detailedProducts.push(...batchResults.filter((p) => p !== null));

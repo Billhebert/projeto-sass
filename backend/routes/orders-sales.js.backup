@@ -1,10 +1,11 @@
 const express = require('express');
+const axios = require('axios');
 const logger = require('../logger');
 const sdkManager = require("../services/sdk-manager");
 const { authenticateToken } = require('../middleware/auth');
-const { handleError, sendSuccess } = require('../middleware/response-helpers');
 
 const router = express.Router();
+const API_BASE_URL = process.env.ML_API_URL || 'https://api.mercadolibre.com';
 
 // Order status constants
 const VALID_ORDER_STATUSES = ['paid', 'pending', 'cancelled', 'shipped', 'delivered'];
@@ -66,6 +67,7 @@ const validatePackCreation = (body) => {
  */
 router.get('/', authenticateToken, async (req, res) => {
   try {
+    // Validate filters
     const filterErrors = validateOrderFilters(req.query);
     if (filterErrors.length > 0) {
       return res.status(400).json({
@@ -75,9 +77,10 @@ router.get('/', authenticateToken, async (req, res) => {
       });
     }
     
+    // Get seller ID from user token or query
     const sellerId = req.query.seller_id || req.user?.userId || req.user?.id;
-    const accountId = req.user?.accountId || sellerId;
     
+    // Set default pagination values
     const params = {
       seller: sellerId,
       limit: req.query.limit || 50,
@@ -88,14 +91,28 @@ router.get('/', authenticateToken, async (req, res) => {
       params['order.status'] = req.query.status;
     }
     
+    const config = {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${req.user?.token || ''}`
+      }
+    };
+    
     logger.info(`ORDERS_SALES - list_orders: Fetching orders for seller ${sellerId}`, {
       limit: params.limit,
       offset: params.offset
     });
     
-    const result = await sdkManager.searchOrders(accountId, params);
+    const response = await axios({
+      method: 'GET',
+      url: `${API_BASE_URL}/orders/search`,
+      ...config,
+      params,
+      timeout: 15000
+    });
     
-    const orders = result.data || result.results || [];
+    // Transform response data
+    const orders = response.data.results || [];
     
     logger.info(`ORDERS_SALES - list_orders: Success - Found ${orders.length} orders`);
     
@@ -105,12 +122,12 @@ router.get('/', authenticateToken, async (req, res) => {
       pagination: {
         limit: parseInt(params.limit),
         offset: parseInt(params.offset),
-        total: result.paging?.total || 0
+        total: response.data.paging?.total || 0
       }
     });
   } catch (error) {
-    const statusCode = error.statusCode || 500;
-    const errorData = error.message || error;
+    const statusCode = error.response?.status || 500;
+    const errorData = error.response?.data || { message: error.message };
     
     logger.error(`ORDERS_SALES - list_orders: ${error.message}`, {
       status: statusCode,
@@ -131,6 +148,7 @@ router.get('/', authenticateToken, async (req, res) => {
  */
 router.get('/orders/search', authenticateToken, async (req, res) => {
   try {
+    // Validate filters
     const filterErrors = validateOrderFilters(req.query);
     if (filterErrors.length > 0) {
       return res.status(400).json({
@@ -140,12 +158,18 @@ router.get('/orders/search', authenticateToken, async (req, res) => {
       });
     }
     
-    const accountId = req.user?.accountId || req.user?.userId;
-    
+    // Set default pagination values
     const params = {
       ...req.query,
       limit: req.query.limit || 50,
       offset: req.query.offset || 0
+    };
+    
+    const config = {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${req.user?.token || ''}`
+      }
     };
     
     logger.info(`ORDERS_SALES - search_orders: Searching orders`, {
@@ -155,21 +179,27 @@ router.get('/orders/search', authenticateToken, async (req, res) => {
       offset: params.offset
     });
     
-    const result = await sdkManager.searchOrders(accountId, params);
+    const response = await axios({
+      method: 'GET',
+      url: `${API_BASE_URL}/orders/search`,
+      ...config,
+      params,
+      timeout: 10000
+    });
     
-    logger.info(`ORDERS_SALES - search_orders: Success - Found ${result.results?.length || 0} orders`);
+    logger.info(`ORDERS_SALES - search_orders: Success - Found ${response.data.results?.length || 0} orders`);
     res.json({ 
       success: true, 
-      data: result,
+      data: response.data,
       pagination: {
         limit: params.limit,
         offset: params.offset,
-        total: result.paging?.total || 0
+        total: response.data.paging?.total || 0
       }
     });
   } catch (error) {
-    const statusCode = error.statusCode || 500;
-    const errorData = error.message || error;
+    const statusCode = error.response?.status || 500;
+    const errorData = error.response?.data || { message: error.message };
     
     logger.error(`ORDERS_SALES - search_orders: ${error.message}`, {
       status: statusCode
@@ -191,6 +221,7 @@ router.get('/orders/:order_id', authenticateToken, async (req, res) => {
   try {
     const { order_id } = req.params;
     
+    // Validate order ID
     const idError = validateOrderId(order_id);
     if (idError) {
       return res.status(400).json({
@@ -200,17 +231,28 @@ router.get('/orders/:order_id', authenticateToken, async (req, res) => {
       });
     }
     
-    const accountId = req.user?.accountId || req.user?.userId;
+    const config = {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${req.user?.token || ''}`
+      }
+    };
     
     logger.info(`ORDERS_SALES - get_order: Fetching order ${order_id}`);
     
-    const result = await sdkManager.getOrder(accountId, order_id);
+    const response = await axios({
+      method: 'GET',
+      url: `${API_BASE_URL}/orders/${order_id}`,
+      ...config,
+      params: req.query,
+      timeout: 10000
+    });
     
     logger.info(`ORDERS_SALES - get_order: Success - Retrieved order ${order_id}`);
-    res.json({ success: true, data: result });
+    res.json({ success: true, data: response.data });
   } catch (error) {
-    const statusCode = error.statusCode || 500;
-    const errorData = error.message || error;
+    const statusCode = error.response?.status || 500;
+    const errorData = error.response?.data || { message: error.message };
     
     logger.error(`ORDERS_SALES - get_order: ${error.message}`, {
       order_id: req.params.order_id,
@@ -233,6 +275,7 @@ router.put('/orders/:order_id', authenticateToken, async (req, res) => {
   try {
     const { order_id } = req.params;
     
+    // Validate order ID
     const idError = validateOrderId(order_id);
     if (idError) {
       return res.status(400).json({
@@ -242,6 +285,7 @@ router.put('/orders/:order_id', authenticateToken, async (req, res) => {
       });
     }
     
+    // Validate request body
     if (!req.body || Object.keys(req.body).length === 0) {
       return res.status(400).json({
         success: false,
@@ -250,19 +294,28 @@ router.put('/orders/:order_id', authenticateToken, async (req, res) => {
       });
     }
     
-    const accountId = req.user?.accountId || req.user?.userId;
+    const config = {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${req.user?.token || ''}`
+      }
+    };
     
     logger.info(`ORDERS_SALES - update_order: Updating order ${order_id}`);
     
-    const result = await sdkManager.execute(accountId, async (sdk) => {
-      return sdk.put(`/orders/${order_id}`, req.body);
+    const response = await axios({
+      method: 'PUT',
+      url: `${API_BASE_URL}/orders/${order_id}`,
+      ...config,
+      data: req.body,
+      timeout: 10000
     });
     
     logger.info(`ORDERS_SALES - update_order: Success - Order ${order_id} updated`);
-    res.json({ success: true, data: result });
+    res.json({ success: true, data: response.data });
   } catch (error) {
-    const statusCode = error.statusCode || 500;
-    const errorData = error.message || error;
+    const statusCode = error.response?.status || 500;
+    const errorData = error.response?.data || { message: error.message };
     
     logger.error(`ORDERS_SALES - update_order: ${error.message}`, {
       order_id: req.params.order_id,
@@ -285,6 +338,7 @@ router.get('/packs/:pack_id', authenticateToken, async (req, res) => {
   try {
     const { pack_id } = req.params;
     
+    // Validate pack ID
     if (!pack_id || isNaN(parseInt(pack_id))) {
       return res.status(400).json({
         success: false,
@@ -293,19 +347,28 @@ router.get('/packs/:pack_id', authenticateToken, async (req, res) => {
       });
     }
     
-    const accountId = req.user?.accountId || req.user?.userId;
+    const config = {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${req.user?.token || ''}`
+      }
+    };
     
     logger.info(`ORDERS_SALES - get_pack: Fetching pack ${pack_id}`);
     
-    const result = await sdkManager.execute(accountId, async (sdk) => {
-      return sdk.get(`/packs/${pack_id}`);
+    const response = await axios({
+      method: 'GET',
+      url: `${API_BASE_URL}/packs/${pack_id}`,
+      ...config,
+      params: req.query,
+      timeout: 10000
     });
     
     logger.info(`ORDERS_SALES - get_pack: Success - Retrieved pack ${pack_id}`);
-    res.json({ success: true, data: result });
+    res.json({ success: true, data: response.data });
   } catch (error) {
-    const statusCode = error.statusCode || 500;
-    const errorData = error.message || error;
+    const statusCode = error.response?.status || 500;
+    const errorData = error.response?.data || { message: error.message };
     
     logger.error(`ORDERS_SALES - get_pack: ${error.message}`, {
       pack_id: req.params.pack_id,
@@ -326,6 +389,7 @@ router.get('/packs/:pack_id', authenticateToken, async (req, res) => {
  */
 router.post('/packs', authenticateToken, async (req, res) => {
   try {
+    // Validate request body
     const validationErrors = validatePackCreation(req.body);
     if (validationErrors.length > 0) {
       return res.status(400).json({
@@ -335,19 +399,28 @@ router.post('/packs', authenticateToken, async (req, res) => {
       });
     }
     
-    const accountId = req.user?.accountId || req.user?.userId;
+    const config = {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${req.user?.token || ''}`
+      }
+    };
     
     logger.info(`ORDERS_SALES - create_pack: Creating new pack`);
     
-    const result = await sdkManager.execute(accountId, async (sdk) => {
-      return sdk.post('/packs', req.body);
+    const response = await axios({
+      method: 'POST',
+      url: `${API_BASE_URL}/packs`,
+      ...config,
+      data: req.body,
+      timeout: 10000
     });
     
-    logger.info(`ORDERS_SALES - create_pack: Success - Pack created`);
-    res.status(201).json({ success: true, data: result });
+    logger.info(`ORDERS_SALES - create_pack: Success - Pack created with ID ${response.data.id}`);
+    res.status(201).json({ success: true, data: response.data });
   } catch (error) {
-    const statusCode = error.statusCode || 500;
-    const errorData = error.message || error;
+    const statusCode = error.response?.status || 500;
+    const errorData = error.response?.data || { message: error.message };
     
     logger.error(`ORDERS_SALES - create_pack: ${error.message}`, {
       status: statusCode
@@ -360,6 +433,5 @@ router.post('/packs', authenticateToken, async (req, res) => {
     });
   }
 });
-
 
 module.exports = router;

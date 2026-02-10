@@ -1,0 +1,554 @@
+/**
+ * Reviews Routes (Opiniões de Produtos)
+ * Manage product reviews and ratings
+ * 
+ * API Mercado Livre:
+ * - GET /reviews/item/{item_id} - Get reviews for an item
+ * - GET /reviews/item/{item_id}/ratings - Get ratings summary
+ * - POST /reviews/{review_id}/reply - Reply to a review
+ * 
+ * Routes:
+ * GET    /api/reviews/:accountId/item/:itemId         - Get item reviews
+ * GET    /api/reviews/:accountId/item/:itemId/summary - Get ratings summary
+ * GET    /api/reviews/:accountId/all                  - Get all reviews for seller
+ * POST   /api/reviews/:accountId/reply/:reviewId      - Reply to review
+ * GET    /api/reviews/:accountId/pending              - Get reviews pending reply
+ * GET    /api/reviews/:accountId/stats                - Get review statistics
+ */
+
+const express = require('express');
+const axios = require('axios');
+const logger = require('../logger');
+const sdkManager = require("../services/sdk-manager");
+const { authenticateToken } = require('../middleware/auth');
+const { validateMLToken } = require('../middleware/ml-token-validation');
+
+const router = express.Router();
+
+const ML_API_BASE = 'https://api.mercadolibre.com';
+
+/**
+ * GET /api/reviews/:accountId/item/:itemId
+ * Get reviews for a specific item
+ */
+router.get('/:accountId/item/:itemId', authenticateToken, validateMLToken('accountId'), async (req, res) => {
+  try {
+    const { accountId, itemId } = req.params;
+    const { limit = 50, offset = 0 } = req.query;
+    const account = req.mlAccount;
+
+    const headers = {
+      'Authorization': `Bearer ${account.accessToken}`,
+      'Content-Type': 'application/json',
+    };
+
+    const response = await axios.get(
+      `${ML_API_BASE}/reviews/item/${itemId}`,
+      {
+        headers,
+        params: {
+          limit: parseInt(limit),
+          offset: parseInt(offset),
+        },
+      }
+    );
+
+    logger.info({
+      action: 'GET_ITEM_REVIEWS',
+      accountId,
+      itemId,
+      userId: req.user.userId,
+      reviewsCount: response.data.reviews?.length || 0,
+    });
+
+    res.json({
+      success: true,
+      data: response.data,
+    });
+  } catch (error) {
+    logger.error({
+      action: 'GET_ITEM_REVIEWS_ERROR',
+      accountId: req.params.accountId,
+      itemId: req.params.itemId,
+      userId: req.user.userId,
+      error: error.response?.data || error.message,
+    });
+
+    res.status(error.response?.status || 500).json({
+      success: false,
+      message: 'Failed to get item reviews',
+      error: error.response?.data?.message || error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/reviews/:accountId/item/:itemId/summary
+ * Get ratings summary for an item
+ */
+router.get('/:accountId/item/:itemId/summary', authenticateToken, validateMLToken('accountId'), async (req, res) => {
+  try {
+    const { accountId, itemId } = req.params;
+    const account = req.mlAccount;
+
+    const headers = {
+      'Authorization': `Bearer ${account.accessToken}`,
+      'Content-Type': 'application/json',
+    };
+
+    const [reviewsRes, itemRes] = await Promise.all([
+      axios.get(`${ML_API_BASE}/reviews/item/${itemId}`, { headers }),
+      axios.get(`${ML_API_BASE}/items/${itemId}`, { headers }),
+    ]);
+
+    const reviews = reviewsRes.data.reviews || [];
+    
+    // Calculate ratings distribution
+    const ratingDist = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    reviews.forEach(review => {
+      if (review.rate && ratingDist[review.rate] !== undefined) {
+        ratingDist[review.rate]++;
+      }
+    });
+
+    const totalReviews = reviews.length;
+    const avgRating = totalReviews > 0 
+      ? reviews.reduce((sum, r) => sum + (r.rate || 0), 0) / totalReviews 
+      : 0;
+
+    logger.info({
+      action: 'GET_RATINGS_SUMMARY',
+      accountId,
+      itemId,
+      userId: req.user.userId,
+    });
+
+    res.json({
+      success: true,
+      data: {
+        item_id: itemId,
+        title: itemRes.data.title,
+        total_reviews: totalReviews,
+        average_rating: parseFloat(avgRating.toFixed(2)),
+        rating_distribution: ratingDist,
+        paging: reviewsRes.data.paging,
+      },
+    });
+  } catch (error) {
+    logger.error({
+      action: 'GET_RATINGS_SUMMARY_ERROR',
+      accountId: req.params.accountId,
+      itemId: req.params.itemId,
+      userId: req.user.userId,
+      error: error.response?.data || error.message,
+    });
+
+    res.status(error.response?.status || 500).json({
+      success: false,
+      message: 'Failed to get ratings summary',
+      error: error.response?.data?.message || error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/reviews/:accountId/all
+ * Get all reviews for seller's items
+ */
+router.get('/:accountId/all', authenticateToken, validateMLToken('accountId'), async (req, res) => {
+  try {
+    const { accountId } = req.params;
+    const { limit = 50 } = req.query;
+    const account = req.mlAccount;
+
+    const headers = {
+      'Authorization': `Bearer ${account.accessToken}`,
+      'Content-Type': 'application/json',
+    };
+
+    // Get seller's items first
+    const itemsRes = await axios.get(
+      `${ML_API_BASE}/users/${account.mlUserId}/items/search`,
+      {
+        headers,
+        params: { status: 'active', limit: 20 },
+      }
+    );
+
+    const itemIds = itemsRes.data.results || [];
+
+    // Fetch reviews for each item
+    const allReviews = [];
+    for (const itemId of itemIds.slice(0, 10)) {
+      try {
+        const reviewsRes = await axios.get(
+          `${ML_API_BASE}/reviews/item/${itemId}`,
+          { headers, params: { limit: 10 } }
+        );
+        
+        const reviews = reviewsRes.data.reviews || [];
+        reviews.forEach(review => {
+          allReviews.push({
+            ...review,
+            item_id: itemId,
+          });
+        });
+      } catch (err) {
+        // Skip items without reviews
+      }
+    }
+
+    // Sort by date (most recent first)
+    allReviews.sort((a, b) => new Date(b.date_created) - new Date(a.date_created));
+
+    logger.info({
+      action: 'GET_ALL_REVIEWS',
+      accountId,
+      userId: req.user.userId,
+      reviewsCount: allReviews.length,
+    });
+
+    res.json({
+      success: true,
+      data: {
+        reviews: allReviews.slice(0, parseInt(limit)),
+        total: allReviews.length,
+        items_analyzed: itemIds.length,
+      },
+    });
+  } catch (error) {
+    logger.error({
+      action: 'GET_ALL_REVIEWS_ERROR',
+      accountId: req.params.accountId,
+      userId: req.user.userId,
+      error: error.response?.data || error.message,
+    });
+
+    res.status(error.response?.status || 500).json({
+      success: false,
+      message: 'Failed to get all reviews',
+      error: error.response?.data?.message || error.message,
+    });
+  }
+});
+
+/**
+ * POST /api/reviews/:accountId/reply/:reviewId
+ * Reply to a review
+ */
+router.post('/:accountId/reply/:reviewId', authenticateToken, validateMLToken('accountId'), async (req, res) => {
+  try {
+    const { accountId, reviewId } = req.params;
+    const { text } = req.body;
+    const account = req.mlAccount;
+
+    if (!text || text.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Reply text is required',
+      });
+    }
+
+    const headers = {
+      'Authorization': `Bearer ${account.accessToken}`,
+      'Content-Type': 'application/json',
+    };
+
+    const response = await axios.post(
+      `${ML_API_BASE}/reviews/${reviewId}/reply`,
+      { text },
+      { headers }
+    );
+
+    logger.info({
+      action: 'REPLY_TO_REVIEW',
+      accountId,
+      reviewId,
+      userId: req.user.userId,
+    });
+
+    res.json({
+      success: true,
+      message: 'Reply posted successfully',
+      data: response.data,
+    });
+  } catch (error) {
+    logger.error({
+      action: 'REPLY_TO_REVIEW_ERROR',
+      accountId: req.params.accountId,
+      reviewId: req.params.reviewId,
+      userId: req.user.userId,
+      error: error.response?.data || error.message,
+    });
+
+    res.status(error.response?.status || 500).json({
+      success: false,
+      message: 'Failed to reply to review',
+      error: error.response?.data?.message || error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/reviews/:accountId/pending
+ * Get reviews pending seller reply
+ */
+router.get('/:accountId/pending', authenticateToken, validateMLToken('accountId'), async (req, res) => {
+  try {
+    const { accountId } = req.params;
+    const account = req.mlAccount;
+
+    const headers = {
+      'Authorization': `Bearer ${account.accessToken}`,
+      'Content-Type': 'application/json',
+    };
+
+    // Get seller's items
+    const itemsRes = await axios.get(
+      `${ML_API_BASE}/users/${account.mlUserId}/items/search`,
+      {
+        headers,
+        params: { status: 'active', limit: 50 },
+      }
+    );
+
+    const itemIds = itemsRes.data.results || [];
+
+    // Fetch reviews and filter pending replies
+    const pendingReviews = [];
+    for (const itemId of itemIds.slice(0, 20)) {
+      try {
+        const reviewsRes = await axios.get(
+          `${ML_API_BASE}/reviews/item/${itemId}`,
+          { headers }
+        );
+        
+        const reviews = reviewsRes.data.reviews || [];
+        reviews.forEach(review => {
+          // Check if review has no seller reply
+          if (!review.reply || !review.reply.text) {
+            pendingReviews.push({
+              ...review,
+              item_id: itemId,
+            });
+          }
+        });
+      } catch (err) {
+        // Skip items without reviews
+      }
+    }
+
+    // Sort by date (oldest first - should be replied first)
+    pendingReviews.sort((a, b) => new Date(a.date_created) - new Date(b.date_created));
+
+    logger.info({
+      action: 'GET_PENDING_REVIEWS',
+      accountId,
+      userId: req.user.userId,
+      pendingCount: pendingReviews.length,
+    });
+
+    res.json({
+      success: true,
+      data: {
+        pending_reviews: pendingReviews,
+        total: pendingReviews.length,
+      },
+    });
+  } catch (error) {
+    logger.error({
+      action: 'GET_PENDING_REVIEWS_ERROR',
+      accountId: req.params.accountId,
+      userId: req.user.userId,
+      error: error.response?.data || error.message,
+    });
+
+    res.status(error.response?.status || 500).json({
+      success: false,
+      message: 'Failed to get pending reviews',
+      error: error.response?.data?.message || error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/reviews/:accountId/stats
+ * Get review statistics
+ */
+router.get('/:accountId/stats', authenticateToken, validateMLToken('accountId'), async (req, res) => {
+  try {
+    const { accountId } = req.params;
+    const account = req.mlAccount;
+
+    const headers = {
+      'Authorization': `Bearer ${account.accessToken}`,
+      'Content-Type': 'application/json',
+    };
+
+    // Get seller's items
+    const itemsRes = await axios.get(
+      `${ML_API_BASE}/users/${account.mlUserId}/items/search`,
+      {
+        headers,
+        params: { status: 'active', limit: 50 },
+      }
+    );
+
+    const itemIds = itemsRes.data.results || [];
+
+    // Collect all reviews
+    let totalReviews = 0;
+    let totalRating = 0;
+    let pendingReplies = 0;
+    let positiveReviews = 0; // 4-5 stars
+    let negativeReviews = 0; // 1-2 stars
+    let neutralReviews = 0;  // 3 stars
+
+    for (const itemId of itemIds.slice(0, 20)) {
+      try {
+        const reviewsRes = await axios.get(
+          `${ML_API_BASE}/reviews/item/${itemId}`,
+          { headers, params: { limit: 50 } }
+        );
+        
+        const reviews = reviewsRes.data.reviews || [];
+        reviews.forEach(review => {
+          totalReviews++;
+          totalRating += review.rate || 0;
+          
+          if (!review.reply || !review.reply.text) {
+            pendingReplies++;
+          }
+          
+          if (review.rate >= 4) positiveReviews++;
+          else if (review.rate <= 2) negativeReviews++;
+          else neutralReviews++;
+        });
+      } catch (err) {
+        // Skip items without reviews
+      }
+    }
+
+    const averageRating = totalReviews > 0 ? totalRating / totalReviews : 0;
+    const positivePercentage = totalReviews > 0 ? (positiveReviews / totalReviews * 100) : 0;
+
+    logger.info({
+      action: 'GET_REVIEW_STATS',
+      accountId,
+      userId: req.user.userId,
+      totalReviews,
+    });
+
+    res.json({
+      success: true,
+      data: {
+        total_reviews: totalReviews,
+        average_rating: parseFloat(averageRating.toFixed(2)),
+        pending_replies: pendingReplies,
+        sentiment: {
+          positive: positiveReviews,
+          neutral: neutralReviews,
+          negative: negativeReviews,
+        },
+        positive_percentage: parseFloat(positivePercentage.toFixed(1)),
+        items_analyzed: Math.min(itemIds.length, 20),
+      },
+    });
+  } catch (error) {
+    logger.error({
+      action: 'GET_REVIEW_STATS_ERROR',
+      accountId: req.params.accountId,
+      userId: req.user.userId,
+      error: error.response?.data || error.message,
+    });
+
+    res.status(error.response?.status || 500).json({
+      success: false,
+      message: 'Failed to get review statistics',
+      error: error.response?.data?.message || error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/reviews/:accountId/negative
+ * Get negative reviews (1-2 stars)
+ */
+router.get('/:accountId/negative', authenticateToken, validateMLToken('accountId'), async (req, res) => {
+  try {
+    const { accountId } = req.params;
+    const account = req.mlAccount;
+
+    const headers = {
+      'Authorization': `Bearer ${account.accessToken}`,
+      'Content-Type': 'application/json',
+    };
+
+    // Get seller's items
+    const itemsRes = await axios.get(
+      `${ML_API_BASE}/users/${account.mlUserId}/items/search`,
+      {
+        headers,
+        params: { limit: 50 },
+      }
+    );
+
+    const itemIds = itemsRes.data.results || [];
+
+    // Collect negative reviews
+    const negativeReviews = [];
+    for (const itemId of itemIds.slice(0, 20)) {
+      try {
+        const reviewsRes = await axios.get(
+          `${ML_API_BASE}/reviews/item/${itemId}`,
+          { headers }
+        );
+        
+        const reviews = reviewsRes.data.reviews || [];
+        reviews.forEach(review => {
+          if (review.rate && review.rate <= 2) {
+            negativeReviews.push({
+              ...review,
+              item_id: itemId,
+            });
+          }
+        });
+      } catch (err) {
+        // Skip items without reviews
+      }
+    }
+
+    // Sort by date (most recent first)
+    negativeReviews.sort((a, b) => new Date(b.date_created) - new Date(a.date_created));
+
+    logger.info({
+      action: 'GET_NEGATIVE_REVIEWS',
+      accountId,
+      userId: req.user.userId,
+      negativeCount: negativeReviews.length,
+    });
+
+    res.json({
+      success: true,
+      data: {
+        negative_reviews: negativeReviews,
+        total: negativeReviews.length,
+      },
+    });
+  } catch (error) {
+    logger.error({
+      action: 'GET_NEGATIVE_REVIEWS_ERROR',
+      accountId: req.params.accountId,
+      userId: req.user.userId,
+      error: error.response?.data || error.message,
+    });
+
+    res.status(error.response?.status || 500).json({
+      success: false,
+      message: 'Failed to get negative reviews',
+      error: error.response?.data?.message || error.message,
+    });
+  }
+});
+
+module.exports = router;

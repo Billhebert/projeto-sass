@@ -24,6 +24,7 @@
  */
 
 const express = require('express');
+const axios = require('axios');
 const logger = require('../logger');
 const sdkManager = require("../services/sdk-manager");
 const { authenticateToken } = require('../middleware/auth');
@@ -294,14 +295,16 @@ async function processBulkOperation(action, packIds, accountId, updateData) {
 /**
  * Fetch and group orders by pack_id from ML API
  */
-async function fetchAndGroupOrdersByPack(accountId, mlUserId) {
-  const sdk = await sdkManager.getSDK(accountId);
-  const ordersResponse = await sdk.getAll('/orders/search', {
-    seller: mlUserId,
-    limit: 100,
+async function fetchAndGroupOrdersByPack(headers, mlUserId) {
+  const ordersResponse = await axios.get(`${ML_API_BASE}/orders/search`, {
+    headers,
+    params: {
+      seller: mlUserId,
+      limit: 100,
+    },
   });
 
-  const orders = ordersResponse.data?.results || ordersResponse.results || [];
+  const orders = ordersResponse.data.results || [];
   const packsMap = new Map();
 
   orders.forEach(order => {
@@ -864,7 +867,8 @@ router.post('/:accountId/sync', authenticateToken, validateMLToken('accountId'),
       userId: req.user.userId,
     });
 
-    const packsMap = await fetchAndGroupOrdersByPack(accountId, account.mlUserId);
+    const headers = buildHeaders(account.accessToken);
+    const packsMap = await fetchAndGroupOrdersByPack(headers, account.mlUserId);
 
     let syncedCount = 0;
     for (const [, packData] of packsMap) {

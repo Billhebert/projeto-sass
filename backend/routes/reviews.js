@@ -17,7 +17,6 @@
  */
 
 const express = require('express');
-const axios = require('axios');
 const logger = require('../logger');
 const sdkManager = require("../services/sdk-manager");
 const { authenticateToken } = require('../middleware/auth');
@@ -25,8 +24,6 @@ const { validateMLToken } = require('../middleware/ml-token-validation');
 const { handleError, sendSuccess, buildHeaders } = require('../middleware/response-helpers');
 
 const router = express.Router();
-
-const ML_API_BASE = 'https://api.mercadolibre.com';
 
 /**
  * GET /api/reviews/:accountId/item/:itemId
@@ -36,28 +33,21 @@ router.get('/:accountId/item/:itemId', authenticateToken, validateMLToken('accou
   try {
     const { accountId, itemId } = req.params;
     const { limit = 50, offset = 0 } = req.query;
-    const account = req.mlAccount;
 
-    const response = await axios.get(
-      `${ML_API_BASE}/reviews/item/${itemId}`,
-      {
-        headers: buildHeaders(account),
-        params: {
-          limit: parseInt(limit),
-          offset: parseInt(offset),
-        },
-      }
-    );
+    const reviews = await sdkManager.getItemReviews(accountId, itemId, {
+      limit: parseInt(limit),
+      offset: parseInt(offset),
+    });
 
     logger.info({
       action: 'GET_ITEM_REVIEWS',
       accountId,
       itemId,
       userId: req.user.userId,
-      reviewsCount: response.data.reviews?.length || 0,
+      reviewsCount: reviews.reviews?.length || 0,
     });
 
-    sendSuccess(res, response.data);
+    sendSuccess(res, reviews);
   } catch (error) {
     handleError(
       res,
@@ -81,17 +71,14 @@ router.get('/:accountId/item/:itemId', authenticateToken, validateMLToken('accou
 router.get('/:accountId/item/:itemId/summary', authenticateToken, validateMLToken('accountId'), async (req, res) => {
   try {
     const { accountId, itemId } = req.params;
-    const account = req.mlAccount;
-    const headers = buildHeaders(account);
 
     const [reviewsRes, itemRes] = await Promise.all([
-      axios.get(`${ML_API_BASE}/reviews/item/${itemId}`, { headers }),
-      axios.get(`${ML_API_BASE}/items/${itemId}`, { headers }),
+      sdkManager.getItemReviews(accountId, itemId, { limit: 100 }),
+      sdkManager.getItem(accountId, itemId),
     ]);
 
-    const reviews = reviewsRes.data.reviews || [];
+    const reviews = reviewsRes.reviews || [];
     
-    // Calculate ratings distribution
     const ratingDist = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
     reviews.forEach(review => {
       if (review.rate && ratingDist[review.rate] !== undefined) {
@@ -113,11 +100,11 @@ router.get('/:accountId/item/:itemId/summary', authenticateToken, validateMLToke
 
     sendSuccess(res, {
       item_id: itemId,
-      title: itemRes.data.title,
+      title: itemRes.title,
       total_reviews: totalReviews,
       average_rating: parseFloat(avgRating.toFixed(2)),
       rating_distribution: ratingDist,
-      paging: reviewsRes.data.paging,
+      paging: reviewsRes.paging,
     });
   } catch (error) {
     handleError(
@@ -143,29 +130,20 @@ router.get('/:accountId/all', authenticateToken, validateMLToken('accountId'), a
   try {
     const { accountId } = req.params;
     const { limit = 50 } = req.query;
-    const account = req.mlAccount;
-    const headers = buildHeaders(account);
 
-    const itemsRes = await axios.get(
-      `${ML_API_BASE}/users/${account.mlUserId}/items/search`,
-      {
-        headers,
-        params: { status: 'active', limit: 20 },
-      }
-    );
+    const itemsRes = await sdkManager.getAllUserItems(accountId, req.mlAccount.mlUserId, {
+      status: 'active',
+      limit: 20,
+    });
 
-    const itemIds = itemsRes.data.results || [];
-
-    // Fetch reviews for each item
+    const itemIds = itemsRes.results || [];
     const allReviews = [];
+
     for (const itemId of itemIds.slice(0, 10)) {
       try {
-        const reviewsRes = await axios.get(
-          `${ML_API_BASE}/reviews/item/${itemId}`,
-          { headers, params: { limit: 10 } }
-        );
+        const reviewsRes = await sdkManager.getItemReviews(accountId, itemId, { limit: 10 });
         
-        const reviews = reviewsRes.data.reviews || [];
+        const reviews = reviewsRes.reviews || [];
         reviews.forEach(review => {
           allReviews.push({
             ...review,
@@ -173,11 +151,9 @@ router.get('/:accountId/all', authenticateToken, validateMLToken('accountId'), a
           });
         });
       } catch (err) {
-        // Skip items without reviews
       }
     }
 
-    // Sort by date (most recent first)
     allReviews.sort((a, b) => new Date(b.date_created) - new Date(a.date_created));
 
     logger.info({
@@ -215,7 +191,6 @@ router.post('/:accountId/reply/:reviewId', authenticateToken, validateMLToken('a
   try {
     const { accountId, reviewId } = req.params;
     const { text } = req.body;
-    const account = req.mlAccount;
 
     if (!text || text.trim().length === 0) {
       return res.status(400).json({
@@ -224,11 +199,9 @@ router.post('/:accountId/reply/:reviewId', authenticateToken, validateMLToken('a
       });
     }
 
-    const response = await axios.post(
-      `${ML_API_BASE}/reviews/${reviewId}/reply`,
-      { text },
-      { headers: buildHeaders(account) }
-    );
+    const response = await sdkManager.execute(accountId, async (sdk) => {
+      return sdk.replyReview(reviewId, { text });
+    });
 
     logger.info({
       action: 'REPLY_TO_REVIEW',
@@ -237,7 +210,7 @@ router.post('/:accountId/reply/:reviewId', authenticateToken, validateMLToken('a
       userId: req.user.userId,
     });
 
-    sendSuccess(res, response.data, 'Reply posted successfully');
+    sendSuccess(res, response, 'Reply posted successfully');
   } catch (error) {
     handleError(
       res,
@@ -261,29 +234,20 @@ router.post('/:accountId/reply/:reviewId', authenticateToken, validateMLToken('a
 router.get('/:accountId/pending', authenticateToken, validateMLToken('accountId'), async (req, res) => {
   try {
     const { accountId } = req.params;
-    const account = req.mlAccount;
-    const headers = buildHeaders(account);
 
-    const itemsRes = await axios.get(
-      `${ML_API_BASE}/users/${account.mlUserId}/items/search`,
-      {
-        headers,
-        params: { status: 'active', limit: 50 },
-      }
-    );
+    const itemsRes = await sdkManager.getAllUserItems(accountId, req.mlAccount.mlUserId, {
+      status: 'active',
+      limit: 50,
+    });
 
-    const itemIds = itemsRes.data.results || [];
-
-    // Fetch reviews and filter pending replies
+    const itemIds = itemsRes.results || [];
     const pendingReviews = [];
+
     for (const itemId of itemIds.slice(0, 20)) {
       try {
-        const reviewsRes = await axios.get(
-          `${ML_API_BASE}/reviews/item/${itemId}`,
-          { headers }
-        );
+        const reviewsRes = await sdkManager.getItemReviews(accountId, itemId);
         
-        const reviews = reviewsRes.data.reviews || [];
+        const reviews = reviewsRes.reviews || [];
         reviews.forEach(review => {
           if (!review.reply || !review.reply.text) {
             pendingReviews.push({
@@ -293,11 +257,9 @@ router.get('/:accountId/pending', authenticateToken, validateMLToken('accountId'
           }
         });
       } catch (err) {
-        // Skip items without reviews
       }
     }
 
-    // Sort by date (oldest first)
     pendingReviews.sort((a, b) => new Date(a.date_created) - new Date(b.date_created));
 
     logger.info({
@@ -333,20 +295,13 @@ router.get('/:accountId/pending', authenticateToken, validateMLToken('accountId'
 router.get('/:accountId/stats', authenticateToken, validateMLToken('accountId'), async (req, res) => {
   try {
     const { accountId } = req.params;
-    const account = req.mlAccount;
-    const headers = buildHeaders(account);
 
-    const itemsRes = await axios.get(
-      `${ML_API_BASE}/users/${account.mlUserId}/items/search`,
-      {
-        headers,
-        params: { status: 'active', limit: 50 },
-      }
-    );
+    const itemsRes = await sdkManager.getAllUserItems(accountId, req.mlAccount.mlUserId, {
+      status: 'active',
+      limit: 50,
+    });
 
-    const itemIds = itemsRes.data.results || [];
-
-    // Collect all reviews
+    const itemIds = itemsRes.results || [];
     let totalReviews = 0;
     let totalRating = 0;
     let pendingReplies = 0;
@@ -356,12 +311,9 @@ router.get('/:accountId/stats', authenticateToken, validateMLToken('accountId'),
 
     for (const itemId of itemIds.slice(0, 20)) {
       try {
-        const reviewsRes = await axios.get(
-          `${ML_API_BASE}/reviews/item/${itemId}`,
-          { headers, params: { limit: 50 } }
-        );
+        const reviewsRes = await sdkManager.getItemReviews(accountId, itemId, { limit: 50 });
         
-        const reviews = reviewsRes.data.reviews || [];
+        const reviews = reviewsRes.reviews || [];
         reviews.forEach(review => {
           totalReviews++;
           totalRating += review.rate || 0;
@@ -375,7 +327,6 @@ router.get('/:accountId/stats', authenticateToken, validateMLToken('accountId'),
           else neutralReviews++;
         });
       } catch (err) {
-        // Skip items without reviews
       }
     }
 
@@ -423,29 +374,19 @@ router.get('/:accountId/stats', authenticateToken, validateMLToken('accountId'),
 router.get('/:accountId/negative', authenticateToken, validateMLToken('accountId'), async (req, res) => {
   try {
     const { accountId } = req.params;
-    const account = req.mlAccount;
-    const headers = buildHeaders(account);
 
-    const itemsRes = await axios.get(
-      `${ML_API_BASE}/users/${account.mlUserId}/items/search`,
-      {
-        headers,
-        params: { limit: 50 },
-      }
-    );
+    const itemsRes = await sdkManager.getAllUserItems(accountId, req.mlAccount.mlUserId, {
+      limit: 50,
+    });
 
-    const itemIds = itemsRes.data.results || [];
-
-    // Collect negative reviews
+    const itemIds = itemsRes.results || [];
     const negativeReviews = [];
+
     for (const itemId of itemIds.slice(0, 20)) {
       try {
-        const reviewsRes = await axios.get(
-          `${ML_API_BASE}/reviews/item/${itemId}`,
-          { headers }
-        );
+        const reviewsRes = await sdkManager.getItemReviews(accountId, itemId);
         
-        const reviews = reviewsRes.data.reviews || [];
+        const reviews = reviewsRes.reviews || [];
         reviews.forEach(review => {
           if (review.rate && review.rate <= 2) {
             negativeReviews.push({
@@ -455,11 +396,9 @@ router.get('/:accountId/negative', authenticateToken, validateMLToken('accountId
           }
         });
       } catch (err) {
-        // Skip items without reviews
       }
     }
 
-    // Sort by date (most recent first)
     negativeReviews.sort((a, b) => new Date(b.date_created) - new Date(a.date_created));
 
     logger.info({

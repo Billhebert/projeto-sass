@@ -1,15 +1,34 @@
 /**
  * Billing Routes (Conciliação Financeira)
  * Financial reconciliation, billing reports, and settlement data
+ *
+ * API Mercado Livre:
+ * - GET /users/{user_id}/billing/periods - Billing periods
+ * - GET /users/{user_id}/billing/period/{period_id} - Period details
+ * - GET /users/{user_id}/billing/period/{period_id}/balance - Balance
+ * - GET /users/{user_id}/orders/search - Orders for settlement
+ * - GET /users/{user_id}/mercadopago_account/balance - MP account balance
+ *
+ * Routes:
+ * GET    /api/billing/:accountId/periods                  - List billing periods
+ * GET    /api/billing/:accountId/period/:periodId         - Get period details
+ * GET    /api/billing/:accountId/balance                  - Get current balance
+ * GET    /api/billing/:accountId/settlements              - List settlements
+ * GET    /api/billing/:accountId/settlement/:settlementId - Get settlement details
+ * GET    /api/billing/:accountId/fees                     - Get fee summary
+ * GET    /api/billing/:accountId/report/:type             - Generate report
  */
 
 const express = require("express");
+const axios = require("axios");
 const logger = require("../logger");
 const sdkManager = require("../services/sdk-manager");
 const { authenticateToken } = require("../middleware/auth");
 const { validateMLToken } = require("../middleware/ml-token-validation");
 
 const router = express.Router();
+
+const ML_API_BASE = "https://api.mercadolibre.com";
 
 // ============================================================================
 // CORE HELPER FUNCTIONS
@@ -44,6 +63,16 @@ function handleError(res, statusCode, message, error, action, context = {}, isFa
   });
 }
 
+/**
+ * Build authorization headers
+ */
+function buildHeaders(accessToken) {
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+  };
+}
+
 // ============================================================================
 // BILLING-SPECIFIC HELPER FUNCTIONS
 // ============================================================================
@@ -60,9 +89,9 @@ function buildBillingParams(query) {
 /**
  * Build settlement search params
  */
-function buildSettlementParams(query, sellerId) {
+function buildSettlementParams(query) {
   const params = {
-    seller_id: sellerId,
+    seller_id: query.seller_id,
     order_status: "paid",
     limit: parseInt(query.limit || 100),
     offset: parseInt(query.offset || 0),
@@ -145,6 +174,64 @@ function calculateFeeTotals(orders) {
 }
 
 /**
+ * Generate report data by type
+ */
+function generateReportByType(type, orders, from, to) {
+  switch (type) {
+    case "sales":
+      return orders.map((order) => ({
+        order_id: order.id,
+        date: order.date_created,
+        total: order.total_amount,
+        items: order.order_items?.map((i) => i.item.title).join(", "),
+        buyer: order.buyer?.nickname,
+        status: order.status,
+      }));
+
+    case "fees":
+      return orders.map((order) => ({
+        order_id: order.id,
+        date: order.date_created,
+        gross: order.total_amount,
+        marketplace_fee: order.marketplace_fee || 0,
+        shipping_fee: order.shipping_cost || 0,
+        net:
+          (order.total_amount || 0) -
+          (order.marketplace_fee || 0) -
+          (order.shipping_cost || 0),
+      }));
+
+    case "settlements":
+      return orders.map((order) => ({
+        order_id: order.id,
+        date_created: order.date_created,
+        date_closed: order.date_closed,
+        amount: order.total_amount,
+        payment_type: order.payments?.[0]?.payment_type,
+        status: order.status,
+      }));
+
+    case "summary":
+      const totalSales = orders.reduce((sum, o) => sum + (o.total_amount || 0), 0);
+      const totalFees = orders.reduce(
+        (sum, o) => sum + (o.marketplace_fee || 0) + (o.shipping_cost || 0),
+        0,
+      );
+      return {
+        period: { from, to },
+        total_orders: orders.length,
+        total_sales: totalSales,
+        total_fees: totalFees,
+        net_revenue: totalSales - totalFees,
+        average_order_value: orders.length > 0 ? totalSales / orders.length : 0,
+      };
+
+    default:
+      return null;
+  }
+}
+
+/**
  * Group orders by day
  */
 function groupOrdersByDay(orders) {
@@ -187,18 +274,23 @@ function calculateDateRange(days) {
 router.get("/:accountId/periods", authenticateToken, validateMLToken("accountId"), async (req, res) => {
   try {
     const { accountId } = req.params;
+    const account = req.mlAccount;
+    const headers = buildHeaders(account.accessToken);
     const params = buildBillingParams(req.query);
 
-    const periods = await sdkManager.getBillingPeriods(accountId, params);
+    const response = await axios.get(
+      `${ML_API_BASE}/users/${account.mlUserId}/billing/periods`,
+      { headers, params },
+    );
 
     logger.info({
       action: "LIST_BILLING_PERIODS",
       accountId,
       userId: req.user.userId,
-      periodsCount: periods?.length || 0,
+      periodsCount: response.data?.length || 0,
     });
 
-    return sendSuccess(res, periods);
+    return sendSuccess(res, response.data);
   } catch (error) {
     return handleError(
       res,
@@ -218,10 +310,20 @@ router.get("/:accountId/periods", authenticateToken, validateMLToken("accountId"
 router.get("/:accountId/period/:periodId", authenticateToken, validateMLToken("accountId"), async (req, res) => {
   try {
     const { accountId, periodId } = req.params;
+    const account = req.mlAccount;
+    const headers = buildHeaders(account.accessToken);
 
     const [periodRes, balanceRes] = await Promise.all([
-      sdkManager.getBillingPeriod(accountId, periodId),
-      sdkManager.getBillingPeriodBalance(accountId, periodId).catch(() => ({ data: null })),
+      axios.get(
+        `${ML_API_BASE}/users/${account.mlUserId}/billing/period/${periodId}`,
+        { headers },
+      ),
+      axios
+        .get(
+          `${ML_API_BASE}/users/${account.mlUserId}/billing/period/${periodId}/balance`,
+          { headers },
+        )
+        .catch(() => ({ data: null })),
     ]);
 
     logger.info({
@@ -232,8 +334,8 @@ router.get("/:accountId/period/:periodId", authenticateToken, validateMLToken("a
     });
 
     return sendSuccess(res, {
-      period: periodRes,
-      balance: balanceRes?.data,
+      period: periodRes.data,
+      balance: balanceRes.data,
     });
   } catch (error) {
     return handleError(
@@ -258,19 +360,26 @@ router.get("/:accountId/period/:periodId", authenticateToken, validateMLToken("a
 router.get("/:accountId/balance", authenticateToken, validateMLToken("accountId"), async (req, res) => {
   try {
     const { accountId } = req.params;
+    const account = req.mlAccount;
+    const headers = buildHeaders(account.accessToken);
 
-    const balanceRes = await sdkManager.execute(accountId, async (sdk) => {
-      return sdk.getMercadoPagoBalance();
-    }).catch(() => ({ data: null }));
+    const balanceRes = await axios
+      .get(`${ML_API_BASE}/users/${account.mlUserId}/mercadopago_account/balance`, { headers })
+      .catch(() => ({ data: null }));
 
-    const ordersRes = await sdkManager.searchOrders(accountId, {
-      seller: req.mlAccount.mlUserId,
-      order_status: "paid",
-      sort: "date_desc",
-      limit: 50,
-    }).catch(() => ({ data: { results: [] } }));
+    const ordersRes = await axios
+      .get(`${ML_API_BASE}/orders/search`, {
+        headers,
+        params: {
+          seller: account.mlUserId,
+          order_status: "paid",
+          sort: "date_desc",
+          limit: 50,
+        },
+      })
+      .catch(() => ({ data: { results: [] } }));
 
-    const recentOrders = ordersRes.results || [];
+    const recentOrders = ordersRes.data.results || [];
     const totalRevenue = recentOrders.reduce(
       (sum, order) => sum + (order.total_amount || 0),
       0,
@@ -283,7 +392,7 @@ router.get("/:accountId/balance", authenticateToken, validateMLToken("accountId"
     });
 
     return sendSuccess(res, {
-      mercadopago_balance: balanceRes?.data,
+      mercadopago_balance: balanceRes.data,
       recent_revenue: {
         total: totalRevenue,
         orders_count: recentOrders.length,
@@ -310,12 +419,15 @@ router.get("/:accountId/balance", authenticateToken, validateMLToken("accountId"
 router.get("/:accountId/settlements", authenticateToken, validateMLToken("accountId"), async (req, res) => {
   try {
     const { accountId } = req.params;
-    const params = buildSettlementParams(req.query, req.mlAccount.mlUserId);
+    const account = req.mlAccount;
+    const headers = buildHeaders(account.accessToken);
 
-    const orders = await sdkManager.searchOrders(accountId, params);
+    const params = buildSettlementParams({ ...req.query, seller_id: account.mlUserId });
 
-    const results = orders.results || [];
-    const settlements = results.map(formatSettlement);
+    const response = await axios.get(`${ML_API_BASE}/orders/search`, { headers, params });
+
+    const orders = response.data.results || [];
+    const settlements = orders.map(formatSettlement);
     const totalAmount = settlements.reduce((sum, s) => sum + (s.total_amount || 0), 0);
 
     logger.info({
@@ -332,7 +444,7 @@ router.get("/:accountId/settlements", authenticateToken, validateMLToken("accoun
         count: settlements.length,
         currency: "BRL",
       },
-      paging: orders.paging,
+      paging: response.data.paging,
     });
   } catch (error) {
     return handleError(
@@ -354,13 +466,17 @@ router.get("/:accountId/settlements", authenticateToken, validateMLToken("accoun
 router.get("/:accountId/settlement/:orderId", authenticateToken, validateMLToken("accountId"), async (req, res) => {
   try {
     const { accountId, orderId } = req.params;
+    const account = req.mlAccount;
+    const headers = buildHeaders(account.accessToken);
 
     const [orderRes, billingRes] = await Promise.all([
-      sdkManager.getOrder(accountId, orderId),
-      sdkManager.getOrderBillingInfo(accountId, orderId).catch(() => ({ data: null })),
+      axios.get(`${ML_API_BASE}/orders/${orderId}`, { headers }),
+      axios
+        .get(`${ML_API_BASE}/orders/${orderId}/billing_info`, { headers })
+        .catch(() => ({ data: null })),
     ]);
 
-    const order = orderRes;
+    const order = orderRes.data;
     const fees = calculateOrderFees(order);
     const netAmount = calculateNetAmount(order.total_amount, fees);
 
@@ -381,7 +497,7 @@ router.get("/:accountId/settlement/:orderId", authenticateToken, validateMLToken
         paid_amount: order.paid_amount,
         currency_id: order.currency_id,
       },
-      billing_info: billingRes?.data,
+      billing_info: billingRes.data,
       fees,
       net_amount: netAmount,
       items: order.order_items,
@@ -412,10 +528,13 @@ router.get("/:accountId/fees", authenticateToken, validateMLToken("accountId"), 
   try {
     const { accountId } = req.params;
     const { from, to } = req.query;
-    const params = buildSettlementParams(req.query, req.mlAccount.mlUserId);
+    const account = req.mlAccount;
+    const headers = buildHeaders(account.accessToken);
 
-    const orders = await sdkManager.searchOrders(accountId, params);
-    const results = orders.results || [];
+    const params = buildSettlementParams({ ...req.query, seller_id: account.mlUserId });
+
+    const response = await axios.get(`${ML_API_BASE}/orders/search`, { headers, params });
+    const orders = response.data.results || [];
 
     const {
       totalMarketplaceFee,
@@ -425,13 +544,13 @@ router.get("/:accountId/fees", authenticateToken, validateMLToken("accountId"), 
       totalFees,
       netAmount,
       feePercentage,
-    } = calculateFeeTotals(results);
+    } = calculateFeeTotals(orders);
 
     logger.info({
       action: "GET_FEE_SUMMARY",
       accountId,
       userId: req.user.userId,
-      ordersAnalyzed: results.length,
+      ordersAnalyzed: orders.length,
     });
 
     return sendSuccess(res, {
@@ -447,7 +566,7 @@ router.get("/:accountId/fees", authenticateToken, validateMLToken("accountId"), 
         shipping_fee: totalShippingFee,
         financing_fee: totalFinancingFee,
       },
-      orders_analyzed: results.length,
+      orders_analyzed: orders.length,
       period: { from, to },
     });
   } catch (error) {
@@ -471,7 +590,8 @@ router.get("/:accountId/report/:type", authenticateToken, validateMLToken("accou
   try {
     const { accountId, type } = req.params;
     const { from, to } = req.query;
-    const params = buildSettlementParams(req.query, req.mlAccount.mlUserId);
+    const account = req.mlAccount;
+    const headers = buildHeaders(account.accessToken);
 
     const validTypes = ["sales", "fees", "settlements", "summary"];
     if (!validTypes.includes(type)) {
@@ -481,8 +601,11 @@ router.get("/:accountId/report/:type", authenticateToken, validateMLToken("accou
       });
     }
 
-    const orders = await sdkManager.searchOrders(accountId, params);
-    const results = orders.results || [];
+    const params = buildSettlementParams({ ...req.query, seller_id: account.mlUserId });
+    const response = await axios.get(`${ML_API_BASE}/orders/search`, { headers, params });
+    const orders = response.data.results || [];
+
+    const reportData = generateReportByType(type, orders, from, to);
 
     logger.info({
       action: "GENERATE_REPORT",
@@ -495,7 +618,7 @@ router.get("/:accountId/report/:type", authenticateToken, validateMLToken("accou
       type,
       generated_at: new Date().toISOString(),
       period: { from, to },
-      report: results,
+      report: reportData,
     });
   } catch (error) {
     return handleError(
@@ -521,19 +644,25 @@ router.get("/:accountId/daily-summary", authenticateToken, validateMLToken("acco
   try {
     const { accountId } = req.params;
     const { days = 30 } = req.query;
+    const account = req.mlAccount;
+    const headers = buildHeaders(account.accessToken);
+
     const { fromDate, toDate } = calculateDateRange(days);
 
-    const orders = await sdkManager.searchOrders(accountId, {
-      seller: req.mlAccount.mlUserId,
-      order_status: "paid",
-      "order.date_created.from": fromDate.toISOString(),
-      "order.date_created.to": toDate.toISOString(),
-      limit: 100,
-      sort: "date_asc",
+    const response = await axios.get(`${ML_API_BASE}/orders/search`, {
+      headers,
+      params: {
+        seller: account.mlUserId,
+        order_status: "paid",
+        "order.date_created.from": fromDate.toISOString(),
+        "order.date_created.to": toDate.toISOString(),
+        limit: 100,
+        sort: "date_asc",
+      },
     });
 
-    const results = orders.results || [];
-    const dailySummary = groupOrdersByDay(results);
+    const orders = response.data.results || [];
+    const dailySummary = groupOrdersByDay(orders);
 
     logger.info({
       action: "GET_DAILY_SUMMARY",
@@ -550,13 +679,16 @@ router.get("/:accountId/daily-summary", authenticateToken, validateMLToken("acco
       },
       daily: dailySummary,
       totals: {
-        orders: results.length,
+        orders: orders.length,
         gross: dailySummary.reduce((sum, d) => sum + d.gross, 0),
         fees: dailySummary.reduce((sum, d) => sum + d.fees, 0),
         net: dailySummary.reduce((sum, d) => sum + d.net, 0),
       },
     });
   } catch (error) {
+    const { days = 30 } = req.query;
+    const { fromDate, toDate } = calculateDateRange(days);
+
     return handleError(
       res,
       200,

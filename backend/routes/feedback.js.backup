@@ -12,11 +12,13 @@
 
 const express = require('express');
 const router = express.Router();
+const axios = require('axios');
 const logger = require('../logger');
 const sdkManager = require("../services/sdk-manager");
 const MLAccount = require('../db/models/MLAccount');
 const { authenticateToken } = require('../middleware/auth');
-const { handleError, sendSuccess } = require('../middleware/response-helpers');
+
+const ML_API_BASE = 'https://api.mercadolibre.com';
 
 // Middleware to get ML account and validate token
 async function getMLAccount(req, res, next) {
@@ -57,13 +59,18 @@ async function getMLAccount(req, res, next) {
 router.get('/:accountId/orders/:orderId', authenticateToken, getMLAccount, async (req, res) => {
   try {
     const { orderId } = req.params;
-    const { accountId } = req.params;
+    const { accessToken } = req.mlAccount;
 
-    const feedback = await sdkManager.getOrderFeedback(accountId, orderId);
+    const response = await axios.get(
+      `${ML_API_BASE}/orders/${orderId}/feedback`,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }
+    );
 
     res.json({
       success: true,
-      data: feedback,
+      data: response.data,
     });
   } catch (error) {
     logger.error('Error fetching order feedback:', {
@@ -94,9 +101,10 @@ router.get('/:accountId/orders/:orderId', authenticateToken, getMLAccount, async
 router.post('/:accountId/orders/:orderId', authenticateToken, getMLAccount, async (req, res) => {
   try {
     const { orderId } = req.params;
-    const { accountId } = req.params;
+    const { accessToken } = req.mlAccount;
     const { rating, fulfilled, message } = req.body;
 
+    // Validate required fields
     if (!rating || typeof fulfilled !== 'boolean') {
       return res.status(400).json({
         success: false,
@@ -104,6 +112,7 @@ router.post('/:accountId/orders/:orderId', authenticateToken, getMLAccount, asyn
       });
     }
 
+    // Valid ratings: positive, negative, neutral
     const validRatings = ['positive', 'negative', 'neutral'];
     if (!validRatings.includes(rating)) {
       return res.status(400).json({
@@ -118,18 +127,26 @@ router.post('/:accountId/orders/:orderId', authenticateToken, getMLAccount, asyn
       message: message || '',
     };
 
-    const sdk = await sdkManager.getSDK(accountId);
-    const response = await sdk.createFeedback(orderId, feedbackData);
+    const response = await axios.post(
+      `${ML_API_BASE}/orders/${orderId}/feedback`,
+      feedbackData,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
 
     logger.info('Feedback created successfully:', {
       orderId,
       rating,
-      accountId,
+      accountId: req.mlAccount.id,
     });
 
     res.json({
       success: true,
-      data: response,
+      data: response.data,
       message: 'Feedback created successfully',
     });
   } catch (error) {
@@ -152,25 +169,30 @@ router.post('/:accountId/orders/:orderId', authenticateToken, getMLAccount, asyn
  */
 router.get('/:accountId/seller', authenticateToken, getMLAccount, async (req, res) => {
   try {
-    const { accountId } = req.params;
-    const { mlUserId } = req.mlAccount;
+    const { accessToken, mlUserId } = req.mlAccount;
     const { offset = 0, limit = 50 } = req.query;
 
-    const sdk = await sdkManager.getSDK(accountId);
-
-    const summaryResponse = await sdk.getUserSummary(mlUserId);
-    const ordersResponse = await sdk.searchOrders({
-      seller: mlUserId,
-      feedback_status: 'pending',
-      offset: parseInt(offset),
-      limit: parseInt(limit),
-    });
+    // Get feedback summary
+    const [summaryResponse, historyResponse] = await Promise.all([
+      axios.get(`${ML_API_BASE}/users/${mlUserId}/feedback`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }),
+      axios.get(`${ML_API_BASE}/orders/search`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        params: {
+          seller: mlUserId,
+          feedback_status: 'pending',
+          offset,
+          limit,
+        },
+      }),
+    ]);
 
     res.json({
       success: true,
       data: {
-        summary: summaryResponse,
-        pendingFeedback: ordersResponse,
+        summary: summaryResponse.data,
+        pendingFeedback: historyResponse.data,
       },
     });
   } catch (error) {
@@ -192,25 +214,29 @@ router.get('/:accountId/seller', authenticateToken, getMLAccount, async (req, re
  */
 router.get('/:accountId/received', authenticateToken, getMLAccount, async (req, res) => {
   try {
-    const { accountId } = req.params;
-    const { mlUserId } = req.mlAccount;
+    const { accessToken, mlUserId } = req.mlAccount;
     const { offset = 0, limit = 50, rating } = req.query;
 
     const params = {
-      offset: parseInt(offset),
-      limit: parseInt(limit),
+      offset,
+      limit,
     };
 
     if (rating && ['positive', 'negative', 'neutral'].includes(rating)) {
       params.rating = rating;
     }
 
-    const sdk = await sdkManager.getSDK(accountId);
-    const response = await sdk.getReceivedFeedback(mlUserId, params);
+    const response = await axios.get(
+      `${ML_API_BASE}/users/${mlUserId}/feedback/received`,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        params,
+      }
+    );
 
     res.json({
       success: true,
-      data: response,
+      data: response.data,
     });
   } catch (error) {
     logger.error('Error fetching received feedback:', {
@@ -231,7 +257,7 @@ router.get('/:accountId/received', authenticateToken, getMLAccount, async (req, 
 router.post('/:accountId/:feedbackId/reply', authenticateToken, getMLAccount, async (req, res) => {
   try {
     const { feedbackId } = req.params;
-    const { accountId } = req.params;
+    const { accessToken } = req.mlAccount;
     const { reply } = req.body;
 
     if (!reply || reply.trim().length === 0) {
@@ -241,17 +267,25 @@ router.post('/:accountId/:feedbackId/reply', authenticateToken, getMLAccount, as
       });
     }
 
-    const sdk = await sdkManager.getSDK(accountId);
-    const response = await sdk.replyFeedback(feedbackId, { reply: reply.trim() });
+    const response = await axios.post(
+      `${ML_API_BASE}/feedback/${feedbackId}/reply`,
+      { reply: reply.trim() },
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
 
     logger.info('Feedback reply sent:', {
       feedbackId,
-      accountId,
+      accountId: req.mlAccount.id,
     });
 
     res.json({
       success: true,
-      data: response,
+      data: response.data,
       message: 'Reply sent successfully',
     });
   } catch (error) {
@@ -273,13 +307,17 @@ router.post('/:accountId/:feedbackId/reply', authenticateToken, getMLAccount, as
  */
 router.get('/:accountId/stats', authenticateToken, getMLAccount, async (req, res) => {
   try {
-    const { accountId } = req.params;
-    const { mlUserId } = req.mlAccount;
+    const { accessToken, mlUserId } = req.mlAccount;
 
-    const sdk = await sdkManager.getSDK(accountId);
-    const response = await sdk.getUser(mlUserId);
+    // Get user reputation which includes feedback stats
+    const response = await axios.get(
+      `${ML_API_BASE}/users/${mlUserId}`,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }
+    );
 
-    const { seller_reputation } = response;
+    const { seller_reputation } = response.data;
 
     res.json({
       success: true,
@@ -304,6 +342,5 @@ router.get('/:accountId/stats', authenticateToken, getMLAccount, async (req, res
     });
   }
 });
-
 
 module.exports = router;

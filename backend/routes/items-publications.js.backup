@@ -1,10 +1,11 @@
 const express = require('express');
+const axios = require('axios');
 const logger = require('../logger');
 const sdkManager = require("../services/sdk-manager");
 const { authenticateToken } = require('../middleware/auth');
-const { handleError, sendSuccess } = require('../middleware/response-helpers');
 
 const router = express.Router();
+const API_BASE_URL = process.env.ML_API_URL || 'https://api.mercadolibre.com';
 
 // Validation helpers
 const validateItemCreation = (body) => {
@@ -39,8 +40,15 @@ router.get('/', authenticateToken, async (req, res) => {
   try {
     const { limit = 20, offset = 0, status, sort = 'created_desc' } = req.query;
     
+    const config = {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${req.user?.token || ''}`
+      }
+    };
+    
+    // Get user ID from token
     const userId = req.user?.userId || req.user?.id;
-    const accountId = req.user?.accountId || userId;
     
     if (!userId) {
       return res.status(400).json({
@@ -51,6 +59,7 @@ router.get('/', authenticateToken, async (req, res) => {
     
     logger.info(`ITEMS_PUBLICATIONS - list_items: Fetching items for user ${userId}`);
     
+    // Build query params for ML API
     const params = {
       limit: parseInt(limit),
       offset: parseInt(offset)
@@ -60,6 +69,7 @@ router.get('/', authenticateToken, async (req, res) => {
       params.status = status;
     }
     
+    // Sort mapping
     const sortMapping = {
       'created_desc': 'date_created:desc',
       'created_asc': 'date_created:asc',
@@ -71,16 +81,44 @@ router.get('/', authenticateToken, async (req, res) => {
       params.sort = sortMapping[sort];
     }
     
-    const itemsResponse = await sdkManager.getAllUserItems(accountId, userId, params);
-    const results = itemsResponse.results || [];
+    const response = await axios({
+      method: 'GET',
+      url: `${API_BASE_URL}/users/${userId}/items/search`,
+      ...config,
+      params,
+      timeout: 15000
+    });
     
-    logger.info(`ITEMS_PUBLICATIONS - list_items: Success - ${results.length} items retrieved`);
+    // Get full item details if we have results
+    let items = [];
+    const results = response.data.results || [];
+    
+    if (results.length > 0) {
+      // Fetch item details in batches
+      const itemIds = results.slice(0, parseInt(limit));
+      const itemPromises = itemIds.map(id => 
+        axios.get(`${API_BASE_URL}/items/${id}`, { 
+          headers: config.headers,
+          timeout: 10000 
+        }).catch(err => {
+          logger.warn(`Failed to fetch item ${id}: ${err.message}`);
+          return null;
+        })
+      );
+      
+      const itemResponses = await Promise.all(itemPromises);
+      items = itemResponses
+        .filter(r => r !== null)
+        .map(r => r.data);
+    }
+    
+    logger.info(`ITEMS_PUBLICATIONS - list_items: Success - ${items.length} items retrieved`);
     
     res.json({ 
       success: true, 
-      data: results,
+      data: items,
       pagination: {
-        total: itemsResponse.paging?.total || 0,
+        total: response.data.paging?.total || 0,
         limit: parseInt(limit),
         offset: parseInt(offset)
       }
@@ -109,6 +147,7 @@ router.get('/', authenticateToken, async (req, res) => {
  */
 router.post('/', authenticateToken, async (req, res) => {
   try {
+    // Validate request body
     const validationErrors = validateItemCreation(req.body);
     if (validationErrors.length > 0) {
       return res.status(400).json({
@@ -118,14 +157,26 @@ router.post('/', authenticateToken, async (req, res) => {
       });
     }
     
-    const accountId = req.user?.accountId || req.user?.userId;
+    const config = {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${req.user?.token || ''}`
+      }
+    };
     
+    // Log sanitized request
     logger.info(`ITEMS_PUBLICATIONS - create_item: Creating item with title "${req.body.title}"`);
     
-    const item = await sdkManager.createItem(accountId, req.body);
+    const response = await axios({
+      method: 'POST',
+      url: `${API_BASE_URL}/items`,
+      ...config,
+      data: req.body,
+      timeout: 10000
+    });
     
-    logger.info(`ITEMS_PUBLICATIONS - create_item: Success - Item ID: ${item.id}`);
-    res.status(201).json({ success: true, data: item });
+    logger.info(`ITEMS_PUBLICATIONS - create_item: Success - Item ID: ${response.data.id}`);
+    res.status(201).json({ success: true, data: response.data });
   } catch (error) {
     const statusCode = error.response?.status || 500;
     const errorData = error.response?.data || { message: error.message };
@@ -152,6 +203,7 @@ router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     
+    // Validate item ID
     const idError = validateItemId(id);
     if (idError) {
       return res.status(400).json({
@@ -161,13 +213,24 @@ router.get('/:id', async (req, res) => {
       });
     }
     
+    const config = {
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    };
+    
     logger.info(`ITEMS_PUBLICATIONS - get_item: Fetching item ${id}`);
     
-    const accountId = req.user?.accountId || req.user?.userId;
-    const item = await sdkManager.getItem(accountId, id);
+    const response = await axios({
+      method: 'GET',
+      url: `${API_BASE_URL}/items/${id}`,
+      ...config,
+      params: req.query,
+      timeout: 10000
+    });
     
     logger.info(`ITEMS_PUBLICATIONS - get_item: Success - Retrieved item ${id}`);
-    res.json({ success: true, data: item });
+    res.json({ success: true, data: response.data });
   } catch (error) {
     const statusCode = error.response?.status || 500;
     const errorData = error.response?.data || { message: error.message };
@@ -194,6 +257,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     
+    // Validate item ID
     const idError = validateItemId(id);
     if (idError) {
       return res.status(400).json({
@@ -203,6 +267,7 @@ router.put('/:id', authenticateToken, async (req, res) => {
       });
     }
     
+    // Basic validation - at least one field to update
     if (!req.body || Object.keys(req.body).length === 0) {
       return res.status(400).json({
         success: false,
@@ -211,14 +276,25 @@ router.put('/:id', authenticateToken, async (req, res) => {
       });
     }
     
-    const accountId = req.user?.accountId || req.user?.userId;
+    const config = {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${req.user?.token || ''}`
+      }
+    };
     
     logger.info(`ITEMS_PUBLICATIONS - update_item: Updating item ${id}`);
     
-    const item = await sdkManager.updateItem(accountId, id, req.body);
+    const response = await axios({
+      method: 'PUT',
+      url: `${API_BASE_URL}/items/${id}`,
+      ...config,
+      data: req.body,
+      timeout: 10000
+    });
     
     logger.info(`ITEMS_PUBLICATIONS - update_item: Success - Item ${id} updated`);
-    res.json({ success: true, data: item });
+    res.json({ success: true, data: response.data });
   } catch (error) {
     const statusCode = error.response?.status || 500;
     const errorData = error.response?.data || { message: error.message };
@@ -245,6 +321,7 @@ router.delete('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     
+    // Validate item ID
     const idError = validateItemId(id);
     if (idError) {
       return res.status(400).json({
@@ -254,16 +331,24 @@ router.delete('/:id', authenticateToken, async (req, res) => {
       });
     }
     
-    const accountId = req.user?.accountId || req.user?.userId;
+    const config = {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${req.user?.token || ''}`
+      }
+    };
     
     logger.info(`ITEMS_PUBLICATIONS - delete_item: Deleting item ${id}`);
     
-    const result = await sdkManager.execute(accountId, async (sdk) => {
-      return sdk.deleteItem(id);
+    const response = await axios({
+      method: 'DELETE',
+      url: `${API_BASE_URL}/items/${id}`,
+      ...config,
+      timeout: 10000
     });
     
     logger.info(`ITEMS_PUBLICATIONS - delete_item: Success - Item ${id} deleted`);
-    res.json({ success: true, data: result });
+    res.json({ success: true, data: response.data });
   } catch (error) {
     const statusCode = error.response?.status || 500;
     const errorData = error.response?.data || { message: error.message };
@@ -290,6 +375,7 @@ router.get('/:id/description', async (req, res) => {
   try {
     const { id } = req.params;
     
+    // Validate item ID
     const idError = validateItemId(id);
     if (idError) {
       return res.status(400).json({
@@ -299,14 +385,24 @@ router.get('/:id/description', async (req, res) => {
       });
     }
     
-    const accountId = req.user?.accountId || req.user?.userId;
+    const config = {
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    };
     
     logger.info(`ITEMS_PUBLICATIONS - get_item_description: Fetching description for item ${id}`);
     
-    const description = await sdkManager.getItemDescription(accountId, id);
+    const response = await axios({
+      method: 'GET',
+      url: `${API_BASE_URL}/items/${id}/description`,
+      ...config,
+      params: req.query,
+      timeout: 10000
+    });
     
     logger.info(`ITEMS_PUBLICATIONS - get_item_description: Success`);
-    res.json({ success: true, data: description });
+    res.json({ success: true, data: response.data });
   } catch (error) {
     const statusCode = error.response?.status || 500;
     const errorData = error.response?.data || { message: error.message };
@@ -332,6 +428,7 @@ router.post('/:id/description', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     
+    // Validate item ID
     const idError = validateItemId(id);
     if (idError) {
       return res.status(400).json({
@@ -341,6 +438,7 @@ router.post('/:id/description', authenticateToken, async (req, res) => {
       });
     }
     
+    // Validate request body
     if (!req.body || !req.body.text) {
       return res.status(400).json({
         success: false,
@@ -349,16 +447,25 @@ router.post('/:id/description', authenticateToken, async (req, res) => {
       });
     }
     
-    const accountId = req.user?.accountId || req.user?.userId;
+    const config = {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${req.user?.token || ''}`
+      }
+    };
     
     logger.info(`ITEMS_PUBLICATIONS - update_item_description: Updating description for item ${id}`);
     
-    const description = await sdkManager.execute(accountId, async (sdk) => {
-      return sdk.updateItemDescription(id, req.body);
+    const response = await axios({
+      method: 'POST',
+      url: `${API_BASE_URL}/items/${id}/description`,
+      ...config,
+      data: req.body,
+      timeout: 10000
     });
     
     logger.info(`ITEMS_PUBLICATIONS - update_item_description: Success`);
-    res.json({ success: true, data: description });
+    res.json({ success: true, data: response.data });
   } catch (error) {
     const statusCode = error.response?.status || 500;
     const errorData = error.response?.data || { message: error.message };
@@ -375,6 +482,5 @@ router.post('/:id/description', authenticateToken, async (req, res) => {
     });
   }
 });
-
 
 module.exports = router;
