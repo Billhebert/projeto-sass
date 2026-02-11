@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import api from "../services/api";
+import { useMLAccounts, useReputation } from "../hooks/useApi";
 import {
   RadialBarChart,
   RadialBar,
@@ -11,63 +11,30 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  BarChart,
-  Bar,
-  Cell,
 } from "recharts";
 import "./Reputation.css";
 
 function Reputation() {
-  const [accounts, setAccounts] = useState([]);
-  const [selectedAccount, setSelectedAccount] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [reputation, setReputation] = useState(null);
-  const [history, setHistory] = useState([]);
-  const [error, setError] = useState(null);
+  // Load accounts and select first one
+  const { data: accounts = [] } = useMLAccounts();
+  const [selectedAccount, setSelectedAccount] = useState(accounts[0]?.id || "");
 
-  useEffect(() => {
-    loadAccounts();
-  }, []);
+  // Fetch reputation data using React Query
+  const {
+    data: reputationData,
+    isLoading: loading,
+    refetch,
+  } = useReputation(selectedAccount);
 
-  useEffect(() => {
-    if (selectedAccount) {
-      loadReputation();
+  // Update selected account when accounts load
+  useState(() => {
+    if (accounts.length > 0 && !selectedAccount) {
+      setSelectedAccount(accounts[0].id);
     }
-  }, [selectedAccount]);
+  }, [accounts]);
 
-  const loadAccounts = async () => {
-    try {
-      const response = await api.get("/ml-accounts");
-      const accountsList =
-        response.data.data?.accounts || response.data.accounts || [];
-      setAccounts(accountsList);
-      if (accountsList.length > 0) {
-        setSelectedAccount(accountsList[0].id);
-      }
-    } catch (err) {
-      setError("Erro ao carregar contas");
-      setLoading(false);
-    }
-  };
-
-  const loadReputation = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await api.get(`/metrics/${selectedAccount}/reputation`);
-      setReputation(response.data.reputation);
-
-      // Generate historical trend data for visualization (backend doesn't store history)
-      // This creates a 6-month trend based on current metrics
-      const trendData = generateHistoricalTrend(response.data.reputation);
-      setHistory(trendData);
-    } catch (err) {
-      setError("Erro ao carregar reputacao");
-      setReputation(null);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Extract reputation from response
+  const reputation = reputationData?.reputation || reputationData;
 
   const generateHistoricalTrend = (rep) => {
     const months = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun"];
@@ -145,10 +112,6 @@ function Reputation() {
     return { status: "danger", color: "#ef4444", label: "Critico" };
   };
 
-  const formatPercent = (value) => {
-    return `${(value * 100).toFixed(2)}%`;
-  };
-
   const renderThermometer = () => {
     if (!reputation) return null;
 
@@ -200,6 +163,7 @@ function Reputation() {
   }
 
   const level = reputation ? getReputationLevel(reputation.level_id) : null;
+  const history = reputation ? generateHistoricalTrend(reputation) : [];
   const claimsRate = (reputation?.metrics?.claims?.rate || 0) * 100;
   const delayedRate =
     (reputation?.metrics?.delayed_handling_time?.rate || 0) * 100;
@@ -236,19 +200,12 @@ function Reputation() {
               </option>
             ))}
           </select>
-          <button className="btn btn-secondary" onClick={loadReputation}>
+          <button className="btn btn-secondary" onClick={() => refetch()}>
             <span className="material-icons">refresh</span>
             Atualizar
           </button>
         </div>
       </header>
-
-      {error && (
-        <div className="alert alert-danger">
-          <span className="material-icons">error</span>
-          {error}
-        </div>
-      )}
 
       {reputation && (
         <>
@@ -592,7 +549,7 @@ function Reputation() {
         </>
       )}
 
-      {!reputation && !loading && !error && (
+      {!reputation && !loading && (
         <div className="empty-state">
           <span className="material-icons">verified</span>
           <h3>Sem dados de reputacao</h3>

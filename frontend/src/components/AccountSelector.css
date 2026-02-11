@@ -1,0 +1,156 @@
+/* AccountSelector Styles */
+
+.account-selector {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.account-select {
+  min-width: 200px;
+  padding: 0.625rem 2.5rem 0.625rem 1rem;
+  background: white;
+  border: 1px solid var(--gray-300, #d1d5db);
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--gray-900, #111827);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%234b5563'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  background-size: 1.5em;
+}
+
+.account-select:hover:not(:disabled) {
+  border-color: var(--primary-400, #60a5fa);
+}
+
+.account-select:focus {
+  outline: none;
+  border-color: var(--primary-500, #3b82f6);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.account-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.account-sync-btn {
+  white-space: nowrap;
+}
+
+.account-sync-btn .material-icons {
+  margin-right: 0.5rem;
+}
+
+.account-sync-btn .spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Loading state */
+.account-selector-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 1rem;
+  background: var(--gray-50, #f9fafb);
+  border: 1px solid var(--gray-200, #e5e7eb);
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  color: var(--gray-600, #4b5563);
+}
+
+.spinner-small {
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 2px solid var(--gray-300);
+  border-top-color: var(--primary-600);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* Error state */
+.account-selector-error {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  background: var(--danger-50, #fef2f2);
+  border: 1px solid var(--danger-200, #fecaca);
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  color: var(--danger-700, #b91c1c);
+}
+
+.account-selector-error .material-icons {
+  font-size: 1.25rem;
+}
+
+/* Empty state */
+.account-selector-empty {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  background: var(--warning-50, #fffbeb);
+  border: 1px solid var(--warning-200, #fde68a);
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  color: var(--warning-700, #b45309);
+}
+
+.account-selector-empty .material-icons {
+  font-size: 1.25rem;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .account-selector {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+  }
+  
+  .account-select {
+    width: 100%;
+    min-width: auto;
+  }
+  
+  .account-sync-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  .account-select {
+    background: var(--gray-800, #1f2937);
+    border-color: var(--gray-600, #4b5563);
+    color: white;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%9ca3af'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+  }
+  
+  .account-select:hover:not(:disabled) {
+    border-color: var(--primary-500, #3b82f6);
+  }
+  
+  .account-selector-loading {
+    background: var(--gray-800, #1f2937);
+    border-color: var(--gray-700, #374151);
+    color: var(--gray-400, #9ca3af);
+  }
+}

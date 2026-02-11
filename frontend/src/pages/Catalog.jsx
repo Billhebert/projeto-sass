@@ -1,80 +1,57 @@
-import { useState, useEffect } from "react";
-import { useAuthStore } from "../store/authStore";
+import { useState } from "react";
+import {
+  useMLAccounts,
+  useCatalogItems,
+  useCatalogStats,
+  useCatalogProductsSearch,
+  usePublishToCatalog,
+} from "../hooks/useApi";
 import api from "../services/api";
 import "./Catalog.css";
 
 function Catalog() {
-  const { token } = useAuthStore();
-  const [accounts, setAccounts] = useState([]);
-  const [selectedAccount, setSelectedAccount] = useState("");
-  const [items, setItems] = useState([]);
-  const [catalogProducts, setCatalogProducts] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [error, setError] = useState(null);
+  const { data: accounts = [] } = useMLAccounts();
+  const [selectedAccount, setSelectedAccount] = useState(accounts[0]?.id || "");
   const [activeTab, setActiveTab] = useState("eligibility");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedItem, setSelectedItem] = useState(null);
   const [showProductModal, setShowProductModal] = useState(false);
-  const [stats, setStats] = useState({
-    total: 0,
-    catalogListed: 0,
-    buyBoxWinner: 0,
-    eligible: 0,
-  });
+  const [error, setError] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
-  useEffect(() => {
-    loadAccounts();
-  }, []);
-
-  useEffect(() => {
-    if (selectedAccount) {
-      loadItems();
-      loadStats();
+  // Auto-select first account
+  useState(() => {
+    if (accounts.length > 0 && !selectedAccount) {
+      setSelectedAccount(accounts[0].id);
     }
-  }, [selectedAccount]);
+  }, [accounts]);
 
-  const loadAccounts = async () => {
-    try {
-      const response = await api.get("/ml-accounts");
-      const accountsList =
-        response.data.data?.accounts || response.data.accounts || [];
-      setAccounts(accountsList);
-      if (accountsList.length > 0) {
-        setSelectedAccount(accountsList[0].id);
-      }
-    } catch (err) {
-      setError("Erro ao carregar contas");
-    }
+  const { data: items = [], isLoading } = useCatalogItems(selectedAccount);
+  const { data: stats = {} } = useCatalogStats(selectedAccount);
+  const { data: catalogProducts = [] } = useCatalogProductsSearch(
+    selectedAccount,
+    searchQuery,
+  );
+
+  const publishToCatalogMutation = usePublishToCatalog();
+
+  const searchCatalogProducts = () => {
+    if (!searchTerm.trim()) return;
+    setSearchQuery(searchTerm);
+    setActiveTab("search");
   };
 
-  const loadItems = async () => {
-    setLoading(true);
-    setError(null);
+  const publishToCatalog = async (itemId, catalogProductId) => {
     try {
-      console.log("[Catalog] Carregando items para conta:", selectedAccount);
-      const response = await api.get(`/catalog/${selectedAccount}/items`);
-      console.log("[Catalog] Response recebida:", response.data);
-      console.log("[Catalog] Items:", response.data.items?.length || 0);
-      setItems(response.data.items || []);
+      await publishToCatalogMutation.mutateAsync({
+        accountId: selectedAccount,
+        itemId,
+        catalogProductId,
+      });
+      setShowProductModal(false);
+      setSelectedItem(null);
     } catch (err) {
-      console.error("[Catalog] Erro ao carregar items:", err);
-      console.error("[Catalog] Erro response:", err.response?.data);
-      setError(
-        `Erro ao carregar itens: ${err.response?.data?.message || err.message}`,
-      );
-      setItems([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadStats = async () => {
-    try {
-      const response = await api.get(`/catalog/${selectedAccount}/stats`);
-      setStats(response.data.stats || stats);
-    } catch (err) {
-      console.error("Erro ao carregar estatisticas:", err);
+      setError("Erro ao publicar no catalogo");
     }
   };
 
@@ -87,39 +64,6 @@ function Catalog() {
     } catch (err) {
       setError("Erro ao verificar elegibilidade");
       return null;
-    }
-  };
-
-  const searchCatalogProducts = async () => {
-    if (!searchTerm.trim()) return;
-
-    setLoading(true);
-    try {
-      const response = await api.get(
-        `/catalog/${selectedAccount}/products/search`,
-        {
-          params: { q: searchTerm },
-        },
-      );
-      setCatalogProducts(response.data.products || []);
-      setActiveTab("search");
-    } catch (err) {
-      setError("Erro ao buscar produtos no catalogo");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const publishToCatalog = async (itemId, catalogProductId) => {
-    try {
-      await api.post(`/catalog/${selectedAccount}/items/${itemId}/catalog`, {
-        catalog_product_id: catalogProductId,
-      });
-      await loadItems();
-      setShowProductModal(false);
-      setSelectedItem(null);
-    } catch (err) {
-      setError("Erro ao publicar no catalogo");
     }
   };
 
@@ -177,8 +121,8 @@ function Catalog() {
           </select>
           <button
             className="btn btn-primary"
-            onClick={loadItems}
-            disabled={loading || !selectedAccount}
+            onClick={() => window.location.reload()}
+            disabled={isLoading || !selectedAccount}
           >
             <span className="material-icons">refresh</span>
             Atualizar
@@ -193,7 +137,7 @@ function Catalog() {
             <span className="material-icons">inventory_2</span>
           </div>
           <div className="stat-info">
-            <span className="stat-value">{stats.total}</span>
+            <span className="stat-value">{stats.total || 0}</span>
             <span className="stat-label">Total de Itens</span>
           </div>
         </div>
@@ -202,7 +146,7 @@ function Catalog() {
             <span className="material-icons">menu_book</span>
           </div>
           <div className="stat-info">
-            <span className="stat-value">{stats.catalogListed}</span>
+            <span className="stat-value">{stats.catalogListed || 0}</span>
             <span className="stat-label">No Catalogo</span>
           </div>
         </div>
@@ -211,7 +155,7 @@ function Catalog() {
             <span className="material-icons">emoji_events</span>
           </div>
           <div className="stat-info">
-            <span className="stat-value">{stats.buyBoxWinner}</span>
+            <span className="stat-value">{stats.buyBoxWinner || 0}</span>
             <span className="stat-label">Ganhando Buy Box</span>
           </div>
         </div>
@@ -220,7 +164,7 @@ function Catalog() {
             <span className="material-icons">check_circle</span>
           </div>
           <div className="stat-info">
-            <span className="stat-value">{stats.eligible}</span>
+            <span className="stat-value">{stats.eligible || 0}</span>
             <span className="stat-label">Elegiveis</span>
           </div>
         </div>
@@ -290,7 +234,7 @@ function Catalog() {
 
       {/* Content */}
       <div className="catalog-content">
-        {loading ? (
+        {isLoading ? (
           <div className="loading-state">
             <div className="spinner"></div>
             <p>Carregando...</p>

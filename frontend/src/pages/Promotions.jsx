@@ -1,299 +1,124 @@
-import { useState, useEffect } from 'react'
-import { useAuthStore } from '../store/authStore'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
-import api from '../services/api'
-import './Promotions.css'
+import { useState, useEffect, useMemo } from "react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+} from "recharts";
+import {
+  useMLAccounts,
+  usePromotions,
+  useDeals,
+  useCoupons,
+  usePromotionCampaigns,
+  usePromotionItems,
+  useSyncPromotions,
+  useCreatePromotion,
+  useCreateCoupon,
+  useCancelPromotion,
+  useToggleCouponStatus,
+} from "../hooks/useApi";
+import "./Promotions.css";
 
 function Promotions() {
-  const { token } = useAuthStore()
-  const [accounts, setAccounts] = useState([])
-  const [selectedAccount, setSelectedAccount] = useState('')
-  const [activeTab, setActiveTab] = useState('promotions')
-  const [promotions, setPromotions] = useState([])
-  const [deals, setDeals] = useState([])
-  const [coupons, setCoupons] = useState([])
-  const [campaigns, setCampaigns] = useState([])
-  const [items, setItems] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [syncing, setSyncing] = useState(false)
-  const [error, setError] = useState(null)
-  const [filter, setFilter] = useState('active')
-  const [showCreateModal, setShowCreateModal] = useState(false)
-  const [createType, setCreateType] = useState('promotion')
-  const [stats, setStats] = useState({
-    activePromotions: 0,
-    totalSavings: 0,
-    itemsOnPromo: 0,
-    activeCoupons: 0,
-    couponRedemptions: 0
-  })
-
+  // State management
+  const [selectedAccount, setSelectedAccount] = useState("");
+  const [activeTab, setActiveTab] = useState("promotions");
+  const [filter, setFilter] = useState("active");
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createType, setCreateType] = useState("promotion");
   const [promotionForm, setPromotionForm] = useState({
-    type: 'percentage',
-    name: '',
-    discountValue: '',
-    startDate: '',
-    endDate: '',
+    type: "percentage",
+    name: "",
+    discountValue: "",
+    startDate: "",
+    endDate: "",
     selectedItems: [],
-    minPurchase: '',
-    maxDiscount: ''
-  })
-
+    minPurchase: "",
+    maxDiscount: "",
+  });
   const [couponForm, setCouponForm] = useState({
-    code: '',
-    discountType: 'percentage',
-    discountValue: '',
-    minPurchase: '',
-    maxUses: '',
-    startDate: '',
-    endDate: '',
-    selectedItems: []
-  })
+    code: "",
+    discountType: "percentage",
+    discountValue: "",
+    minPurchase: "",
+    maxUses: "",
+    startDate: "",
+    endDate: "",
+    selectedItems: [],
+  });
 
-  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6']
+  const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"];
 
-  useEffect(() => {
-    loadAccounts()
-  }, [])
+  // React Query hooks
+  const {
+    data: accounts = [],
+    isLoading: accountsLoading,
+    error: accountsError,
+  } = useMLAccounts();
+  const { data: promotions = [], isLoading: promotionsLoading } =
+    usePromotions(selectedAccount);
+  const { data: deals = [], isLoading: dealsLoading } =
+    useDeals(selectedAccount);
+  const { data: coupons = [], isLoading: couponsLoading } =
+    useCoupons(selectedAccount);
+  const { data: campaigns = [], isLoading: campaignsLoading } =
+    usePromotionCampaigns(selectedAccount);
+  const { data: items = [] } = usePromotionItems(selectedAccount);
 
-  useEffect(() => {
-    if (selectedAccount) {
-      loadAllData()
-    }
-  }, [selectedAccount])
+  // Mutations
+  const syncPromotionsMutation = useSyncPromotions();
+  const createPromotionMutation = useCreatePromotion();
+  const createCouponMutation = useCreateCoupon();
+  const cancelPromotionMutation = useCancelPromotion();
+  const toggleCouponStatusMutation = useToggleCouponStatus();
 
-  const loadAccounts = async () => {
-    try {
-      const response = await api.get('/ml-accounts')
-      const accountsList = response.data.data?.accounts || response.data.accounts || []
-      setAccounts(accountsList)
-      if (accountsList.length > 0) {
-        setSelectedAccount(accountsList[0].id)
-      }
-    } catch (err) {
-      setError('Erro ao carregar contas')
-    }
-  }
+  const loading =
+    accountsLoading ||
+    promotionsLoading ||
+    dealsLoading ||
+    couponsLoading ||
+    campaignsLoading;
+  const syncing = syncPromotionsMutation.isPending;
 
-  const loadAllData = async () => {
-    setLoading(true)
-    try {
-      await Promise.all([
-        loadPromotions(),
-        loadDeals(),
-        loadCoupons(),
-        loadCampaigns(),
-        loadItems()
-      ])
-      calculateStats()
-    } catch (err) {
-      console.error('Error loading data:', err)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const loadPromotions = async () => {
-    try {
-      const response = await api.get(`/promotions/${selectedAccount}/active`)
-      setPromotions(response.data.promotions || [])
-    } catch (err) {
-      // Generate mock data for demo
-      setPromotions([
-        {
-          id: 'promo_1',
-          name: 'Promocao de Verao',
-          type: 'percentage',
-          status: 'active',
-          discountPercentage: 15,
-          originalPrice: 299.90,
-          newPrice: 254.92,
-          startDate: '2024-01-10',
-          endDate: '2024-01-31',
-          itemsCount: 45,
-          sales: 128,
-          revenue: 32500
-        },
-        {
-          id: 'promo_2',
-          name: 'Liquidacao Eletronicos',
-          type: 'fixed',
-          status: 'active',
-          discountValue: 50,
-          startDate: '2024-01-15',
-          endDate: '2024-02-15',
-          itemsCount: 23,
-          sales: 67,
-          revenue: 18900
-        },
-        {
-          id: 'promo_3',
-          name: 'Oferta Relampago',
-          type: 'lightning',
-          status: 'pending',
-          discountPercentage: 30,
-          startDate: '2024-01-20',
-          endDate: '2024-01-20',
-          itemsCount: 5,
-          sales: 0,
-          revenue: 0
-        }
-      ])
-    }
-  }
-
-  const loadDeals = async () => {
-    try {
-      const response = await api.get(`/promotions/${selectedAccount}/deals`)
-      setDeals(response.data.deals || [])
-    } catch (err) {
-      setDeals([
-        {
-          id: 'deal_1',
-          name: 'Oferta do Dia - Smartphones',
-          type: 'dod',
-          status: 'active',
-          discountPercentage: 25,
-          item: {
-            id: 'MLB123456789',
-            title: 'Smartphone Samsung Galaxy S21',
-            price: 2499.00,
-            thumbnail: '/placeholder.png'
-          },
-          date: '2024-01-15',
-          stock: 50,
-          sold: 23,
-          views: 1250
-        },
-        {
-          id: 'deal_2',
-          name: 'Lightning Deal - Fones',
-          type: 'lightning',
-          status: 'scheduled',
-          discountPercentage: 40,
-          item: {
-            id: 'MLB987654321',
-            title: 'Fone JBL Tune 510BT',
-            price: 249.00,
-            thumbnail: '/placeholder.png'
-          },
-          startTime: '2024-01-16T14:00:00',
-          endTime: '2024-01-16T18:00:00',
-          stock: 30,
-          sold: 0
-        }
-      ])
-    }
-  }
-
-  const loadCoupons = async () => {
-    try {
-      const response = await api.get(`/coupons/${selectedAccount}`)
-      setCoupons(response.data.coupons || [])
-    } catch (err) {
-      setCoupons([
-        {
-          id: 'coupon_1',
-          code: 'VERAO10',
-          discountType: 'percentage',
-          discountValue: 10,
-          minPurchase: 100,
-          maxUses: 500,
-          usedCount: 234,
-          status: 'active',
-          startDate: '2024-01-01',
-          endDate: '2024-01-31'
-        },
-        {
-          id: 'coupon_2',
-          code: 'FRETE50',
-          discountType: 'fixed',
-          discountValue: 50,
-          minPurchase: 200,
-          maxUses: 100,
-          usedCount: 89,
-          status: 'active',
-          startDate: '2024-01-10',
-          endDate: '2024-02-10'
-        },
-        {
-          id: 'coupon_3',
-          code: 'NOVOCLIENTE',
-          discountType: 'percentage',
-          discountValue: 15,
-          minPurchase: 0,
-          maxUses: 1000,
-          usedCount: 567,
-          status: 'active',
-          startDate: '2024-01-01',
-          endDate: '2024-12-31'
-        }
-      ])
-    }
-  }
-
-  const loadCampaigns = async () => {
-    try {
-      const response = await api.get(`/promotions/${selectedAccount}/campaigns`)
-      setCampaigns(response.data.campaigns || [])
-    } catch (err) {
-      setCampaigns([
-        {
-          id: 'camp_1',
-          name: 'Campanha de Verao ML',
-          description: 'Ofertas especiais de verao com ate 50% OFF',
-          status: 'active',
-          startDate: '2024-01-01',
-          endDate: '2024-02-28',
-          participatingItems: 120
-        },
-        {
-          id: 'camp_2',
-          name: 'Ofertas do Dia',
-          description: 'Produtos selecionados com desconto especial por 24h',
-          status: 'active',
-          startDate: '2024-01-01',
-          endDate: '2024-12-31',
-          participatingItems: 45
-        }
-      ])
-    }
-  }
-
-  const loadItems = async () => {
-    try {
-      const response = await api.get(`/items/${selectedAccount}?limit=50`)
-      setItems(response.data.data || [])
-    } catch (err) {
-      setItems([
-        { id: 'MLB123', title: 'Produto 1', price: 199.90, thumbnail: '/placeholder.png' },
-        { id: 'MLB456', title: 'Produto 2', price: 299.90, thumbnail: '/placeholder.png' },
-        { id: 'MLB789', title: 'Produto 3', price: 399.90, thumbnail: '/placeholder.png' }
-      ])
-    }
-  }
-
-  const calculateStats = () => {
-    setStats({
-      activePromotions: promotions.filter(p => p.status === 'active').length,
-      totalSavings: promotions.reduce((sum, p) => sum + ((p.originalPrice - p.newPrice) * (p.sales || 0)), 0),
+  // Calculate stats
+  const stats = useMemo(() => {
+    return {
+      activePromotions: promotions.filter((p) => p.status === "active").length,
+      totalSavings: promotions.reduce(
+        (sum, p) => sum + (p.originalPrice - p.newPrice) * (p.sales || 0),
+        0,
+      ),
       itemsOnPromo: promotions.reduce((sum, p) => sum + (p.itemsCount || 0), 0),
-      activeCoupons: coupons.filter(c => c.status === 'active').length,
-      couponRedemptions: coupons.reduce((sum, c) => sum + (c.usedCount || 0), 0)
-    })
-  }
+      activeCoupons: coupons.filter((c) => c.status === "active").length,
+      couponRedemptions: coupons.reduce(
+        (sum, c) => sum + (c.usedCount || 0),
+        0,
+      ),
+    };
+  }, [promotions, coupons]);
+
+  // Set default account when accounts load
+  useEffect(() => {
+    if (accounts.length > 0 && !selectedAccount) {
+      setSelectedAccount(accounts[0].id);
+    }
+  }, [accounts, selectedAccount]);
 
   const syncPromotions = async () => {
-    setSyncing(true)
+    if (!selectedAccount) return;
     try {
-      await api.post(`/promotions/${selectedAccount}/sync`)
-      await loadAllData()
+      await syncPromotionsMutation.mutateAsync(selectedAccount);
     } catch (err) {
-      setError('Erro ao sincronizar promocoes')
-    } finally {
-      setSyncing(false)
+      console.error("Error syncing promotions:", err);
     }
-  }
+  };
 
   const handleCreatePromotion = async () => {
     try {
@@ -301,28 +126,19 @@ function Promotions() {
         ...promotionForm,
         discountValue: parseFloat(promotionForm.discountValue) || 0,
         minPurchase: parseFloat(promotionForm.minPurchase) || 0,
-        maxDiscount: parseFloat(promotionForm.maxDiscount) || 0
-      }
-      
-      await api.post(`/promotions/${selectedAccount}`, data)
-      setShowCreateModal(false)
-      await loadPromotions()
-      resetForms()
+        maxDiscount: parseFloat(promotionForm.maxDiscount) || 0,
+      };
+
+      await createPromotionMutation.mutateAsync({
+        accountId: selectedAccount,
+        data,
+      });
+      setShowCreateModal(false);
+      resetForms();
     } catch (err) {
-      // For demo, add locally
-      const newPromo = {
-        id: `promo_${Date.now()}`,
-        ...promotionForm,
-        status: 'active',
-        itemsCount: promotionForm.selectedItems.length,
-        sales: 0,
-        revenue: 0
-      }
-      setPromotions(prev => [...prev, newPromo])
-      setShowCreateModal(false)
-      resetForms()
+      console.error("Error creating promotion:", err);
     }
-  }
+  };
 
   const handleCreateCoupon = async () => {
     try {
@@ -330,132 +146,140 @@ function Promotions() {
         ...couponForm,
         discountValue: parseFloat(couponForm.discountValue) || 0,
         minPurchase: parseFloat(couponForm.minPurchase) || 0,
-        maxUses: parseInt(couponForm.maxUses) || 0
-      }
-      
-      await api.post(`/coupons/${selectedAccount}`, data)
-      setShowCreateModal(false)
-      await loadCoupons()
-      resetForms()
+        maxUses: parseInt(couponForm.maxUses) || 0,
+      };
+
+      await createCouponMutation.mutateAsync({
+        accountId: selectedAccount,
+        data,
+      });
+      setShowCreateModal(false);
+      resetForms();
     } catch (err) {
-      // For demo, add locally
-      const newCoupon = {
-        id: `coupon_${Date.now()}`,
-        ...couponForm,
-        status: 'active',
-        usedCount: 0
-      }
-      setCoupons(prev => [...prev, newCoupon])
-      setShowCreateModal(false)
-      resetForms()
+      console.error("Error creating coupon:", err);
     }
-  }
+  };
 
   const resetForms = () => {
     setPromotionForm({
-      type: 'percentage',
-      name: '',
-      discountValue: '',
-      startDate: '',
-      endDate: '',
+      type: "percentage",
+      name: "",
+      discountValue: "",
+      startDate: "",
+      endDate: "",
       selectedItems: [],
-      minPurchase: '',
-      maxDiscount: ''
-    })
+      minPurchase: "",
+      maxDiscount: "",
+    });
     setCouponForm({
-      code: '',
-      discountType: 'percentage',
-      discountValue: '',
-      minPurchase: '',
-      maxUses: '',
-      startDate: '',
-      endDate: '',
-      selectedItems: []
-    })
-  }
+      code: "",
+      discountType: "percentage",
+      discountValue: "",
+      minPurchase: "",
+      maxUses: "",
+      startDate: "",
+      endDate: "",
+      selectedItems: [],
+    });
+  };
 
   const cancelPromotion = async (promotionId) => {
-    if (!confirm('Tem certeza que deseja cancelar esta promocao?')) return
-
+    if (!confirm("Tem certeza que deseja cancelar esta promocao?")) return;
     try {
-      await api.delete(`/promotions/${selectedAccount}/${promotionId}`)
-      await loadPromotions()
+      await cancelPromotionMutation.mutateAsync({
+        accountId: selectedAccount,
+        promotionId,
+      });
     } catch (err) {
-      setPromotions(prev => prev.filter(p => p.id !== promotionId))
+      console.error("Error canceling promotion:", err);
     }
-  }
+  };
 
   const toggleCouponStatus = async (couponId, currentStatus) => {
-    const newStatus = currentStatus === 'active' ? 'paused' : 'active'
+    const newStatus = currentStatus === "active" ? "paused" : "active";
     try {
-      await api.put(`/coupons/${selectedAccount}/${couponId}/status`, { status: newStatus })
-      setCoupons(prev => prev.map(c => 
-        c.id === couponId ? { ...c, status: newStatus } : c
-      ))
+      await toggleCouponStatusMutation.mutateAsync({
+        accountId: selectedAccount,
+        couponId,
+        status: newStatus,
+      });
     } catch (err) {
-      setCoupons(prev => prev.map(c => 
-        c.id === couponId ? { ...c, status: newStatus } : c
-      ))
+      console.error("Error toggling coupon status:", err);
     }
-  }
+  };
 
   const getStatusBadgeClass = (status) => {
     const statusMap = {
-      'active': 'success',
-      'pending': 'warning',
-      'scheduled': 'info',
-      'finished': 'secondary',
-      'cancelled': 'danger',
-      'paused': 'warning'
-    }
-    return statusMap[status] || 'secondary'
-  }
+      active: "success",
+      pending: "warning",
+      scheduled: "info",
+      finished: "secondary",
+      cancelled: "danger",
+      paused: "warning",
+    };
+    return statusMap[status] || "secondary";
+  };
 
   const getStatusLabel = (status) => {
     const labels = {
-      'active': 'Ativa',
-      'pending': 'Pendente',
-      'scheduled': 'Agendada',
-      'finished': 'Encerrada',
-      'cancelled': 'Cancelada',
-      'paused': 'Pausada'
-    }
-    return labels[status] || status
-  }
+      active: "Ativa",
+      pending: "Pendente",
+      scheduled: "Agendada",
+      finished: "Encerrada",
+      cancelled: "Cancelada",
+      paused: "Pausada",
+    };
+    return labels[status] || status;
+  };
 
   const formatDate = (dateString) => {
-    if (!dateString) return 'N/A'
-    return new Date(dateString).toLocaleDateString('pt-BR')
-  }
+    if (!dateString) return "N/A";
+    return new Date(dateString).toLocaleDateString("pt-BR");
+  };
 
   const formatDateTime = (dateString) => {
-    if (!dateString) return 'N/A'
-    return new Date(dateString).toLocaleString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-  }
+    if (!dateString) return "N/A";
+    return new Date(dateString).toLocaleString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
 
-  const formatCurrency = (value, currency = 'BRL') => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: currency
-    }).format(value || 0)
-  }
+  const formatCurrency = (value, currency = "BRL") => {
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: currency,
+    }).format(value || 0);
+  };
 
   const openCreateModal = (type) => {
-    setCreateType(type)
-    setShowCreateModal(true)
-  }
+    setCreateType(type);
+    setShowCreateModal(true);
+  };
 
-  const promoTypeData = [
-    { name: 'Percentual', value: promotions.filter(p => p.type === 'percentage').length },
-    { name: 'Valor Fixo', value: promotions.filter(p => p.type === 'fixed').length },
-    { name: 'Relampago', value: promotions.filter(p => p.type === 'lightning').length },
-    { name: 'Oferta do Dia', value: deals.filter(d => d.type === 'dod').length }
-  ]
+  const promoTypeData = useMemo(
+    () => [
+      {
+        name: "Percentual",
+        value: promotions.filter((p) => p.type === "percentage").length,
+      },
+      {
+        name: "Valor Fixo",
+        value: promotions.filter((p) => p.type === "fixed").length,
+      },
+      {
+        name: "Relampago",
+        value: promotions.filter((p) => p.type === "lightning").length,
+      },
+      {
+        name: "Oferta do Dia",
+        value: deals.filter((d) => d.type === "dod").length,
+      },
+    ],
+    [promotions, deals],
+  );
 
   return (
     <div className="promotions-page">
@@ -465,7 +289,10 @@ function Promotions() {
             <span className="material-icons">sell</span>
             Promocoes e Cupons
           </h1>
-          <p>Gerencie promocoes, ofertas do dia, ofertas relampago e cupons de desconto</p>
+          <p>
+            Gerencie promocoes, ofertas do dia, ofertas relampago e cupons de
+            desconto
+          </p>
         </div>
         <div className="header-actions">
           <select
@@ -473,19 +300,19 @@ function Promotions() {
             value={selectedAccount}
             onChange={(e) => setSelectedAccount(e.target.value)}
           >
-            {accounts.map(acc => (
+            {accounts.map((acc) => (
               <option key={acc.id} value={acc.id}>
                 {acc.nickname || acc.mlUserId}
               </option>
             ))}
           </select>
-          <button 
+          <button
             className="btn btn-secondary"
             onClick={syncPromotions}
             disabled={syncing || !selectedAccount}
           >
             <span className="material-icons">sync</span>
-            {syncing ? 'Sincronizando...' : 'Sincronizar'}
+            {syncing ? "Sincronizando..." : "Sincronizar"}
           </button>
           <div className="dropdown">
             <button className="btn btn-primary dropdown-toggle">
@@ -493,15 +320,15 @@ function Promotions() {
               Criar Novo
             </button>
             <div className="dropdown-menu">
-              <button onClick={() => openCreateModal('promotion')}>
+              <button onClick={() => openCreateModal("promotion")}>
                 <span className="material-icons">local_offer</span>
                 Promocao
               </button>
-              <button onClick={() => openCreateModal('deal')}>
+              <button onClick={() => openCreateModal("deal")}>
                 <span className="material-icons">bolt</span>
                 Oferta Relampago
               </button>
-              <button onClick={() => openCreateModal('coupon')}>
+              <button onClick={() => openCreateModal("coupon")}>
                 <span className="material-icons">confirmation_number</span>
                 Cupom
               </button>
@@ -552,41 +379,43 @@ function Promotions() {
 
       {/* Tabs */}
       <div className="tabs">
-        <button 
-          className={`tab ${activeTab === 'promotions' ? 'active' : ''}`}
-          onClick={() => setActiveTab('promotions')}
+        <button
+          className={`tab ${activeTab === "promotions" ? "active" : ""}`}
+          onClick={() => setActiveTab("promotions")}
         >
           <span className="material-icons">local_offer</span>
           Promocoes
         </button>
-        <button 
-          className={`tab ${activeTab === 'deals' ? 'active' : ''}`}
-          onClick={() => setActiveTab('deals')}
+        <button
+          className={`tab ${activeTab === "deals" ? "active" : ""}`}
+          onClick={() => setActiveTab("deals")}
         >
           <span className="material-icons">bolt</span>
           Ofertas Especiais
         </button>
-        <button 
-          className={`tab ${activeTab === 'coupons' ? 'active' : ''}`}
-          onClick={() => setActiveTab('coupons')}
+        <button
+          className={`tab ${activeTab === "coupons" ? "active" : ""}`}
+          onClick={() => setActiveTab("coupons")}
         >
           <span className="material-icons">confirmation_number</span>
           Cupons
         </button>
-        <button 
-          className={`tab ${activeTab === 'campaigns' ? 'active' : ''}`}
-          onClick={() => setActiveTab('campaigns')}
+        <button
+          className={`tab ${activeTab === "campaigns" ? "active" : ""}`}
+          onClick={() => setActiveTab("campaigns")}
         >
           <span className="material-icons">campaign</span>
           Campanhas ML
         </button>
       </div>
 
-      {error && (
+      {(accountsError || syncPromotionsMutation.error) && (
         <div className="alert alert-danger">
           <span className="material-icons">error</span>
-          {error}
-          <button onClick={() => setError(null)}>
+          {accountsError?.message ||
+            syncPromotionsMutation.error?.message ||
+            "Erro ao carregar dados"}
+          <button onClick={() => {}}>
             <span className="material-icons">close</span>
           </button>
         </div>
@@ -601,20 +430,20 @@ function Promotions() {
       ) : (
         <>
           {/* Promotions Tab */}
-          {activeTab === 'promotions' && (
+          {activeTab === "promotions" && (
             <div className="section">
               <div className="section-header">
                 <h2>Promocoes Ativas</h2>
                 <div className="filter-tabs">
                   <button
-                    className={`filter-tab ${filter === 'active' ? 'active' : ''}`}
-                    onClick={() => setFilter('active')}
+                    className={`filter-tab ${filter === "active" ? "active" : ""}`}
+                    onClick={() => setFilter("active")}
                   >
                     Ativas
                   </button>
                   <button
-                    className={`filter-tab ${filter === 'all' ? 'active' : ''}`}
-                    onClick={() => setFilter('all')}
+                    className={`filter-tab ${filter === "all" ? "active" : ""}`}
+                    onClick={() => setFilter("all")}
                   >
                     Todas
                   </button>
@@ -626,86 +455,109 @@ function Promotions() {
                   <span className="material-icons">local_offer</span>
                   <h3>Nenhuma promocao encontrada</h3>
                   <p>Crie sua primeira promocao para comecar a vender mais</p>
-                  <button className="btn btn-primary" onClick={() => openCreateModal('promotion')}>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => openCreateModal("promotion")}
+                  >
                     <span className="material-icons">add</span>
                     Criar Promocao
                   </button>
                 </div>
               ) : (
                 <div className="promotions-grid">
-                  {promotions.filter(p => filter === 'all' || p.status === 'active').map(promo => (
-                    <div key={promo.id} className={`promotion-card ${promo.status}`}>
-                      <div className="promotion-header">
-                        <span className={`status-badge ${getStatusBadgeClass(promo.status)}`}>
-                          {getStatusLabel(promo.status)}
-                        </span>
-                        <span className="promotion-type">
-                          {promo.type === 'percentage' ? 'Percentual' : 
-                           promo.type === 'fixed' ? 'Valor Fixo' : 
-                           promo.type === 'lightning' ? 'Relampago' : promo.type}
-                        </span>
-                      </div>
-
-                      <div className="promotion-body">
-                        <h3>{promo.name}</h3>
-                        
-                        <div className="discount-badge">
-                          {promo.discountPercentage 
-                            ? `${promo.discountPercentage}% OFF`
-                            : promo.discountValue 
-                            ? `R$ ${promo.discountValue} OFF`
-                            : ''}
+                  {promotions
+                    .filter((p) => filter === "all" || p.status === "active")
+                    .map((promo) => (
+                      <div
+                        key={promo.id}
+                        className={`promotion-card ${promo.status}`}
+                      >
+                        <div className="promotion-header">
+                          <span
+                            className={`status-badge ${getStatusBadgeClass(promo.status)}`}
+                          >
+                            {getStatusLabel(promo.status)}
+                          </span>
+                          <span className="promotion-type">
+                            {promo.type === "percentage"
+                              ? "Percentual"
+                              : promo.type === "fixed"
+                                ? "Valor Fixo"
+                                : promo.type === "lightning"
+                                  ? "Relampago"
+                                  : promo.type}
+                          </span>
                         </div>
 
-                        <div className="promotion-details">
-                          <div className="detail-item">
-                            <span className="material-icons">date_range</span>
-                            <span>{formatDate(promo.startDate)} - {formatDate(promo.endDate)}</span>
+                        <div className="promotion-body">
+                          <h3>{promo.name}</h3>
+
+                          <div className="discount-badge">
+                            {promo.discountPercentage
+                              ? `${promo.discountPercentage}% OFF`
+                              : promo.discountValue
+                                ? `R$ ${promo.discountValue} OFF`
+                                : ""}
                           </div>
-                          <div className="detail-item">
-                            <span className="material-icons">inventory_2</span>
-                            <span>{promo.itemsCount} produto(s)</span>
-                          </div>
-                          {promo.sales > 0 && (
+
+                          <div className="promotion-details">
                             <div className="detail-item">
-                              <span className="material-icons">shopping_cart</span>
-                              <span>{promo.sales} vendas</span>
+                              <span className="material-icons">date_range</span>
+                              <span>
+                                {formatDate(promo.startDate)} -{" "}
+                                {formatDate(promo.endDate)}
+                              </span>
+                            </div>
+                            <div className="detail-item">
+                              <span className="material-icons">
+                                inventory_2
+                              </span>
+                              <span>{promo.itemsCount} produto(s)</span>
+                            </div>
+                            {promo.sales > 0 && (
+                              <div className="detail-item">
+                                <span className="material-icons">
+                                  shopping_cart
+                                </span>
+                                <span>{promo.sales} vendas</span>
+                              </div>
+                            )}
+                          </div>
+
+                          {promo.revenue > 0 && (
+                            <div className="promotion-revenue">
+                              <span className="label">Receita gerada:</span>
+                              <span className="value">
+                                {formatCurrency(promo.revenue)}
+                              </span>
                             </div>
                           )}
                         </div>
 
-                        {promo.revenue > 0 && (
-                          <div className="promotion-revenue">
-                            <span className="label">Receita gerada:</span>
-                            <span className="value">{formatCurrency(promo.revenue)}</span>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="promotion-actions">
-                        <button className="btn btn-sm btn-secondary">
-                          <span className="material-icons">edit</span>
-                          Editar
-                        </button>
-                        {promo.status === 'active' && (
-                          <button
-                            className="btn btn-sm btn-danger"
-                            onClick={() => cancelPromotion(promo.id)}
-                          >
-                            <span className="material-icons">cancel</span>
-                            Cancelar
+                        <div className="promotion-actions">
+                          <button className="btn btn-sm btn-secondary">
+                            <span className="material-icons">edit</span>
+                            Editar
                           </button>
-                        )}
+                          {promo.status === "active" && (
+                            <button
+                              className="btn btn-sm btn-danger"
+                              onClick={() => cancelPromotion(promo.id)}
+                            >
+                              <span className="material-icons">cancel</span>
+                              Cancelar
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
                 </div>
               )}
             </div>
           )}
 
           {/* Deals Tab (DOD, Lightning) */}
-          {activeTab === 'deals' && (
+          {activeTab === "deals" && (
             <div className="section">
               <div className="section-header">
                 <h2>Ofertas Especiais</h2>
@@ -718,9 +570,15 @@ function Promotions() {
                   </div>
                   <div className="info-content">
                     <h4>Oferta do Dia (DOD)</h4>
-                    <p>Produto em destaque por 24 horas com desconto especial. Aparece na pagina principal do ML.</p>
+                    <p>
+                      Produto em destaque por 24 horas com desconto especial.
+                      Aparece na pagina principal do ML.
+                    </p>
                   </div>
-                  <button className="btn btn-primary" onClick={() => openCreateModal('dod')}>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => openCreateModal("dod")}
+                  >
                     Criar DOD
                   </button>
                 </div>
@@ -731,9 +589,15 @@ function Promotions() {
                   </div>
                   <div className="info-content">
                     <h4>Oferta Relampago</h4>
-                    <p>Promocao de tempo limitado (2-8 horas) com desconto agressivo e estoque limitado.</p>
+                    <p>
+                      Promocao de tempo limitado (2-8 horas) com desconto
+                      agressivo e estoque limitado.
+                    </p>
                   </div>
-                  <button className="btn btn-primary" onClick={() => openCreateModal('lightning')}>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => openCreateModal("lightning")}
+                  >
                     Criar Relampago
                   </button>
                 </div>
@@ -743,21 +607,30 @@ function Promotions() {
                 <div className="empty-state">
                   <span className="material-icons">bolt</span>
                   <h3>Nenhuma oferta especial</h3>
-                  <p>Crie ofertas do dia ou ofertas relampago para aumentar suas vendas</p>
+                  <p>
+                    Crie ofertas do dia ou ofertas relampago para aumentar suas
+                    vendas
+                  </p>
                 </div>
               ) : (
                 <div className="deals-list">
-                  {deals.map(deal => (
-                    <div key={deal.id} className={`deal-card ${deal.type} ${deal.status}`}>
+                  {deals.map((deal) => (
+                    <div
+                      key={deal.id}
+                      className={`deal-card ${deal.type} ${deal.status}`}
+                    >
                       <div className="deal-badge">
                         <span className="material-icons">
-                          {deal.type === 'dod' ? 'wb_sunny' : 'bolt'}
+                          {deal.type === "dod" ? "wb_sunny" : "bolt"}
                         </span>
-                        {deal.type === 'dod' ? 'Oferta do Dia' : 'Relampago'}
+                        {deal.type === "dod" ? "Oferta do Dia" : "Relampago"}
                       </div>
 
                       <div className="deal-product">
-                        <img src={deal.item?.thumbnail || '/placeholder.png'} alt="" />
+                        <img
+                          src={deal.item?.thumbnail || "/placeholder.png"}
+                          alt=""
+                        />
                         <div className="product-info">
                           <h4>{deal.item?.title}</h4>
                           <p className="product-id">{deal.item?.id}</p>
@@ -765,10 +638,19 @@ function Promotions() {
                       </div>
 
                       <div className="deal-discount">
-                        <span className="discount-value">{deal.discountPercentage}% OFF</span>
+                        <span className="discount-value">
+                          {deal.discountPercentage}% OFF
+                        </span>
                         <div className="price-comparison">
-                          <span className="original">{formatCurrency(deal.item?.price)}</span>
-                          <span className="new">{formatCurrency(deal.item?.price * (1 - deal.discountPercentage/100))}</span>
+                          <span className="original">
+                            {formatCurrency(deal.item?.price)}
+                          </span>
+                          <span className="new">
+                            {formatCurrency(
+                              deal.item?.price *
+                                (1 - deal.discountPercentage / 100),
+                            )}
+                          </span>
                         </div>
                       </div>
 
@@ -791,14 +673,15 @@ function Promotions() {
 
                       <div className="deal-timing">
                         <span className="material-icons">schedule</span>
-                        {deal.type === 'dod' 
+                        {deal.type === "dod"
                           ? formatDate(deal.date)
-                          : `${formatDateTime(deal.startTime)} - ${formatDateTime(deal.endTime)}`
-                        }
+                          : `${formatDateTime(deal.startTime)} - ${formatDateTime(deal.endTime)}`}
                       </div>
 
                       <div className="deal-status">
-                        <span className={`status-badge ${getStatusBadgeClass(deal.status)}`}>
+                        <span
+                          className={`status-badge ${getStatusBadgeClass(deal.status)}`}
+                        >
                           {getStatusLabel(deal.status)}
                         </span>
                       </div>
@@ -810,11 +693,14 @@ function Promotions() {
           )}
 
           {/* Coupons Tab */}
-          {activeTab === 'coupons' && (
+          {activeTab === "coupons" && (
             <div className="section">
               <div className="section-header">
                 <h2>Cupons de Desconto</h2>
-                <button className="btn btn-primary" onClick={() => openCreateModal('coupon')}>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => openCreateModal("coupon")}
+                >
                   <span className="material-icons">add</span>
                   Novo Cupom
                 </button>
@@ -825,15 +711,21 @@ function Promotions() {
                   <span className="material-icons">confirmation_number</span>
                   <h3>Nenhum cupom criado</h3>
                   <p>Crie cupons de desconto para fidelizar seus clientes</p>
-                  <button className="btn btn-primary" onClick={() => openCreateModal('coupon')}>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => openCreateModal("coupon")}
+                  >
                     <span className="material-icons">add</span>
                     Criar Cupom
                   </button>
                 </div>
               ) : (
                 <div className="coupons-grid">
-                  {coupons.map(coupon => (
-                    <div key={coupon.id} className={`coupon-card ${coupon.status}`}>
+                  {coupons.map((coupon) => (
+                    <div
+                      key={coupon.id}
+                      className={`coupon-card ${coupon.status}`}
+                    >
                       <div className="coupon-code">
                         <span className="code">{coupon.code}</span>
                         <button className="btn-icon" title="Copiar codigo">
@@ -842,30 +734,38 @@ function Promotions() {
                       </div>
 
                       <div className="coupon-discount">
-                        {coupon.discountType === 'percentage' 
+                        {coupon.discountType === "percentage"
                           ? `${coupon.discountValue}% OFF`
-                          : `R$ ${coupon.discountValue} OFF`
-                        }
+                          : `R$ ${coupon.discountValue} OFF`}
                       </div>
 
                       <div className="coupon-details">
                         {coupon.minPurchase > 0 && (
                           <div className="detail">
-                            <span className="material-icons">shopping_cart</span>
-                            <span>Minimo: {formatCurrency(coupon.minPurchase)}</span>
+                            <span className="material-icons">
+                              shopping_cart
+                            </span>
+                            <span>
+                              Minimo: {formatCurrency(coupon.minPurchase)}
+                            </span>
                           </div>
                         )}
                         <div className="detail">
                           <span className="material-icons">date_range</span>
-                          <span>{formatDate(coupon.startDate)} - {formatDate(coupon.endDate)}</span>
+                          <span>
+                            {formatDate(coupon.startDate)} -{" "}
+                            {formatDate(coupon.endDate)}
+                          </span>
                         </div>
                       </div>
 
                       <div className="coupon-usage">
                         <div className="usage-bar">
-                          <div 
-                            className="usage-fill" 
-                            style={{ width: `${Math.min((coupon.usedCount / coupon.maxUses) * 100, 100)}%` }}
+                          <div
+                            className="usage-fill"
+                            style={{
+                              width: `${Math.min((coupon.usedCount / coupon.maxUses) * 100, 100)}%`,
+                            }}
                           ></div>
                         </div>
                         <span className="usage-text">
@@ -874,14 +774,18 @@ function Promotions() {
                       </div>
 
                       <div className="coupon-actions">
-                        <button 
+                        <button
                           className="btn btn-sm btn-secondary"
-                          onClick={() => toggleCouponStatus(coupon.id, coupon.status)}
+                          onClick={() =>
+                            toggleCouponStatus(coupon.id, coupon.status)
+                          }
                         >
                           <span className="material-icons">
-                            {coupon.status === 'active' ? 'pause' : 'play_arrow'}
+                            {coupon.status === "active"
+                              ? "pause"
+                              : "play_arrow"}
                           </span>
-                          {coupon.status === 'active' ? 'Pausar' : 'Ativar'}
+                          {coupon.status === "active" ? "Pausar" : "Ativar"}
                         </button>
                         <button className="btn btn-sm btn-secondary">
                           <span className="material-icons">edit</span>
@@ -896,7 +800,7 @@ function Promotions() {
           )}
 
           {/* Campaigns Tab */}
-          {activeTab === 'campaigns' && (
+          {activeTab === "campaigns" && (
             <div className="section">
               <div className="section-header">
                 <h2>Campanhas do Mercado Livre</h2>
@@ -906,7 +810,10 @@ function Promotions() {
                 <span className="material-icons">info</span>
                 <div>
                   <strong>Campanhas Promocionais do ML</strong>
-                  <p>Participe das campanhas oficiais do Mercado Livre para aumentar a visibilidade dos seus produtos.</p>
+                  <p>
+                    Participe das campanhas oficiais do Mercado Livre para
+                    aumentar a visibilidade dos seus produtos.
+                  </p>
                 </div>
               </div>
 
@@ -914,29 +821,43 @@ function Promotions() {
                 <div className="empty-state">
                   <span className="material-icons">campaign</span>
                   <h3>Nenhuma campanha disponivel</h3>
-                  <p>Quando houver campanhas disponiveis, elas aparecerao aqui</p>
+                  <p>
+                    Quando houver campanhas disponiveis, elas aparecerao aqui
+                  </p>
                 </div>
               ) : (
                 <div className="campaigns-grid">
-                  {campaigns.map(campaign => (
-                    <div key={campaign.id} className={`campaign-card ${campaign.status}`}>
+                  {campaigns.map((campaign) => (
+                    <div
+                      key={campaign.id}
+                      className={`campaign-card ${campaign.status}`}
+                    >
                       <div className="campaign-header">
                         <h3>{campaign.name}</h3>
-                        <span className={`status-badge ${getStatusBadgeClass(campaign.status)}`}>
+                        <span
+                          className={`status-badge ${getStatusBadgeClass(campaign.status)}`}
+                        >
                           {getStatusLabel(campaign.status)}
                         </span>
                       </div>
 
-                      <p className="campaign-description">{campaign.description}</p>
+                      <p className="campaign-description">
+                        {campaign.description}
+                      </p>
 
                       <div className="campaign-details">
                         <div className="detail">
                           <span className="material-icons">date_range</span>
-                          <span>{formatDate(campaign.startDate)} - {formatDate(campaign.endDate)}</span>
+                          <span>
+                            {formatDate(campaign.startDate)} -{" "}
+                            {formatDate(campaign.endDate)}
+                          </span>
                         </div>
                         <div className="detail">
                           <span className="material-icons">inventory_2</span>
-                          <span>{campaign.participatingItems} produtos participando</span>
+                          <span>
+                            {campaign.participatingItems} produtos participando
+                          </span>
                         </div>
                       </div>
 
@@ -945,7 +866,7 @@ function Promotions() {
                           <span className="material-icons">add</span>
                           Participar
                         </button>
-                        <a 
+                        <a
                           href="https://www.mercadolivre.com.br/anuncios/promocoes"
                           target="_blank"
                           rel="noopener noreferrer"
@@ -966,27 +887,48 @@ function Promotions() {
 
       {/* Create Modal */}
       {showCreateModal && (
-        <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
-          <div className="modal-content large" onClick={e => e.stopPropagation()}>
+        <div
+          className="modal-overlay"
+          onClick={() => setShowCreateModal(false)}
+        >
+          <div
+            className="modal-content large"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="modal-header">
               <h2>
                 <span className="material-icons">
-                  {createType === 'coupon' ? 'confirmation_number' : 
-                   createType === 'deal' || createType === 'lightning' ? 'bolt' :
-                   createType === 'dod' ? 'wb_sunny' : 'local_offer'}
+                  {createType === "coupon"
+                    ? "confirmation_number"
+                    : createType === "deal" || createType === "lightning"
+                      ? "bolt"
+                      : createType === "dod"
+                        ? "wb_sunny"
+                        : "local_offer"}
                 </span>
-                {createType === 'promotion' ? 'Nova Promocao' :
-                 createType === 'coupon' ? 'Novo Cupom' :
-                 createType === 'deal' || createType === 'lightning' ? 'Nova Oferta Relampago' :
-                 createType === 'dod' ? 'Nova Oferta do Dia' : 'Criar'}
+                {createType === "promotion"
+                  ? "Nova Promocao"
+                  : createType === "coupon"
+                    ? "Novo Cupom"
+                    : createType === "deal" || createType === "lightning"
+                      ? "Nova Oferta Relampago"
+                      : createType === "dod"
+                        ? "Nova Oferta do Dia"
+                        : "Criar"}
               </h2>
-              <button className="btn-icon" onClick={() => setShowCreateModal(false)}>
+              <button
+                className="btn-icon"
+                onClick={() => setShowCreateModal(false)}
+              >
                 <span className="material-icons">close</span>
               </button>
             </div>
 
             <div className="modal-body">
-              {(createType === 'promotion' || createType === 'deal' || createType === 'lightning' || createType === 'dod') && (
+              {(createType === "promotion" ||
+                createType === "deal" ||
+                createType === "lightning" ||
+                createType === "dod") && (
                 <>
                   <div className="form-section">
                     <h3>Informacoes da Promocao</h3>
@@ -995,7 +937,12 @@ function Promotions() {
                       <input
                         type="text"
                         value={promotionForm.name}
-                        onChange={e => setPromotionForm(prev => ({ ...prev, name: e.target.value }))}
+                        onChange={(e) =>
+                          setPromotionForm((prev) => ({
+                            ...prev,
+                            name: e.target.value,
+                          }))
+                        }
                         placeholder="Ex: Promocao de Verao"
                       />
                     </div>
@@ -1005,7 +952,12 @@ function Promotions() {
                         <label>Tipo de Desconto</label>
                         <select
                           value={promotionForm.type}
-                          onChange={e => setPromotionForm(prev => ({ ...prev, type: e.target.value }))}
+                          onChange={(e) =>
+                            setPromotionForm((prev) => ({
+                              ...prev,
+                              type: e.target.value,
+                            }))
+                          }
                         >
                           <option value="percentage">Percentual (%)</option>
                           <option value="fixed">Valor Fixo (R$)</option>
@@ -1016,8 +968,15 @@ function Promotions() {
                         <input
                           type="number"
                           value={promotionForm.discountValue}
-                          onChange={e => setPromotionForm(prev => ({ ...prev, discountValue: e.target.value }))}
-                          placeholder={promotionForm.type === 'percentage' ? '15' : '50.00'}
+                          onChange={(e) =>
+                            setPromotionForm((prev) => ({
+                              ...prev,
+                              discountValue: e.target.value,
+                            }))
+                          }
+                          placeholder={
+                            promotionForm.type === "percentage" ? "15" : "50.00"
+                          }
                         />
                       </div>
                     </div>
@@ -1031,7 +990,12 @@ function Promotions() {
                         <input
                           type="date"
                           value={promotionForm.startDate}
-                          onChange={e => setPromotionForm(prev => ({ ...prev, startDate: e.target.value }))}
+                          onChange={(e) =>
+                            setPromotionForm((prev) => ({
+                              ...prev,
+                              startDate: e.target.value,
+                            }))
+                          }
                         />
                       </div>
                       <div className="form-group">
@@ -1039,7 +1003,12 @@ function Promotions() {
                         <input
                           type="date"
                           value={promotionForm.endDate}
-                          onChange={e => setPromotionForm(prev => ({ ...prev, endDate: e.target.value }))}
+                          onChange={(e) =>
+                            setPromotionForm((prev) => ({
+                              ...prev,
+                              endDate: e.target.value,
+                            }))
+                          }
                         />
                       </div>
                     </div>
@@ -1053,7 +1022,12 @@ function Promotions() {
                         <input
                           type="number"
                           value={promotionForm.minPurchase}
-                          onChange={e => setPromotionForm(prev => ({ ...prev, minPurchase: e.target.value }))}
+                          onChange={(e) =>
+                            setPromotionForm((prev) => ({
+                              ...prev,
+                              minPurchase: e.target.value,
+                            }))
+                          }
                           placeholder="0.00"
                         />
                       </div>
@@ -1062,7 +1036,12 @@ function Promotions() {
                         <input
                           type="number"
                           value={promotionForm.maxDiscount}
-                          onChange={e => setPromotionForm(prev => ({ ...prev, maxDiscount: e.target.value }))}
+                          onChange={(e) =>
+                            setPromotionForm((prev) => ({
+                              ...prev,
+                              maxDiscount: e.target.value,
+                            }))
+                          }
                           placeholder="Sem limite"
                         />
                       </div>
@@ -1071,7 +1050,7 @@ function Promotions() {
                 </>
               )}
 
-              {createType === 'coupon' && (
+              {createType === "coupon" && (
                 <>
                   <div className="form-section">
                     <h3>Informacoes do Cupom</h3>
@@ -1080,11 +1059,18 @@ function Promotions() {
                       <input
                         type="text"
                         value={couponForm.code}
-                        onChange={e => setCouponForm(prev => ({ ...prev, code: e.target.value.toUpperCase() }))}
+                        onChange={(e) =>
+                          setCouponForm((prev) => ({
+                            ...prev,
+                            code: e.target.value.toUpperCase(),
+                          }))
+                        }
                         placeholder="Ex: VERAO10"
                         maxLength={20}
                       />
-                      <span className="input-hint">Use letras maiusculas e numeros, sem espacos</span>
+                      <span className="input-hint">
+                        Use letras maiusculas e numeros, sem espacos
+                      </span>
                     </div>
 
                     <div className="form-row">
@@ -1092,7 +1078,12 @@ function Promotions() {
                         <label>Tipo de Desconto</label>
                         <select
                           value={couponForm.discountType}
-                          onChange={e => setCouponForm(prev => ({ ...prev, discountType: e.target.value }))}
+                          onChange={(e) =>
+                            setCouponForm((prev) => ({
+                              ...prev,
+                              discountType: e.target.value,
+                            }))
+                          }
                         >
                           <option value="percentage">Percentual (%)</option>
                           <option value="fixed">Valor Fixo (R$)</option>
@@ -1103,8 +1094,17 @@ function Promotions() {
                         <input
                           type="number"
                           value={couponForm.discountValue}
-                          onChange={e => setCouponForm(prev => ({ ...prev, discountValue: e.target.value }))}
-                          placeholder={couponForm.discountType === 'percentage' ? '10' : '20.00'}
+                          onChange={(e) =>
+                            setCouponForm((prev) => ({
+                              ...prev,
+                              discountValue: e.target.value,
+                            }))
+                          }
+                          placeholder={
+                            couponForm.discountType === "percentage"
+                              ? "10"
+                              : "20.00"
+                          }
                         />
                       </div>
                     </div>
@@ -1118,7 +1118,12 @@ function Promotions() {
                         <input
                           type="number"
                           value={couponForm.minPurchase}
-                          onChange={e => setCouponForm(prev => ({ ...prev, minPurchase: e.target.value }))}
+                          onChange={(e) =>
+                            setCouponForm((prev) => ({
+                              ...prev,
+                              minPurchase: e.target.value,
+                            }))
+                          }
                           placeholder="0.00"
                         />
                       </div>
@@ -1127,7 +1132,12 @@ function Promotions() {
                         <input
                           type="number"
                           value={couponForm.maxUses}
-                          onChange={e => setCouponForm(prev => ({ ...prev, maxUses: e.target.value }))}
+                          onChange={(e) =>
+                            setCouponForm((prev) => ({
+                              ...prev,
+                              maxUses: e.target.value,
+                            }))
+                          }
                           placeholder="500"
                         />
                       </div>
@@ -1142,7 +1152,12 @@ function Promotions() {
                         <input
                           type="date"
                           value={couponForm.startDate}
-                          onChange={e => setCouponForm(prev => ({ ...prev, startDate: e.target.value }))}
+                          onChange={(e) =>
+                            setCouponForm((prev) => ({
+                              ...prev,
+                              startDate: e.target.value,
+                            }))
+                          }
                         />
                       </div>
                       <div className="form-group">
@@ -1150,7 +1165,12 @@ function Promotions() {
                         <input
                           type="date"
                           value={couponForm.endDate}
-                          onChange={e => setCouponForm(prev => ({ ...prev, endDate: e.target.value }))}
+                          onChange={(e) =>
+                            setCouponForm((prev) => ({
+                              ...prev,
+                              endDate: e.target.value,
+                            }))
+                          }
                         />
                       </div>
                     </div>
@@ -1160,22 +1180,33 @@ function Promotions() {
             </div>
 
             <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setShowCreateModal(false)}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setShowCreateModal(false)}
+              >
                 Cancelar
               </button>
-              <button 
-                className="btn btn-primary" 
-                onClick={createType === 'coupon' ? handleCreateCoupon : handleCreatePromotion}
+              <button
+                className="btn btn-primary"
+                onClick={
+                  createType === "coupon"
+                    ? handleCreateCoupon
+                    : handleCreatePromotion
+                }
+                disabled={
+                  createPromotionMutation.isPending ||
+                  createCouponMutation.isPending
+                }
               >
                 <span className="material-icons">check</span>
-                {createType === 'coupon' ? 'Criar Cupom' : 'Criar Promocao'}
+                {createType === "coupon" ? "Criar Cupom" : "Criar Promocao"}
               </button>
             </div>
           </div>
         </div>
       )}
     </div>
-  )
+  );
 }
 
-export default Promotions
+export default Promotions;

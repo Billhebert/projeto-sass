@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
+import { useMLAccounts, useProducts } from "../hooks/useApi";
 import api from "../services/api";
 import {
   BarChart,
@@ -14,60 +15,33 @@ import {
 import "./Competitors.css";
 
 function Competitors() {
-  const [accounts, setAccounts] = useState([]);
+  // React Query hooks
+  const { data: accounts = [] } = useMLAccounts();
   const [selectedAccount, setSelectedAccount] = useState("");
-  const [loading, setLoading] = useState(false);
+
+  const { data: products = [], isLoading } = useProducts(selectedAccount, {
+    limit: 50,
+    sort: "-salesCount",
+  });
+
   const [analyzing, setAnalyzing] = useState(false);
-  const [products, setProducts] = useState([]);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [competitors, setCompetitors] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [error, setError] = useState(null);
 
+  // Set first account as default when accounts load
   useEffect(() => {
-    loadAccounts();
-  }, []);
-
-  useEffect(() => {
-    if (selectedAccount) {
-      loadProducts();
+    if (accounts.length > 0 && !selectedAccount) {
+      setSelectedAccount(accounts[0].id);
     }
-  }, [selectedAccount]);
-
-  const loadAccounts = async () => {
-    try {
-      const response = await api.get("/ml-accounts");
-      const accountsList =
-        response.data.data?.accounts || response.data.accounts || [];
-      setAccounts(accountsList);
-      if (accountsList.length > 0) {
-        setSelectedAccount(accountsList[0].id);
-      }
-    } catch (err) {
-      setError("Erro ao carregar contas");
-    }
-  };
-
-  const loadProducts = async () => {
-    setLoading(true);
-    try {
-      const response = await api.get(
-        `/products/${selectedAccount}?limit=50&sort=-salesCount`,
-      );
-      setProducts(response.data.data?.products || []);
-    } catch (err) {
-      setError("Erro ao carregar produtos");
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [accounts, selectedAccount]);
 
   const analyzeCompetitors = async (product) => {
     setSelectedProduct(product);
     setAnalyzing(true);
 
     try {
-      // Try API first
       const response = await api.get(
         `/products/${selectedAccount}/${product.mlProductId}/competitors`,
       );
@@ -76,7 +50,6 @@ function Competitors() {
       setCompetitors(competitorsData);
     } catch (err) {
       console.error("Error fetching competitors:", err);
-      // Set empty array on error instead of mock data
       setCompetitors([]);
     } finally {
       setAnalyzing(false);
@@ -201,7 +174,7 @@ function Competitors() {
           </div>
 
           <div className="products-list">
-            {loading ? (
+            {isLoading ? (
               <div className="loading-mini">
                 <div className="spinner"></div>
                 <span>Carregando...</span>

@@ -1,134 +1,65 @@
-import { useState, useEffect } from "react";
-import { useAuthStore } from "../store/authStore";
-import api from "../services/api";
+import { useState } from "react";
+import {
+  useMLAccounts,
+  useMessages,
+  useMessagesPack,
+  useSendMessage,
+  useSyncMessages,
+} from "../hooks/useApi";
 import "./Messages.css";
 
 function Messages() {
-  const { token } = useAuthStore();
-  const [accounts, setAccounts] = useState([]);
-  const [selectedAccount, setSelectedAccount] = useState("");
-  const [conversations, setConversations] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [error, setError] = useState(null);
+  const { data: accounts = [] } = useMLAccounts();
+  const [selectedAccount, setSelectedAccount] = useState(accounts[0]?.id || "");
   const [filter, setFilter] = useState("unread");
   const [selectedConversation, setSelectedConversation] = useState(null);
-  const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
-  const [sending, setSending] = useState(false);
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 1000, // Increased limit to fetch more messages
-    total: 0,
-    totalPages: 0,
-  });
+  const [error, setError] = useState(null);
 
-  useEffect(() => {
-    loadAccounts();
-  }, []);
-
-  useEffect(() => {
-    if (selectedAccount) {
-      loadConversations();
+  // Auto-select first account
+  useState(() => {
+    if (accounts.length > 0 && !selectedAccount) {
+      setSelectedAccount(accounts[0].id);
     }
-  }, [selectedAccount, filter, pagination.page]);
+  }, [accounts]);
 
-  const loadAccounts = async () => {
-    try {
-      const response = await api.get("/ml-accounts");
-      const accountsList =
-        response.data.data?.accounts || response.data.accounts || [];
-      setAccounts(accountsList);
-      if (accountsList.length > 0) {
-        setSelectedAccount(accountsList[0].id);
-      }
-    } catch (err) {
-      setError("Erro ao carregar contas");
-    }
-  };
+  const { data: conversations = [], isLoading } = useMessages(
+    selectedAccount,
+    filter,
+  );
 
-  const loadConversations = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const offset = (pagination.page - 1) * pagination.limit;
-      const endpoint =
-        filter === "unread"
-          ? `/messages/${selectedAccount}/unread`
-          : `/messages/${selectedAccount}`;
-      const response = await api.get(endpoint, {
-        params: {
-          offset,
-          limit: pagination.limit,
-        },
-      });
-      setConversations(response.data.messages || []);
+  const { data: messages = [] } = useMessagesPack(
+    selectedAccount,
+    selectedConversation,
+  );
 
-      // Update pagination info from response
-      const total = response.data.total || response.data.messages?.length || 0;
-      setPagination((prev) => ({
-        ...prev,
-        total,
-        totalPages: Math.ceil(total / prev.limit),
-      }));
-    } catch (err) {
-      setError("Erro ao carregar mensagens");
-      setConversations([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const syncMessagesMutation = useSyncMessages();
+  const sendMessageMutation = useSendMessage();
 
   const syncMessages = async () => {
-    setSyncing(true);
     try {
-      await api.post(`/messages/${selectedAccount}/sync`, { all: true });
-      await loadConversations();
+      await syncMessagesMutation.mutateAsync({ accountId: selectedAccount });
     } catch (err) {
       setError("Erro ao sincronizar mensagens");
-    } finally {
-      setSyncing(false);
     }
   };
 
-  const openConversation = async (packId) => {
-    try {
-      const response = await api.get(
-        `/messages/${selectedAccount}/pack/${packId}`,
-      );
-      setMessages(response.data.messages || []);
-      setSelectedConversation(packId);
-    } catch (err) {
-      setError("Erro ao carregar conversa");
-    }
+  const openConversation = (packId) => {
+    setSelectedConversation(packId);
   };
 
   const sendMessage = async () => {
     if (!newMessage.trim() || !selectedConversation) return;
 
-    setSending(true);
     try {
-      await api.post(
-        `/messages/${selectedAccount}/pack/${selectedConversation}`,
-        {
-          text: newMessage,
-        },
-      );
+      await sendMessageMutation.mutateAsync({
+        accountId: selectedAccount,
+        packId: selectedConversation,
+        text: newMessage,
+      });
       setNewMessage("");
-      await openConversation(selectedConversation);
     } catch (err) {
       setError("Erro ao enviar mensagem");
-    } finally {
-      setSending(false);
-    }
-  };
-
-  const markAsRead = async (messageId) => {
-    try {
-      await api.put(`/messages/${selectedAccount}/${messageId}/read`);
-      await loadConversations();
-    } catch (err) {
-      console.error("Erro ao marcar como lida:", err);
     }
   };
 
@@ -141,33 +72,6 @@ function Messages() {
     if (diff < 60) return `${diff}min`;
     if (diff < 1440) return `${Math.floor(diff / 60)}h`;
     return date.toLocaleDateString("pt-BR");
-  };
-
-  const handleFilterChange = (newFilter) => {
-    setFilter(newFilter);
-    setPagination((prev) => ({ ...prev, page: 1 }));
-  };
-
-  const handleAccountChange = (accountId) => {
-    setSelectedAccount(accountId);
-    setPagination((prev) => ({ ...prev, page: 1 }));
-  };
-
-  const handlePageChange = (newPage) => {
-    setPagination((prev) => ({ ...prev, page: newPage }));
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const handlePrevPage = () => {
-    if (pagination.page > 1) {
-      handlePageChange(pagination.page - 1);
-    }
-  };
-
-  const handleNextPage = () => {
-    if (pagination.page < pagination.totalPages) {
-      handlePageChange(pagination.page + 1);
-    }
   };
 
   return (
@@ -184,7 +88,7 @@ function Messages() {
           <select
             className="account-select"
             value={selectedAccount}
-            onChange={(e) => handleAccountChange(e.target.value)}
+            onChange={(e) => setSelectedAccount(e.target.value)}
           >
             {accounts.map((acc) => (
               <option key={acc.id} value={acc.id}>
@@ -195,10 +99,12 @@ function Messages() {
           <button
             className="btn btn-primary"
             onClick={syncMessages}
-            disabled={syncing || !selectedAccount}
+            disabled={syncMessagesMutation.isPending || !selectedAccount}
           >
             <span className="material-icons">sync</span>
-            {syncing ? "Sincronizando..." : "Sincronizar"}
+            {syncMessagesMutation.isPending
+              ? "Sincronizando..."
+              : "Sincronizar"}
           </button>
         </div>
       </div>
@@ -209,13 +115,13 @@ function Messages() {
             <div className="filter-tabs compact">
               <button
                 className={`filter-tab ${filter === "unread" ? "active" : ""}`}
-                onClick={() => handleFilterChange("unread")}
+                onClick={() => setFilter("unread")}
               >
                 Nao lidas
               </button>
               <button
                 className={`filter-tab ${filter === "all" ? "active" : ""}`}
-                onClick={() => handleFilterChange("all")}
+                onClick={() => setFilter("all")}
               >
                 Todas
               </button>
@@ -223,7 +129,7 @@ function Messages() {
           </div>
 
           <div className="conversations-list">
-            {loading ? (
+            {isLoading ? (
               <div className="loading-state small">
                 <div className="spinner"></div>
               </div>
@@ -263,32 +169,6 @@ function Messages() {
               ))
             )}
           </div>
-
-          {!loading &&
-            conversations.length > 0 &&
-            pagination.totalPages > 1 && (
-              <div className="pagination-controls compact">
-                <button
-                  className="btn btn-secondary pagination-btn"
-                  onClick={handlePrevPage}
-                  disabled={pagination.page === 1}
-                >
-                  <span className="material-icons">chevron_left</span>
-                </button>
-                <div className="pagination-info">
-                  <span className="page-text">
-                    {pagination.page} / {pagination.totalPages}
-                  </span>
-                </div>
-                <button
-                  className="btn btn-secondary pagination-btn"
-                  onClick={handleNextPage}
-                  disabled={pagination.page === pagination.totalPages}
-                >
-                  <span className="material-icons">chevron_right</span>
-                </button>
-              </div>
-            )}
         </div>
 
         <div className="chat-panel">
@@ -342,7 +222,7 @@ function Messages() {
                 <button
                   className="btn btn-primary"
                   onClick={sendMessage}
-                  disabled={sending || !newMessage.trim()}
+                  disabled={sendMessageMutation.isPending || !newMessage.trim()}
                 >
                   <span className="material-icons">send</span>
                 </button>

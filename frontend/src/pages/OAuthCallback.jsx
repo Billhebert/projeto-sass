@@ -183,6 +183,9 @@ export default function OAuthCallback() {
 
       // Step 1: Exchange code for tokens
       setMessage("Requesting access tokens...");
+      console.log("[OAUTH-CALLBACK] Exchanging authorization code for tokens");
+      console.log("[OAUTH-CALLBACK] Request params:", { clientId, redirectUri, codeLength: code.length });
+      
       const tokenResponse = await api.post("/auth/ml-token-exchange", {
         code,
         clientId,
@@ -190,6 +193,7 @@ export default function OAuthCallback() {
         redirectUri,
       });
 
+      console.log("[OAUTH-CALLBACK] Token exchange response:", tokenResponse.data);
       if (!tokenResponse.data.success) {
         throw new Error(
           tokenResponse.data.error || "Failed to exchange code for tokens",
@@ -197,23 +201,52 @@ export default function OAuthCallback() {
       }
 
       const { accessToken, refreshToken, expiresIn } = tokenResponse.data.data;
+      console.log("[OAUTH-CALLBACK] Tokens received:", { 
+        hasAccessToken: !!accessToken, 
+        hasRefreshToken: !!refreshToken, 
+        expiresIn 
+      });
 
       // Step 2: Create account with tokens and OAuth credentials
       setMessage("Creating account with tokens...");
-      const accountResponse = await api.post("/ml-accounts", {
-        accessToken,
-        refreshToken,
-        expiresIn,
-        clientId,
-        clientSecret,
-        redirectUri,
-        status: "connected",
-      });
+      console.log("[OAUTH-CALLBACK] Creating ML account with tokens");
+      try {
+        const accountResponse = await api.post("/ml-accounts", {
+          accessToken,
+          refreshToken,
+          expiresIn,
+          clientId,
+          clientSecret,
+          redirectUri,
+          status: "connected",
+        });
 
-      if (!accountResponse.data.success) {
-        throw new Error(
-          accountResponse.data.error || "Failed to create account",
-        );
+        console.log("[OAUTH-CALLBACK] Account created successfully:", accountResponse.data);
+        if (!accountResponse.data.success) {
+          throw new Error(
+            accountResponse.data.error || "Failed to create account",
+          );
+        }
+      } catch (accountError) {
+        console.log("[OAUTH-CALLBACK] Account creation error:", {
+          status: accountError.response?.status,
+          code: accountError.response?.data?.code,
+          message: accountError.response?.data?.message,
+        });
+        
+        // If account already exists (409), treat as success
+        if (accountError.response?.status === 409) {
+          console.log("[OAUTH-CALLBACK] Account already exists, treating as success");
+        } 
+        // If it's a 400 with ML_INVALID_TOKEN, show better error message
+        else if (accountError.response?.status === 400 && 
+                 accountError.response?.data?.code === 'ML_INVALID_TOKEN') {
+          console.error("[OAUTH-CALLBACK] Invalid ML token received from exchange");
+          throw new Error("The authorization code is invalid or expired. Please try again.");
+        }
+        else {
+          throw accountError;
+        }
       }
 
       // Clear sessionStorage
@@ -223,9 +256,9 @@ export default function OAuthCallback() {
       setStatus("success");
       setMessage("✓ Account connected successfully!");
 
-      // Redirect to accounts page after 2 seconds
+      // Redirect to ml-auth page after 2 seconds
       setTimeout(() => {
-        navigate("/accounts", {
+        navigate("/ml-auth", {
           state: { success: true, message: "Account connected successfully" },
         });
       }, 2000);
@@ -235,9 +268,9 @@ export default function OAuthCallback() {
       setError(err.message || "An error occurred during OAuth callback");
       setMessage("");
 
-      // Redirect to accounts page after 5 seconds
+      // Redirect to ml-auth page after 5 seconds
       setTimeout(() => {
-        navigate("/accounts", { state: { error: err.message } });
+        navigate("/ml-auth", { state: { error: err.message } });
       }, 5000);
     }
   };

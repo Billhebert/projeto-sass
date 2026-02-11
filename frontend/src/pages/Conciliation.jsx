@@ -1,28 +1,21 @@
-import { useState, useEffect } from "react";
-import api from "../services/api";
+import { useState, useEffect, useMemo } from "react";
+import {
+  useMLAccounts,
+  useConciliationTransactions,
+  useReconcileTransactions,
+} from "../hooks/useApi";
 import { exportConciliationToCSV } from "../utils/export";
 import { exportConciliationToPDF } from "../utils/pdfExportUtils";
 import "./Conciliation.css";
 
 function Conciliation() {
   const [selectedAccount, setSelectedAccount] = useState("");
-  const [accounts, setAccounts] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("pending");
-  const [transactions, setTransactions] = useState([]);
   const [selectedTransactions, setSelectedTransactions] = useState([]);
   const [dateRange, setDateRange] = useState({ start: "", end: "" });
   const [searchTerm, setSearchTerm] = useState("");
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedDetail, setSelectedDetail] = useState(null);
-  const [stats, setStats] = useState({
-    pendingCount: 0,
-    pendingAmount: 0,
-    reconciledCount: 0,
-    reconciledAmount: 0,
-    discrepancyCount: 0,
-    discrepancyAmount: 0,
-  });
 
   useEffect(() => {
     const end = new Date();
@@ -32,135 +25,82 @@ function Conciliation() {
       start: start.toISOString().split("T")[0],
       end: end.toISOString().split("T")[0],
     });
-    fetchAccounts();
   }, []);
 
-  const fetchAccounts = async () => {
-    try {
-      const response = await api.get("/ml-accounts");
-      if (response.data.success) {
-        const accountsList = response.data.data?.accounts || [];
-        setAccounts(accountsList);
-        if (accountsList.length > 0) {
-          setSelectedAccount(accountsList[0].id || accountsList[0].accountId);
-        }
-      }
-    } catch (error) {
-      console.error("Error fetching accounts:", error);
-    }
-  };
+  // Fetch accounts with React Query
+  const { data: accounts = [], isLoading: accountsLoading } = useMLAccounts();
 
+  // Set first account as default
   useEffect(() => {
-    if (selectedAccount && dateRange.start && dateRange.end) {
-      fetchTransactions();
+    if (accounts.length > 0 && !selectedAccount && !accountsLoading) {
+      setSelectedAccount(accounts[0].id || accounts[0].accountId);
     }
-  }, [selectedAccount, dateRange, activeTab]);
+  }, [accounts, selectedAccount, accountsLoading]);
 
-  const fetchTransactions = async () => {
-    try {
-      setLoading(true);
+  // Fetch transactions with React Query
+  const { data: orders = [], isLoading: transactionsLoading } =
+    useConciliationTransactions(selectedAccount, dateRange);
 
-      // Fetch ALL orders with auto-pagination (no limits!)
-      let allOrders = [];
-      let offset = 0;
-      const limit = 200;
-      let hasMore = true;
+  // Reconcile mutation
+  const reconcileMutation = useReconcileTransactions();
 
-      while (hasMore) {
-        const response = await api.get(
-          `/orders/${selectedAccount}?limit=${limit}&offset=${offset}&date_created.from=${dateRange.start}T00:00:00.000Z&date_created.to=${dateRange.end}T23:59:59.999Z`,
-        );
+  // Transform orders into transactions and calculate stats
+  const { transactions, stats } = useMemo(() => {
+    // Convert orders to transactions format
+    const convertedTransactions = orders.map((order) => {
+      const fees = (order.totalAmount || 0) * 0.12; // Estimated 12% fees
+      const bankAmount = (order.totalAmount || 0) - fees;
+      const isPaid = order.status === "paid" || order.status === "confirmed";
+      const isCancelled = order.status === "cancelled";
 
-        if (!response.data.success) {
-          throw new Error("Failed to fetch orders");
-        }
+      return {
+        id: order.id,
+        orderId: order.mlOrderId || order.id,
+        date: order.dateCreated,
+        type: isCancelled ? "refund" : "sale",
+        amount: order.totalAmount || 0,
+        mlAmount: order.totalAmount || 0,
+        bankAmount: isPaid ? bankAmount : 0,
+        fees: isPaid ? fees : 0,
+        status: isPaid ? "reconciled" : isCancelled ? "reconciled" : "pending",
+        buyer: order.buyer?.nickname || order.buyer?.firstName || "N/A",
+        product: `${order.itemsCount || 0} item(s)`,
+      };
+    });
 
-        const orders = response.data.data?.orders || [];
-        allOrders = allOrders.concat(orders);
+    // Calculate stats
+    const pending = convertedTransactions.filter((t) => t.status === "pending");
+    const reconciled = convertedTransactions.filter(
+      (t) => t.status === "reconciled",
+    );
+    const discrepancy = convertedTransactions.filter(
+      (t) => t.status === "discrepancy",
+    );
 
-        if (orders.length < limit) {
-          hasMore = false;
-        } else {
-          offset += limit;
-        }
-      }
+    const calculatedStats = {
+      pendingCount: pending.length,
+      pendingAmount: pending.reduce((sum, t) => sum + t.mlAmount, 0),
+      reconciledCount: reconciled.length,
+      reconciledAmount: reconciled.reduce((sum, t) => sum + t.mlAmount, 0),
+      discrepancyCount: discrepancy.length,
+      discrepancyAmount: discrepancy.reduce(
+        (sum, t) => sum + Math.abs(t.mlAmount - t.bankAmount),
+        0,
+      ),
+    };
 
-      // Convert orders to transactions format
-      const convertedTransactions = allOrders.map((order) => {
-        const fees = (order.totalAmount || 0) * 0.12; // Estimated 12% fees
-        const bankAmount = (order.totalAmount || 0) - fees;
-        const isPaid = order.status === "paid" || order.status === "confirmed";
-        const isCancelled = order.status === "cancelled";
-
-        return {
-          id: order.id,
-          orderId: order.mlOrderId || order.id,
-          date: order.dateCreated,
-          type: isCancelled ? "refund" : "sale",
-          amount: order.totalAmount || 0,
-          mlAmount: order.totalAmount || 0,
-          bankAmount: isPaid ? bankAmount : 0,
-          fees: isPaid ? fees : 0,
-          status: isPaid
-            ? "reconciled"
-            : isCancelled
-              ? "reconciled"
-              : "pending",
-          buyer: order.buyer?.nickname || order.buyer?.firstName || "N/A",
-          product: `${order.itemsCount || 0} item(s)`,
-        };
-      });
-
-      // Calculate stats
-      const pending = convertedTransactions.filter(
-        (t) => t.status === "pending",
-      );
-      const reconciled = convertedTransactions.filter(
-        (t) => t.status === "reconciled",
-      );
-      const discrepancy = convertedTransactions.filter(
-        (t) => t.status === "discrepancy",
-      );
-
-      setTransactions(convertedTransactions);
-      setStats({
-        pendingCount: pending.length,
-        pendingAmount: pending.reduce((sum, t) => sum + t.mlAmount, 0),
-        reconciledCount: reconciled.length,
-        reconciledAmount: reconciled.reduce((sum, t) => sum + t.mlAmount, 0),
-        discrepancyCount: discrepancy.length,
-        discrepancyAmount: discrepancy.reduce(
-          (sum, t) => sum + Math.abs(t.mlAmount - t.bankAmount),
-          0,
-        ),
-      });
-    } catch (error) {
-      console.error("Error fetching transactions:", error);
-      setTransactions([]);
-      setStats({
-        pendingCount: 0,
-        pendingAmount: 0,
-        reconciledCount: 0,
-        reconciledAmount: 0,
-        discrepancyCount: 0,
-        discrepancyAmount: 0,
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+    return {
+      transactions: convertedTransactions,
+      stats: calculatedStats,
+    };
+  }, [orders]);
 
   const handleReconcile = async (transactionIds) => {
     try {
-      // Simulated reconciliation
-      setTransactions((prev) =>
-        prev.map((t) => {
-          if (transactionIds.includes(t.id)) {
-            return { ...t, status: "reconciled" };
-          }
-          return t;
-        }),
-      );
+      await reconcileMutation.mutateAsync({
+        accountId: selectedAccount,
+        transactionIds,
+      });
       setSelectedTransactions([]);
       alert(
         `${transactionIds.length} transacao(oes) conciliada(s) com sucesso!`,
@@ -175,7 +115,6 @@ function Conciliation() {
   };
 
   const handleExportPDF = () => {
-    // Prepare stats for PDF
     const pdfStats = {
       total: transactions.length,
       conciliated: stats.reconciledCount,
@@ -426,7 +365,7 @@ function Conciliation() {
 
           {/* Transactions Table */}
           <div className="section">
-            {loading ? (
+            {transactionsLoading ? (
               <div className="loading-state">
                 <div className="spinner"></div>
                 <p>Carregando transacoes...</p>

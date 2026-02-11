@@ -114,13 +114,32 @@ const getMlUserInfo = async (accessToken, refreshToken) => {
   try {
     const { MercadoLibreSDK } = require('../sdk/complete-sdk');
     const tempSDK = new MercadoLibreSDK(accessToken, refreshToken);
-    return await tempSDK.users.getCurrentUser();
+    const response = await tempSDK.users.getUserInfo();
+    
+    // SDK retorna {data, status, headers}, não apenas os dados
+    const userInfo = response.data || response;
+    
+    logger.info({
+      action: 'GET_ML_USER_INFO_SUCCESS',
+      userInfo: userInfo,
+      hasId: !!userInfo?.id,
+      hasNickname: !!userInfo?.nickname,
+      hasEmail: !!userInfo?.email,
+    });
+    
+    return userInfo;
   } catch (error) {
+    logger.error({
+      action: 'GET_ML_USER_INFO_ERROR',
+      error: error.message,
+      errorDetails: error.response?.data || error,
+    });
     throw {
-      statusCode: 401,
-      message: 'Invalid access token. Could not retrieve user information from Mercado Livre.',
+      statusCode: 400,
+      message: 'Invalid Mercado Livre access token. Could not retrieve user information.',
       error: error,
       action: 'GET_ML_USER_INFO_ERROR',
+      code: 'ML_INVALID_TOKEN',
     };
   }
 };
@@ -232,6 +251,16 @@ router.post('/', authenticateToken, async (req, res) => {
     // Usar SDK para buscar informações do usuário (valida token automaticamente)
     const mlUserInfo = await getMlUserInfo(accessToken, refreshToken);
 
+    logger.info({
+      action: 'ML_USER_INFO_RECEIVED',
+      mlUserId: mlUserInfo?.id,
+      nickname: mlUserInfo?.nickname,
+      email: mlUserInfo?.email,
+      hasId: !!mlUserInfo?.id,
+      hasNickname: !!mlUserInfo?.nickname,
+      keys: Object.keys(mlUserInfo || {}),
+    });
+
     // Verificar se usuário já tem essa conta
     const existingAccount = await checkExistingAccount(req.user.userId, mlUserInfo.id);
     if (existingAccount) {
@@ -250,6 +279,7 @@ router.post('/', authenticateToken, async (req, res) => {
       userId: req.user.userId,
       mlUserId: mlUserInfo.id,
       nickname: mlUserInfo.nickname,
+      email: mlUserInfo.email,
       accessToken,
       refreshToken,
       expiresIn,

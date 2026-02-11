@@ -1,5 +1,11 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import {
+  useMLAccounts,
+  useProducts,
+  useProductsStats,
+  useSyncProducts,
+} from "../hooks/useApi";
 import api from "../services/api";
 import { toast } from "../store/toastStore";
 import {
@@ -13,110 +19,43 @@ export default function Products() {
   const navigate = useNavigate();
   const { accountId } = useParams();
 
-  const [products, setProducts] = useState([]);
-  const [stats, setStats] = useState(null);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [account, setAccount] = useState(null);
   const [filterStatus, setFilterStatus] = useState("active");
   const [searchTerm, setSearchTerm] = useState("");
   const [sortBy, setSortBy] = useState("-createdAt");
 
-  // Ref to track if initial fetch was done
-  const initialFetchDone = useRef(false);
+  const { data: accounts = [] } = useMLAccounts();
+  const account = accounts.find((acc) => acc.id === accountId);
 
-  // Fetch products - memoized to prevent unnecessary re-renders
-  const fetchProducts = useCallback(async () => {
-    if (!accountId) return;
+  const { data: productsData = [], isLoading: loading } = useProducts(
+    accountId,
+    {
+      status: filterStatus,
+      sort: sortBy,
+      all: true,
+    },
+  );
 
-    setLoading(true);
+  const { data: stats } = useProductsStats(accountId);
+  const syncProductsMutation = useSyncProducts();
 
-    try {
-      const query = new URLSearchParams({
-        all: "true", // Fetch ALL products without limit
-        sort: sortBy,
-      });
-
-      if (filterStatus) {
-        query.append("status", filterStatus);
-      }
-
-      const response = await api.get(
-        `/products/${accountId}?${query.toString()}`,
-      );
-
-      if (response.data.success) {
-        setProducts(response.data.data.products);
-        setAccount(response.data.data.account);
-        setTotal(response.data.data.total || 0);
-      }
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to fetch products");
-      console.error("Error fetching products:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [accountId, filterStatus, sortBy]);
-
-  // Fetch stats separately
-  const fetchStats = useCallback(async () => {
-    if (!accountId) return;
-
-    try {
-      const response = await api.get(`/products/${accountId}/stats`);
-
-      if (response.data.success) {
-        setStats(response.data.data);
-      }
-    } catch (err) {
-      console.error("Error fetching stats:", err);
-    }
-  }, [accountId]);
-
-  // Effect for fetching products when dependencies change
-  useEffect(() => {
-    fetchProducts();
-  }, [fetchProducts]);
-
-  // Effect for fetching stats only when accountId changes
-  useEffect(() => {
-    fetchStats();
-  }, [accountId]);
-
-  // Effect for fetching products when dependencies change
-  useEffect(() => {
-    fetchProducts();
-  }, [fetchProducts]);
+  const products = Array.isArray(productsData)
+    ? productsData
+    : productsData.products || [];
+  const total = products.length;
 
   const handleSyncProducts = async () => {
     if (!accountId) return;
 
-    setSyncing(true);
-
     try {
-      const response = await api.post(`/products/${accountId}/sync`, {
-        all: true, // Fetch ALL products without limit
-      });
-
-      if (response.data.success) {
-        setProducts(response.data.data.products);
-        setTotal(
-          response.data.data.productsCount ||
-            response.data.data.products.length,
-        );
-        fetchStats();
-        toast.success(
-          `${response.data.data.productsCount || response.data.data.products.length} produtos sincronizados com sucesso!`,
-        );
-      }
+      const result = await syncProductsMutation.mutateAsync({ accountId });
+      const count =
+        result?.data?.productsCount || result?.data?.products?.length || 0;
+      toast.success(`${count} produtos sincronizados com sucesso!`);
     } catch (err) {
       toast.error(
         err.response?.data?.message || "Falha ao sincronizar produtos",
       );
       console.error("Error syncing products:", err);
-    } finally {
-      setSyncing(false);
     }
   };
 
@@ -129,7 +68,6 @@ export default function Products() {
 
     try {
       await api.delete(`/products/${accountId}/${productId}`);
-      setProducts(products.filter((p) => p.id !== productId));
       toast.success("Product removed successfully");
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to remove product");
@@ -141,7 +79,6 @@ export default function Products() {
   );
 
   const hasProducts = filteredProducts.length > 0;
-  // Pagination removed - now fetching all products
 
   // Export handlers
   const handleExportCSV = () => {
@@ -207,11 +144,13 @@ export default function Products() {
             </>
           )}
           <button
-            className={`btn btn-primary ${syncing ? "loading" : ""}`}
+            className={`btn btn-primary ${syncProductsMutation.isPending ? "loading" : ""}`}
             onClick={handleSyncProducts}
-            disabled={syncing}
+            disabled={syncProductsMutation.isPending}
           >
-            {syncing ? "Sincronizando..." : "Sincronizar Produtos"}
+            {syncProductsMutation.isPending
+              ? "Sincronizando..."
+              : "Sincronizar Produtos"}
           </button>
         </div>
       </div>
@@ -223,7 +162,7 @@ export default function Products() {
             <div className="stat-icon">📦</div>
             <div className="stat-content">
               <div className="stat-label">Total de Produtos</div>
-              <div className="stat-value">{stats.products.total}</div>
+              <div className="stat-value">{stats.products?.total || 0}</div>
             </div>
           </div>
 
@@ -231,7 +170,7 @@ export default function Products() {
             <div className="stat-icon">✅</div>
             <div className="stat-content">
               <div className="stat-label">Ativos</div>
-              <div className="stat-value">{stats.products.active}</div>
+              <div className="stat-value">{stats.products?.active || 0}</div>
             </div>
           </div>
 
@@ -239,7 +178,7 @@ export default function Products() {
             <div className="stat-icon">⏸️</div>
             <div className="stat-content">
               <div className="stat-label">Pausados</div>
-              <div className="stat-value">{stats.products.paused}</div>
+              <div className="stat-value">{stats.products?.paused || 0}</div>
             </div>
           </div>
 
@@ -247,7 +186,7 @@ export default function Products() {
             <div className="stat-icon">⚠️</div>
             <div className="stat-content">
               <div className="stat-label">Estoque Baixo</div>
-              <div className="stat-value">{stats.products.lowStock}</div>
+              <div className="stat-value">{stats.products?.lowStock || 0}</div>
             </div>
           </div>
 
@@ -255,7 +194,7 @@ export default function Products() {
             <div className="stat-icon">📊</div>
             <div className="stat-content">
               <div className="stat-label">Total Vendas</div>
-              <div className="stat-value">{stats.sales}</div>
+              <div className="stat-value">{stats.sales || 0}</div>
             </div>
           </div>
 
@@ -408,8 +347,6 @@ export default function Products() {
               </tbody>
             </table>
           </div>
-
-          {/* Pagination removed - showing all products */}
         </>
       ) : (
         <div className="empty-state">
@@ -424,9 +361,11 @@ export default function Products() {
             <button
               className="btn btn-primary"
               onClick={handleSyncProducts}
-              disabled={syncing}
+              disabled={syncProductsMutation.isPending}
             >
-              {syncing ? "Sincronizando..." : "Sincronizar Produtos Agora"}
+              {syncProductsMutation.isPending
+                ? "Sincronizando..."
+                : "Sincronizar Produtos Agora"}
             </button>
           )}
         </div>

@@ -1,154 +1,154 @@
-import { useState, useEffect } from 'react'
-import { useAuthStore } from '../store/authStore'
-import api from '../services/api'
-import { inventoryService } from '../services/modules'
-import './Inventory.css'
+import { useState } from "react";
+import {
+  useMLAccounts,
+  useInventory,
+  useInventoryLowStock,
+  useInventoryWarehouses,
+  useUpdateInventory,
+  useOptInFulfillment,
+  useOptOutFulfillment,
+} from "../hooks/useApi";
+import "./Inventory.css";
 
 function Inventory() {
-  const { token } = useAuthStore()
-  const [accounts, setAccounts] = useState([])
-  const [selectedAccount, setSelectedAccount] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const [success, setSuccess] = useState(null)
-  
-  // Data states
-  const [products, setProducts] = useState([])
-  const [lowStockItems, setLowStockItems] = useState([])
-  const [warehouses, setWarehouses] = useState([])
-  
+  // Accounts
+  const { data: accounts = [], isLoading: accountsLoading } = useMLAccounts();
+  const [selectedAccount, setSelectedAccount] = useState("");
+
+  // Set initial account when accounts load
+  useState(() => {
+    if (accounts.length > 0 && !selectedAccount) {
+      setSelectedAccount(accounts[0].id);
+    }
+  }, [accounts]);
+
+  // Data queries
+  const [lowStockThreshold, setLowStockThreshold] = useState(5);
+  const {
+    data: products = [],
+    isLoading: productsLoading,
+    refetch: refetchProducts,
+  } = useInventory(selectedAccount);
+  const { data: lowStockItems = [], refetch: refetchLowStock } =
+    useInventoryLowStock(selectedAccount, lowStockThreshold);
+  const { data: warehouses = [] } = useInventoryWarehouses(selectedAccount);
+
+  // Mutations
+  const updateInventory = useUpdateInventory();
+  const optInFulfillment = useOptInFulfillment();
+  const optOutFulfillment = useOptOutFulfillment();
+
   // UI states
-  const [activeTab, setActiveTab] = useState('all')
-  const [selectedItem, setSelectedItem] = useState(null)
-  const [showModal, setShowModal] = useState(false)
-  const [editQuantity, setEditQuantity] = useState('')
-  const [updating, setUpdating] = useState(false)
-  const [lowStockThreshold, setLowStockThreshold] = useState(5)
+  const [activeTab, setActiveTab] = useState("all");
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [showModal, setShowModal] = useState(false);
+  const [editQuantity, setEditQuantity] = useState("");
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
 
-  useEffect(() => {
-    loadAccounts()
-  }, [])
+  const loading = accountsLoading || productsLoading;
 
-  useEffect(() => {
-    if (selectedAccount) {
-      loadData()
-    }
-  }, [selectedAccount])
+  const loadData = () => {
+    refetchProducts();
+    refetchLowStock();
+  };
 
-  const loadAccounts = async () => {
-    try {
-      const response = await api.get('/ml-accounts')
-      const accountsList = response.data.data?.accounts || response.data.accounts || []
-      setAccounts(accountsList)
-      if (accountsList.length > 0) {
-        setSelectedAccount(accountsList[0].id)
-      }
-    } catch (err) {
-      setError('Erro ao carregar contas')
-    }
-  }
-
-  const loadData = async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const [productsRes, lowStockRes, warehousesRes] = await Promise.all([
-        inventoryService.getAll(selectedAccount),
-        inventoryService.getLowStock(selectedAccount, lowStockThreshold),
-        inventoryService.getWarehouses(selectedAccount),
-      ])
-      
-      setProducts(productsRes.data.data?.products || [])
-      setLowStockItems(lowStockRes.data.data?.low_stock_items || [])
-      setWarehouses(warehousesRes.data.data || [])
-    } catch (err) {
-      setError('Erro ao carregar estoque')
-      console.error(err)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const viewItemDetails = async (item) => {
-    setSelectedItem(item)
-    setEditQuantity(item.available_quantity?.toString() || '0')
-    setShowModal(true)
-  }
+  const viewItemDetails = (item) => {
+    setSelectedItem(item);
+    setEditQuantity(item.available_quantity?.toString() || "0");
+    setShowModal(true);
+  };
 
   const handleUpdateStock = async () => {
-    if (!selectedItem) return
-    
-    const quantity = parseInt(editQuantity)
+    if (!selectedItem) return;
+
+    const quantity = parseInt(editQuantity);
     if (isNaN(quantity) || quantity < 0) {
-      setError('Quantidade invalida')
-      return
+      setError("Quantidade invalida");
+      return;
     }
-    
-    setUpdating(true)
+
     try {
-      await inventoryService.updateInventory(selectedAccount, selectedItem.item_id, {
-        available_quantity: quantity
-      })
-      setSuccess('Estoque atualizado com sucesso!')
-      setShowModal(false)
-      await loadData()
+      await updateInventory.mutateAsync({
+        accountId: selectedAccount,
+        itemId: selectedItem.item_id,
+        data: { available_quantity: quantity },
+      });
+      setSuccess("Estoque atualizado com sucesso!");
+      setShowModal(false);
     } catch (err) {
-      setError('Erro ao atualizar estoque')
-    } finally {
-      setUpdating(false)
+      setError("Erro ao atualizar estoque");
     }
-  }
+  };
 
   const handleToggleFulfillment = async (item) => {
     try {
-      if (item.shipping?.logistic_type === 'fulfillment') {
-        await inventoryService.optOutFulfillment(selectedAccount, item.item_id)
-        setSuccess('Item removido do Fulfillment')
+      if (item.shipping?.logistic_type === "fulfillment") {
+        await optOutFulfillment.mutateAsync({
+          accountId: selectedAccount,
+          itemId: item.item_id,
+        });
+        setSuccess("Item removido do Fulfillment");
       } else {
-        await inventoryService.optInFulfillment(selectedAccount, item.item_id)
-        setSuccess('Item adicionado ao Fulfillment')
+        await optInFulfillment.mutateAsync({
+          accountId: selectedAccount,
+          itemId: item.item_id,
+        });
+        setSuccess("Item adicionado ao Fulfillment");
       }
-      await loadData()
     } catch (err) {
-      setError('Erro ao alterar Fulfillment')
+      setError("Erro ao alterar Fulfillment");
     }
-  }
+  };
 
-  const formatCurrency = (value, currency = 'BRL') => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: currency
-    }).format(value || 0)
-  }
+  const formatCurrency = (value, currency = "BRL") => {
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: currency,
+    }).format(value || 0);
+  };
 
   const getStockStatus = (quantity) => {
-    if (quantity === 0) return { label: 'Sem Estoque', class: 'danger' }
-    if (quantity <= lowStockThreshold) return { label: 'Estoque Baixo', class: 'warning' }
-    return { label: 'Em Estoque', class: 'success' }
-  }
+    if (quantity === 0) return { label: "Sem Estoque", class: "danger" };
+    if (quantity <= lowStockThreshold)
+      return { label: "Estoque Baixo", class: "warning" };
+    return { label: "Em Estoque", class: "success" };
+  };
 
   const getDisplayProducts = () => {
     switch (activeTab) {
-      case 'low-stock':
-        return lowStockItems
-      case 'fulfillment':
-        return products.filter(p => p.shipping?.logistic_type === 'fulfillment')
+      case "low-stock":
+        return lowStockItems;
+      case "fulfillment":
+        return products.filter(
+          (p) => p.shipping?.logistic_type === "fulfillment",
+        );
       default:
-        return products
+        return products;
     }
-  }
+  };
 
   const calculateStats = () => {
-    const total = products.length
-    const totalStock = products.reduce((sum, p) => sum + (p.available_quantity || 0), 0)
-    const outOfStock = products.filter(p => p.available_quantity === 0).length
-    const lowStock = products.filter(p => p.available_quantity > 0 && p.available_quantity <= lowStockThreshold).length
-    const fulfillment = products.filter(p => p.shipping?.logistic_type === 'fulfillment').length
-    
-    return { total, totalStock, outOfStock, lowStock, fulfillment }
-  }
+    const total = products.length;
+    const totalStock = products.reduce(
+      (sum, p) => sum + (p.available_quantity || 0),
+      0,
+    );
+    const outOfStock = products.filter(
+      (p) => p.available_quantity === 0,
+    ).length;
+    const lowStock = products.filter(
+      (p) =>
+        p.available_quantity > 0 && p.available_quantity <= lowStockThreshold,
+    ).length;
+    const fulfillment = products.filter(
+      (p) => p.shipping?.logistic_type === "fulfillment",
+    ).length;
 
-  const stats = calculateStats()
+    return { total, totalStock, outOfStock, lowStock, fulfillment };
+  };
+
+  const stats = calculateStats();
 
   return (
     <div className="inventory-page">
@@ -166,7 +166,7 @@ function Inventory() {
             value={selectedAccount}
             onChange={(e) => setSelectedAccount(e.target.value)}
           >
-            {accounts.map(acc => (
+            {accounts.map((acc) => (
               <option key={acc.id} value={acc.id}>
                 {acc.nickname || acc.mlUserId}
               </option>
@@ -178,11 +178,13 @@ function Inventory() {
               type="number"
               min="1"
               value={lowStockThreshold}
-              onChange={(e) => setLowStockThreshold(parseInt(e.target.value) || 5)}
+              onChange={(e) =>
+                setLowStockThreshold(parseInt(e.target.value) || 5)
+              }
               onBlur={loadData}
             />
           </div>
-          <button 
+          <button
             className="btn btn-primary"
             onClick={loadData}
             disabled={loading}
@@ -262,23 +264,23 @@ function Inventory() {
 
       {/* Tabs */}
       <div className="inventory-tabs">
-        <button 
-          className={`tab ${activeTab === 'all' ? 'active' : ''}`}
-          onClick={() => setActiveTab('all')}
+        <button
+          className={`tab ${activeTab === "all" ? "active" : ""}`}
+          onClick={() => setActiveTab("all")}
         >
           <span className="material-icons">list</span>
           Todos ({products.length})
         </button>
-        <button 
-          className={`tab ${activeTab === 'low-stock' ? 'active' : ''}`}
-          onClick={() => setActiveTab('low-stock')}
+        <button
+          className={`tab ${activeTab === "low-stock" ? "active" : ""}`}
+          onClick={() => setActiveTab("low-stock")}
         >
           <span className="material-icons">warning</span>
           Estoque Baixo ({lowStockItems.length})
         </button>
-        <button 
-          className={`tab ${activeTab === 'fulfillment' ? 'active' : ''}`}
-          onClick={() => setActiveTab('fulfillment')}
+        <button
+          className={`tab ${activeTab === "fulfillment" ? "active" : ""}`}
+          onClick={() => setActiveTab("fulfillment")}
         >
           <span className="material-icons">warehouse</span>
           Fulfillment ({stats.fulfillment})
@@ -313,11 +315,11 @@ function Inventory() {
               <span className="material-icons">inventory_2</span>
               <h3>Nenhum produto encontrado</h3>
               <p>
-                {activeTab === 'low-stock' 
-                  ? 'Otimo! Nenhum produto com estoque baixo.' 
-                  : activeTab === 'fulfillment'
-                  ? 'Nenhum produto no Fulfillment.'
-                  : 'Seus produtos aparecerao aqui.'}
+                {activeTab === "low-stock"
+                  ? "Otimo! Nenhum produto com estoque baixo."
+                  : activeTab === "fulfillment"
+                    ? "Nenhum produto no Fulfillment."
+                    : "Seus produtos aparecerao aqui."}
               </p>
             </div>
           ) : (
@@ -336,36 +338,55 @@ function Inventory() {
                 </thead>
                 <tbody>
                   {getDisplayProducts().map((product, idx) => {
-                    const stockStatus = getStockStatus(product.available_quantity)
+                    const stockStatus = getStockStatus(
+                      product.available_quantity,
+                    );
                     return (
-                      <tr key={idx} className={stockStatus.class === 'danger' ? 'row-danger' : stockStatus.class === 'warning' ? 'row-warning' : ''}>
+                      <tr
+                        key={idx}
+                        className={
+                          stockStatus.class === "danger"
+                            ? "row-danger"
+                            : stockStatus.class === "warning"
+                              ? "row-warning"
+                              : ""
+                        }
+                      >
                         <td className="product-cell">
                           <div className="product-info">
-                            <span className="product-title">{product.title?.substring(0, 50)}...</span>
-                            <span className="product-id">{product.item_id}</span>
+                            <span className="product-title">
+                              {product.title?.substring(0, 50)}...
+                            </span>
+                            <span className="product-id">
+                              {product.item_id}
+                            </span>
                           </div>
                         </td>
-                        <td className="price">{formatCurrency(product.price, product.currency_id)}</td>
+                        <td className="price">
+                          {formatCurrency(product.price, product.currency_id)}
+                        </td>
                         <td className="quantity">
                           <span className={`qty-badge ${stockStatus.class}`}>
                             {product.available_quantity}
                           </span>
                         </td>
-                        <td className="quantity">{product.sold_quantity || 0}</td>
+                        <td className="quantity">
+                          {product.sold_quantity || 0}
+                        </td>
                         <td>
                           <span className={`status-badge ${stockStatus.class}`}>
                             {stockStatus.label}
                           </span>
                         </td>
                         <td>
-                          {product.shipping?.logistic_type === 'fulfillment' ? (
+                          {product.shipping?.logistic_type === "fulfillment" ? (
                             <span className="fulfillment-badge">
                               <span className="material-icons">warehouse</span>
                               Full
                             </span>
                           ) : (
                             <span className="logistic-type">
-                              {product.shipping?.logistic_type || 'N/A'}
+                              {product.shipping?.logistic_type || "N/A"}
                             </span>
                           )}
                         </td>
@@ -380,17 +401,25 @@ function Inventory() {
                             </button>
                             <button
                               className="btn-icon"
-                              title={product.shipping?.logistic_type === 'fulfillment' ? 'Remover do Fulfillment' : 'Adicionar ao Fulfillment'}
+                              title={
+                                product.shipping?.logistic_type ===
+                                "fulfillment"
+                                  ? "Remover do Fulfillment"
+                                  : "Adicionar ao Fulfillment"
+                              }
                               onClick={() => handleToggleFulfillment(product)}
                             >
                               <span className="material-icons">
-                                {product.shipping?.logistic_type === 'fulfillment' ? 'warehouse' : 'add_business'}
+                                {product.shipping?.logistic_type ===
+                                "fulfillment"
+                                  ? "warehouse"
+                                  : "add_business"}
                               </span>
                             </button>
                           </div>
                         </td>
                       </tr>
-                    )
+                    );
                   })}
                 </tbody>
               </table>
@@ -402,7 +431,7 @@ function Inventory() {
       {/* Edit Stock Modal */}
       {showModal && selectedItem && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Editar Estoque</h2>
               <button className="btn-close" onClick={() => setShowModal(false)}>
@@ -414,15 +443,19 @@ function Inventory() {
                 <h4>{selectedItem.title}</h4>
                 <p className="item-id">{selectedItem.item_id}</p>
               </div>
-              
+
               <div className="stock-info-grid">
                 <div className="stock-info-item">
                   <span className="label">Estoque Atual</span>
-                  <span className="value">{selectedItem.available_quantity}</span>
+                  <span className="value">
+                    {selectedItem.available_quantity}
+                  </span>
                 </div>
                 <div className="stock-info-item">
                   <span className="label">Vendidos</span>
-                  <span className="value">{selectedItem.sold_quantity || 0}</span>
+                  <span className="value">
+                    {selectedItem.sold_quantity || 0}
+                  </span>
                 </div>
               </div>
 
@@ -440,30 +473,33 @@ function Inventory() {
               {selectedItem.variations > 0 && (
                 <div className="variations-note">
                   <span className="material-icons">info</span>
-                  <span>Este produto tem {selectedItem.variations} variacao(oes). Edite cada variacao separadamente no Mercado Livre.</span>
+                  <span>
+                    Este produto tem {selectedItem.variations} variacao(oes).
+                    Edite cada variacao separadamente no Mercado Livre.
+                  </span>
                 </div>
               )}
             </div>
             <div className="modal-footer">
-              <button 
+              <button
                 className="btn btn-secondary"
                 onClick={() => setShowModal(false)}
               >
                 Cancelar
               </button>
-              <button 
+              <button
                 className="btn btn-primary"
                 onClick={handleUpdateStock}
-                disabled={updating}
+                disabled={updateInventory.isPending}
               >
-                {updating ? 'Salvando...' : 'Salvar'}
+                {updateInventory.isPending ? "Salvando..." : "Salvar"}
               </button>
             </div>
           </div>
         </div>
       )}
     </div>
-  )
+  );
 }
 
-export default Inventory
+export default Inventory;

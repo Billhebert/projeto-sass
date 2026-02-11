@@ -234,6 +234,30 @@ class SDKManager {
     return this.execute(accountId, (sdk) => sdk.getAllUserItems(userId, options));
   }
 
+  // Alias para compatibilidade com código antigo que retorna formato paginado
+  async getItemsByUser(accountId, userId, params = {}) {
+    // Usa a API do ML para buscar items por paginação
+    const limit = params.limit || 50;
+    const offset = params.offset || 0;
+    const status = params.status;
+    
+    return this.execute(accountId, async (sdk) => {
+      let url = `/users/${userId}/items/search?limit=${limit}&offset=${offset}`;
+      if (status) url += `&status=${status}`;
+      
+      const response = await sdk.client.get(url);
+      
+      return {
+        data: {
+          results: response.data.results || [],
+          paging: response.data.paging || { total: 0, limit, offset },
+          seller_id: userId,
+        },
+        status: response.status,
+      };
+    });
+  }
+
   // ==================== PEDIDOS ====================
   async searchOrders(accountId, options = {}) {
     return this.execute(accountId, (sdk) => sdk.searchOrders(options));

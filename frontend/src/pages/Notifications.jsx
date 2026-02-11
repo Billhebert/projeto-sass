@@ -1,124 +1,92 @@
-import { useState, useEffect } from 'react'
-import { useAuthStore } from '../store/authStore'
-import api from '../services/api'
-import './Notifications.css'
+import { useState } from "react";
+import {
+  useMLAccounts,
+  useNotifications,
+  useNotificationsStats,
+  useMarkNotificationRead,
+  useMarkAllNotificationsRead,
+} from "../hooks/useApi";
+import "./Notifications.css";
 
 function Notifications() {
-  const { token } = useAuthStore()
-  const [accounts, setAccounts] = useState([])
-  const [selectedAccount, setSelectedAccount] = useState('')
-  const [notifications, setNotifications] = useState([])
-  const [stats, setStats] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const [filter, setFilter] = useState('unread')
+  // Load accounts and select first one
+  const { data: accounts = [] } = useMLAccounts();
+  const [selectedAccount, setSelectedAccount] = useState(accounts[0]?.id || "");
+  const [filter, setFilter] = useState("unread");
 
-  useEffect(() => {
-    loadAccounts()
-  }, [])
-
-  useEffect(() => {
-    if (selectedAccount) {
-      loadNotifications()
-      loadStats()
+  // Update selected account when accounts load
+  useState(() => {
+    if (accounts.length > 0 && !selectedAccount) {
+      setSelectedAccount(accounts[0].id);
     }
-  }, [selectedAccount, filter])
+  }, [accounts]);
 
-  const loadAccounts = async () => {
-    try {
-      const response = await api.get('/ml-accounts')
-      const accountsList = response.data.data?.accounts || response.data.accounts || []
-      setAccounts(accountsList)
-      if (accountsList.length > 0) {
-        setSelectedAccount(accountsList[0].id)
-      }
-    } catch (err) {
-      setError('Erro ao carregar contas')
-    }
-  }
+  // Fetch data using React Query hooks
+  const { data: notifications = [], isLoading: loading } = useNotifications(
+    selectedAccount,
+    filter,
+  );
+  const { data: stats } = useNotificationsStats(selectedAccount);
 
-  const loadNotifications = async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const endpoint = filter === 'unread'
-        ? `/notifications/${selectedAccount}/unread`
-        : `/notifications/${selectedAccount}`
-      const response = await api.get(endpoint)
-      setNotifications(response.data.notifications || [])
-    } catch (err) {
-      setError('Erro ao carregar notificacoes')
-      setNotifications([])
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const loadStats = async () => {
-    try {
-      const response = await api.get(`/notifications/${selectedAccount}/stats`)
-      setStats(response.data)
-    } catch (err) {
-      console.error('Erro ao carregar estatisticas:', err)
-    }
-  }
+  // Mutations
+  const markAsReadMutation = useMarkNotificationRead();
+  const markAllAsReadMutation = useMarkAllNotificationsRead();
 
   const markAsRead = async (notificationId) => {
     try {
-      await api.put(`/notifications/${selectedAccount}/${notificationId}/read`)
-      await loadNotifications()
-      await loadStats()
+      await markAsReadMutation.mutateAsync({
+        accountId: selectedAccount,
+        notificationId,
+      });
     } catch (err) {
-      setError('Erro ao marcar como lida')
+      console.error("Erro ao marcar como lida:", err);
     }
-  }
+  };
 
   const markAllAsRead = async () => {
     try {
-      await api.put(`/notifications/${selectedAccount}/read-all`)
-      await loadNotifications()
-      await loadStats()
+      await markAllAsReadMutation.mutateAsync({ accountId: selectedAccount });
     } catch (err) {
-      setError('Erro ao marcar todas como lidas')
+      console.error("Erro ao marcar todas como lidas:", err);
     }
-  }
+  };
 
   const getTopicIcon = (topic) => {
     const icons = {
-      'orders_v2': 'shopping_cart',
-      'questions': 'help',
-      'items': 'inventory_2',
-      'messages': 'chat',
-      'shipments': 'local_shipping',
-      'claims': 'report_problem',
-      'payments': 'payment'
-    }
-    return icons[topic] || 'notifications'
-  }
+      orders_v2: "shopping_cart",
+      questions: "help",
+      items: "inventory_2",
+      messages: "chat",
+      shipments: "local_shipping",
+      claims: "report_problem",
+      payments: "payment",
+    };
+    return icons[topic] || "notifications";
+  };
 
   const getTopicLabel = (topic) => {
     const labels = {
-      'orders_v2': 'Pedido',
-      'questions': 'Pergunta',
-      'items': 'Anuncio',
-      'messages': 'Mensagem',
-      'shipments': 'Envio',
-      'claims': 'Reclamacao',
-      'payments': 'Pagamento'
-    }
-    return labels[topic] || topic
-  }
+      orders_v2: "Pedido",
+      questions: "Pergunta",
+      items: "Anuncio",
+      messages: "Mensagem",
+      shipments: "Envio",
+      claims: "Reclamacao",
+      payments: "Pagamento",
+    };
+    return labels[topic] || topic;
+  };
 
   const formatDate = (dateString) => {
-    if (!dateString) return ''
-    const date = new Date(dateString)
-    const now = new Date()
-    const diff = Math.floor((now - date) / 1000 / 60)
+    if (!dateString) return "";
+    const date = new Date(dateString);
+    const now = new Date();
+    const diff = Math.floor((now - date) / 1000 / 60);
 
-    if (diff < 60) return `${diff} min atras`
-    if (diff < 1440) return `${Math.floor(diff / 60)}h atras`
-    return date.toLocaleString('pt-BR')
-  }
+    if (diff < 60) return `${diff} min atras`;
+    if (diff < 1440) return `${Math.floor(diff / 60)}h atras`;
+    return date.toLocaleString("pt-BR");
+  };
 
   return (
     <div className="notifications-page">
@@ -136,7 +104,7 @@ function Notifications() {
             value={selectedAccount}
             onChange={(e) => setSelectedAccount(e.target.value)}
           >
-            {accounts.map(acc => (
+            {accounts.map((acc) => (
               <option key={acc.id} value={acc.id}>
                 {acc.nickname || acc.mlUserId}
               </option>
@@ -146,6 +114,7 @@ function Notifications() {
             <button
               className="btn btn-secondary"
               onClick={markAllAsRead}
+              disabled={markAllAsReadMutation.isPending}
             >
               <span className="material-icons">done_all</span>
               Marcar todas como lidas
@@ -179,7 +148,9 @@ function Notifications() {
               <span className="material-icons">shopping_cart</span>
             </div>
             <div className="stat-info">
-              <span className="stat-value">{stats.byTopic?.orders_v2 || 0}</span>
+              <span className="stat-value">
+                {stats.byTopic?.orders_v2 || 0}
+              </span>
               <span className="stat-label">Pedidos</span>
             </div>
           </div>
@@ -188,7 +159,9 @@ function Notifications() {
               <span className="material-icons">help</span>
             </div>
             <div className="stat-info">
-              <span className="stat-value">{stats.byTopic?.questions || 0}</span>
+              <span className="stat-value">
+                {stats.byTopic?.questions || 0}
+              </span>
               <span className="stat-label">Perguntas</span>
             </div>
           </div>
@@ -198,8 +171,8 @@ function Notifications() {
       <div className="filters-bar">
         <div className="filter-tabs">
           <button
-            className={`filter-tab ${filter === 'unread' ? 'active' : ''}`}
-            onClick={() => setFilter('unread')}
+            className={`filter-tab ${filter === "unread" ? "active" : ""}`}
+            onClick={() => setFilter("unread")}
           >
             <span className="material-icons">mark_email_unread</span>
             Nao Lidas
@@ -208,21 +181,14 @@ function Notifications() {
             )}
           </button>
           <button
-            className={`filter-tab ${filter === 'all' ? 'active' : ''}`}
-            onClick={() => setFilter('all')}
+            className={`filter-tab ${filter === "all" ? "active" : ""}`}
+            onClick={() => setFilter("all")}
           >
             <span className="material-icons">list</span>
             Todas
           </button>
         </div>
       </div>
-
-      {error && (
-        <div className="alert alert-danger">
-          <span className="material-icons">error</span>
-          {error}
-        </div>
-      )}
 
       <div className="notifications-list">
         {loading ? (
@@ -235,30 +201,35 @@ function Notifications() {
             <span className="material-icons">notifications_none</span>
             <h3>Nenhuma notificacao encontrada</h3>
             <p>
-              {filter === 'unread'
-                ? 'Voce nao tem notificacoes nao lidas!'
-                : 'As notificacoes de webhooks aparecerao aqui'
-              }
+              {filter === "unread"
+                ? "Voce nao tem notificacoes nao lidas!"
+                : "As notificacoes de webhooks aparecerao aqui"}
             </p>
           </div>
         ) : (
-          notifications.map(notification => (
+          notifications.map((notification) => (
             <div
               key={notification._id}
-              className={`notification-item ${!notification.read ? 'unread' : ''}`}
+              className={`notification-item ${!notification.read ? "unread" : ""}`}
               onClick={() => !notification.read && markAsRead(notification._id)}
             >
               <div className={`notification-icon ${notification.topic}`}>
-                <span className="material-icons">{getTopicIcon(notification.topic)}</span>
+                <span className="material-icons">
+                  {getTopicIcon(notification.topic)}
+                </span>
               </div>
               <div className="notification-content">
                 <div className="notification-header">
-                  <span className="notification-type">{getTopicLabel(notification.topic)}</span>
-                  <span className="notification-time">{formatDate(notification.receivedAt)}</span>
+                  <span className="notification-type">
+                    {getTopicLabel(notification.topic)}
+                  </span>
+                  <span className="notification-time">
+                    {formatDate(notification.receivedAt)}
+                  </span>
                 </div>
                 <div className="notification-body">
                   <p className="notification-resource">
-                    {notification.resource || 'N/A'}
+                    {notification.resource || "N/A"}
                   </p>
                   {notification.attempts && (
                     <span className="notification-attempts">
@@ -277,7 +248,7 @@ function Notifications() {
         )}
       </div>
     </div>
-  )
+  );
 }
 
-export default Notifications
+export default Notifications;

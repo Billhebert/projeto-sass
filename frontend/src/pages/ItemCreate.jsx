@@ -1,205 +1,176 @@
-import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useAuthStore } from '../store/authStore'
-import api from '../services/api'
-import './ItemCreate.css'
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  useMLAccounts,
+  useListingTypes,
+  useSearchCategories,
+  usePredictCategoryMutation,
+  useCategoryAttributes,
+  useCreateItem,
+} from "../hooks/useApi";
+import "./ItemCreate.css";
 
 function ItemCreate() {
-  const navigate = useNavigate()
-  const { token } = useAuthStore()
-  const [accounts, setAccounts] = useState([])
-  const [selectedAccount, setSelectedAccount] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const [success, setSuccess] = useState(null)
-  
-  const [categories, setCategories] = useState([])
-  const [selectedCategory, setSelectedCategory] = useState(null)
-  const [categoryAttributes, setCategoryAttributes] = useState([])
-  const [listingTypes, setListingTypes] = useState([])
-  const [searchCategory, setSearchCategory] = useState('')
-  const [predictedCategory, setPredictedCategory] = useState(null)
+  const navigate = useNavigate();
+
+  // React Query hooks
+  const { data: accounts = [], isLoading: accountsLoading } = useMLAccounts();
+  const { data: listingTypes = [], isLoading: listingTypesLoading } =
+    useListingTypes();
+  const createItemMutation = useCreateItem();
+  const predictCategoryMutation = usePredictCategoryMutation();
+
+  // State
+  const [selectedAccount, setSelectedAccount] = useState("");
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
+
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [searchCategory, setSearchCategory] = useState("");
+  const [predictedCategory, setPredictedCategory] = useState(null);
+
+  // Fetch categories based on search
+  const { data: categories = [], refetch: searchCategories } =
+    useSearchCategories(searchCategory);
+
+  // Fetch category attributes
+  const { data: categoryAttributes = [] } = useCategoryAttributes(
+    selectedCategory?.id || formData.categoryId,
+  );
 
   const [formData, setFormData] = useState({
-    title: '',
-    categoryId: '',
-    price: '',
-    currencyId: 'BRL',
+    title: "",
+    categoryId: "",
+    price: "",
+    currencyId: "BRL",
     availableQuantity: 1,
-    buyingMode: 'buy_it_now',
-    condition: 'new',
-    listingTypeId: 'gold_special',
-    description: '',
+    buyingMode: "buy_it_now",
+    condition: "new",
+    listingTypeId: "gold_special",
+    description: "",
     pictures: [],
-    attributes: {}
-  })
+    attributes: {},
+  });
 
+  // Set first account as selected when accounts load
   useEffect(() => {
-    loadAccounts()
-    loadListingTypes()
-  }, [])
+    if (accounts.length > 0 && !selectedAccount) {
+      setSelectedAccount(accounts[0].id);
+    }
+  }, [accounts, selectedAccount]);
 
+  // Predict category when title changes
   useEffect(() => {
-    if (formData.title.length > 10) {
-      predictCategory(formData.title)
-    }
-  }, [formData.title])
+    if (formData.title.length > 10 && !formData.categoryId) {
+      const timeoutId = setTimeout(() => {
+        predictCategoryMutation.mutate(formData.title, {
+          onSuccess: (category) => {
+            setPredictedCategory(category);
+          },
+          onError: (err) => {
+            console.error("Erro ao prever categoria:", err);
+          },
+        });
+      }, 500);
 
-  useEffect(() => {
-    if (formData.categoryId) {
-      loadCategoryAttributes(formData.categoryId)
+      return () => clearTimeout(timeoutId);
     }
-  }, [formData.categoryId])
-
-  const loadAccounts = async () => {
-    try {
-      const response = await api.get('/ml-accounts')
-      const accountsList = response.data.data?.accounts || response.data.accounts || []
-      setAccounts(accountsList)
-      if (accountsList.length > 0) {
-        setSelectedAccount(accountsList[0].id)
-      }
-    } catch (err) {
-      setError('Erro ao carregar contas')
-    }
-  }
-
-  const loadListingTypes = async () => {
-    try {
-      const response = await api.get('/catalog/listing-types')
-      setListingTypes(response.data.data || response.data.listingTypes || [])
-    } catch (err) {
-      console.error('Erro ao carregar tipos de listagem:', err)
-      // Fallback listing types for ML Brazil
-      setListingTypes([
-        { id: 'gold_special', name: 'Classico' },
-        { id: 'gold_pro', name: 'Premium' },
-        { id: 'gold', name: 'Ouro' },
-        { id: 'silver', name: 'Prata' },
-        { id: 'bronze', name: 'Bronze' },
-        { id: 'free', name: 'Gratis' }
-      ])
-    }
-  }
-
-  const searchCategories = async () => {
-    if (!searchCategory.trim()) return
-    try {
-      const response = await api.get(`/catalog/search?q=${encodeURIComponent(searchCategory)}`)
-      setCategories(response.data.results || [])
-    } catch (err) {
-      setError('Erro ao buscar categorias')
-    }
-  }
-
-  const predictCategory = async (title) => {
-    try {
-      const response = await api.get(`/catalog/predict?title=${encodeURIComponent(title)}`)
-      setPredictedCategory(response.data.category)
-    } catch (err) {
-      console.error('Erro ao prever categoria:', err)
-    }
-  }
-
-  const loadCategoryAttributes = async (categoryId) => {
-    try {
-      const response = await api.get(`/catalog/categories/${categoryId}/attributes`)
-      setCategoryAttributes(response.data.attributes || [])
-    } catch (err) {
-      console.error('Erro ao carregar atributos:', err)
-    }
-  }
+  }, [formData.title, formData.categoryId]);
 
   const selectCategory = (category) => {
-    setSelectedCategory(category)
-    setFormData(prev => ({ ...prev, categoryId: category.id }))
-    setCategories([])
-    setSearchCategory('')
-  }
+    setSelectedCategory(category);
+    setFormData((prev) => ({ ...prev, categoryId: category.id }));
+    setSearchCategory("");
+    setPredictedCategory(null);
+  };
 
   const handleInputChange = (e) => {
-    const { name, value } = e.target
-    setFormData(prev => ({ ...prev, [name]: value }))
-  }
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
 
   const handleAttributeChange = (attrId, value) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       attributes: {
         ...prev.attributes,
-        [attrId]: value
-      }
-    }))
-  }
+        [attrId]: value,
+      },
+    }));
+  };
 
   const handlePictureAdd = () => {
-    const url = prompt('URL da imagem:')
+    const url = prompt("URL da imagem:");
     if (url) {
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
-        pictures: [...prev.pictures, { source: url }]
-      }))
+        pictures: [...prev.pictures, { source: url }],
+      }));
     }
-  }
+  };
 
   const handlePictureRemove = (index) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      pictures: prev.pictures.filter((_, i) => i !== index)
-    }))
-  }
+      pictures: prev.pictures.filter((_, i) => i !== index),
+    }));
+  };
 
   const handleSubmit = async (e) => {
-    e.preventDefault()
-    
+    e.preventDefault();
+
     if (!selectedAccount) {
-      setError('Selecione uma conta')
-      return
+      setError("Selecione uma conta");
+      return;
     }
 
     if (!formData.categoryId) {
-      setError('Selecione uma categoria')
-      return
+      setError("Selecione uma categoria");
+      return;
     }
 
     if (formData.pictures.length === 0) {
-      setError('Adicione pelo menos uma imagem')
-      return
+      setError("Adicione pelo menos uma imagem");
+      return;
     }
 
-    setLoading(true)
-    setError(null)
+    setError(null);
 
-    try {
-      const itemData = {
-        title: formData.title,
-        category_id: formData.categoryId,
-        price: parseFloat(formData.price),
-        currency_id: formData.currencyId,
-        available_quantity: parseInt(formData.availableQuantity),
-        buying_mode: formData.buyingMode,
-        condition: formData.condition,
-        listing_type_id: formData.listingTypeId,
-        description: { plain_text: formData.description },
-        pictures: formData.pictures,
-        attributes: Object.entries(formData.attributes).map(([id, value]) => ({
-          id,
-          value_name: value
-        }))
-      }
+    const itemData = {
+      title: formData.title,
+      category_id: formData.categoryId,
+      price: parseFloat(formData.price),
+      currency_id: formData.currencyId,
+      available_quantity: parseInt(formData.availableQuantity),
+      buying_mode: formData.buyingMode,
+      condition: formData.condition,
+      listing_type_id: formData.listingTypeId,
+      description: { plain_text: formData.description },
+      pictures: formData.pictures,
+      attributes: Object.entries(formData.attributes).map(([id, value]) => ({
+        id,
+        value_name: value,
+      })),
+    };
 
-      const response = await api.post(`/items/${selectedAccount}`, itemData)
-      
-      setSuccess('Anuncio criado com sucesso!')
-      setTimeout(() => {
-        navigate('/items')
-      }, 2000)
-    } catch (err) {
-      setError(err.response?.data?.error || 'Erro ao criar anuncio')
-    } finally {
-      setLoading(false)
-    }
-  }
+    createItemMutation.mutate(
+      { accountId: selectedAccount, itemData },
+      {
+        onSuccess: () => {
+          setSuccess("Anuncio criado com sucesso!");
+          setTimeout(() => {
+            navigate("/items");
+          }, 2000);
+        },
+        onError: (err) => {
+          setError(err.response?.data?.error || "Erro ao criar anuncio");
+        },
+      },
+    );
+  };
+
+  const isLoading =
+    accountsLoading || listingTypesLoading || createItemMutation.isPending;
 
   return (
     <div className="item-create-page">
@@ -216,8 +187,9 @@ function ItemCreate() {
             className="account-select"
             value={selectedAccount}
             onChange={(e) => setSelectedAccount(e.target.value)}
+            disabled={accountsLoading}
           >
-            {accounts.map(acc => (
+            {accounts.map((acc) => (
               <option key={acc.id} value={acc.id}>
                 {acc.nickname || acc.mlUserId}
               </option>
@@ -284,8 +256,8 @@ function ItemCreate() {
                   type="button"
                   className="btn-icon"
                   onClick={() => {
-                    setSelectedCategory(null)
-                    setFormData(prev => ({ ...prev, categoryId: '' }))
+                    setSelectedCategory(null);
+                    setFormData((prev) => ({ ...prev, categoryId: "" }));
                   }}
                 >
                   <span className="material-icons">close</span>
@@ -298,16 +270,23 @@ function ItemCreate() {
                   value={searchCategory}
                   onChange={(e) => setSearchCategory(e.target.value)}
                   placeholder="Buscar categoria..."
-                  onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), searchCategories())}
+                  onKeyDown={(e) =>
+                    e.key === "Enter" &&
+                    (e.preventDefault(), searchCategories())
+                  }
                 />
-                <button type="button" onClick={searchCategories} className="btn btn-secondary">
+                <button
+                  type="button"
+                  onClick={() => searchCategories()}
+                  className="btn btn-secondary"
+                >
                   <span className="material-icons">search</span>
                 </button>
               </div>
             )}
             {categories.length > 0 && (
               <div className="category-results">
-                {categories.map(cat => (
+                {categories.map((cat) => (
                   <button
                     key={cat.id}
                     type="button"
@@ -370,18 +349,13 @@ function ItemCreate() {
               name="listingTypeId"
               value={formData.listingTypeId}
               onChange={handleInputChange}
+              disabled={listingTypesLoading}
             >
-              {listingTypes.map(lt => (
+              {listingTypes.map((lt) => (
                 <option key={lt.id} value={lt.id}>
                   {lt.name}
                 </option>
               ))}
-              {listingTypes.length === 0 && (
-                <>
-                  <option value="gold_special">Classico</option>
-                  <option value="gold_pro">Premium</option>
-                </>
-              )}
             </select>
           </div>
         </div>
@@ -414,7 +388,9 @@ function ItemCreate() {
               <span>Adicionar Imagem</span>
             </button>
           </div>
-          <p className="form-help">Adicione URLs de imagens do produto (minimo 1)</p>
+          <p className="form-help">
+            Adicione URLs de imagens do produto (minimo 1)
+          </p>
         </div>
 
         <div className="form-section">
@@ -442,34 +418,42 @@ function ItemCreate() {
             </h2>
 
             <div className="attributes-grid">
-              {categoryAttributes.filter(attr => attr.tags?.required).map(attr => (
-                <div key={attr.id} className="form-group">
-                  <label>
-                    {attr.name}
-                    {attr.tags?.required && <span className="required">*</span>}
-                  </label>
-                  {attr.values?.length > 0 ? (
-                    <select
-                      value={formData.attributes[attr.id] || ''}
-                      onChange={(e) => handleAttributeChange(attr.id, e.target.value)}
-                    >
-                      <option value="">Selecione...</option>
-                      {attr.values.map(val => (
-                        <option key={val.id} value={val.name}>
-                          {val.name}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      type="text"
-                      value={formData.attributes[attr.id] || ''}
-                      onChange={(e) => handleAttributeChange(attr.id, e.target.value)}
-                      placeholder={attr.hint || ''}
-                    />
-                  )}
-                </div>
-              ))}
+              {categoryAttributes
+                .filter((attr) => attr.tags?.required)
+                .map((attr) => (
+                  <div key={attr.id} className="form-group">
+                    <label>
+                      {attr.name}
+                      {attr.tags?.required && (
+                        <span className="required">*</span>
+                      )}
+                    </label>
+                    {attr.values?.length > 0 ? (
+                      <select
+                        value={formData.attributes[attr.id] || ""}
+                        onChange={(e) =>
+                          handleAttributeChange(attr.id, e.target.value)
+                        }
+                      >
+                        <option value="">Selecione...</option>
+                        {attr.values.map((val) => (
+                          <option key={val.id} value={val.name}>
+                            {val.name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={formData.attributes[attr.id] || ""}
+                        onChange={(e) =>
+                          handleAttributeChange(attr.id, e.target.value)
+                        }
+                        placeholder={attr.hint || ""}
+                      />
+                    )}
+                  </div>
+                ))}
             </div>
           </div>
         )}
@@ -478,16 +462,16 @@ function ItemCreate() {
           <button
             type="button"
             className="btn btn-secondary"
-            onClick={() => navigate('/items')}
+            onClick={() => navigate("/items")}
           >
             Cancelar
           </button>
           <button
             type="submit"
             className="btn btn-primary"
-            disabled={loading}
+            disabled={isLoading}
           >
-            {loading ? (
+            {isLoading ? (
               <>
                 <div className="spinner small"></div>
                 Publicando...
@@ -502,7 +486,7 @@ function ItemCreate() {
         </div>
       </form>
     </div>
-  )
+  );
 }
 
-export default ItemCreate
+export default ItemCreate;

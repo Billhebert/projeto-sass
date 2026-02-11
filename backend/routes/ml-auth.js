@@ -11,7 +11,7 @@
 
 const express = require("express");
 const logger = require("../logger");
-const { authenticateToken } = require("../middleware/auth");
+const { authenticateToken, optionalAuth } = require("../middleware/auth");
 const oauthService = require("../services/ml-oauth-invisible");
 
 const router = express.Router();
@@ -88,7 +88,7 @@ const logInfo = (action, data = {}) => {
  *
  * O frontend deve redirecionar o usuário para esta URL
  */
-router.get("/url", async (req, res) => {
+router.get("/url", optionalAuth, async (req, res) => {
   try {
     const userId = req.user?.userId || req.query.userId || "anonymous";
     logInfo("ML_AUTH_URL_REQUEST", { userId });
@@ -171,7 +171,7 @@ router.get("/callback", async (req, res) => {
  * Verifica o status da conexão ML do usuário
  * Opcional: pode ser acessado sem autenticação para status público
  */
-router.get("/status", async (req, res) => {
+router.get("/status", optionalAuth, async (req, res) => {
   try {
     const userId = req.user?.userId;
 

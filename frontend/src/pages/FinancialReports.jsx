@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   LineChart,
   Line,
@@ -14,29 +14,17 @@ import {
   Pie,
   Cell,
 } from "recharts";
-import api from "../services/api";
+import { useMLAccounts, useFinancialReportsData } from "../hooks/useApi";
 import { exportFinancialReportToCSV } from "../utils/export";
 import { exportFinancialReportToPDF } from "../utils/pdfExportUtils";
 import "./FinancialReports.css";
 
 function FinancialReports() {
   const [selectedAccount, setSelectedAccount] = useState("");
-  const [accounts, setAccounts] = useState([]);
   const [activeTab, setActiveTab] = useState("overview");
-  const [loading, setLoading] = useState(true);
   const [dateRange, setDateRange] = useState({ start: "", end: "" });
   const [reportType, setReportType] = useState("releases");
-  const [reports, setReports] = useState([]);
-  const [stats, setStats] = useState({
-    totalReceived: 0,
-    totalFees: 0,
-    netProfit: 0,
-    pendingBalance: 0,
-    refunds: 0,
-    chargebacks: 0,
-  });
-  const [chartData, setChartData] = useState([]);
-  const [feeBreakdown, setFeeBreakdown] = useState([]);
+  const [reports] = useState([]);
 
   const COLORS = [
     "#3b82f6",
@@ -56,189 +44,147 @@ function FinancialReports() {
       start: start.toISOString().split("T")[0],
       end: end.toISOString().split("T")[0],
     });
-    fetchAccounts();
   }, []);
 
-  const fetchAccounts = async () => {
-    try {
-      const response = await api.get("/ml-accounts");
-      if (response.data.success) {
-        const accountsList = response.data.data?.accounts || [];
-        setAccounts(accountsList);
-        if (accountsList.length > 0) {
-          setSelectedAccount(accountsList[0].id || accountsList[0].accountId);
-        }
-      }
-    } catch (error) {
-      console.error("Error fetching accounts:", error);
-    }
-  };
+  // Fetch accounts with React Query
+  const { data: accounts = [], isLoading: accountsLoading } = useMLAccounts();
 
+  // Set first account as default
   useEffect(() => {
-    if (selectedAccount && dateRange.start && dateRange.end) {
-      fetchFinancialData();
+    if (accounts.length > 0 && !selectedAccount && !accountsLoading) {
+      setSelectedAccount(accounts[0].id || accounts[0].accountId);
     }
-  }, [selectedAccount, dateRange]);
+  }, [accounts, selectedAccount, accountsLoading]);
 
-  const fetchFinancialData = async () => {
-    try {
-      setLoading(true);
+  // Fetch financial data with React Query
+  const { data: financialData, isLoading: dataLoading } =
+    useFinancialReportsData(selectedAccount, dateRange);
 
-      // Fetch ALL orders with auto-pagination (no limits!)
-      let allOrders = [];
-      let offset = 0;
-      const limit = 200;
-      let hasMore = true;
-
-      while (hasMore) {
-        const response = await api.get(
-          `/orders/${selectedAccount}?limit=${limit}&offset=${offset}&date_created.from=${dateRange.start}T00:00:00.000Z&date_created.to=${dateRange.end}T23:59:59.999Z`,
-        );
-
-        if (!response.data.success) {
-          throw new Error("Failed to fetch orders");
-        }
-
-        const orders = response.data.data?.orders || [];
-        allOrders = allOrders.concat(orders);
-
-        if (orders.length < limit) {
-          hasMore = false;
-        } else {
-          offset += limit;
-        }
-      }
-
-      // Fetch analytics
-      const analyticsResponse = await api.get(
-        `/orders/${selectedAccount}/analytics?date_created.from=${dateRange.start}T00:00:00.000Z&date_created.to=${dateRange.end}T23:59:59.999Z`,
-      );
-
-      const paidOrders = allOrders.filter(
-        (o) => o.status === "paid" || o.status === "confirmed",
-      );
-
-      // Get real fees from analytics
-      const analyticsData = analyticsResponse.data.data || {};
-      const realFees = analyticsData.fees || {};
-      const totalMarketplaceFees = realFees.marketplaceFees || 0;
-      const totalShippingCost = realFees.shippingCost || 0;
-      const totalItemFees = realFees.totalFees || 0;
-
-      // Calculate real statistics
-      const totalReceived = paidOrders.reduce(
-        (sum, o) => sum + (o.totalAmount || 0),
-        0,
-      );
-
-      // Use real fees if available, otherwise estimate
-      const totalFees =
-        totalMarketplaceFees > 0 || totalItemFees > 0
-          ? totalMarketplaceFees + totalItemFees
-          : totalReceived * 0.12;
-
-      const netProfit = totalReceived - totalFees - totalShippingCost;
-      const cancelledOrders = allOrders.filter((o) => o.status === "cancelled");
-      const refunds = cancelledOrders.reduce(
-        (sum, o) => sum + (o.totalAmount || 0),
-        0,
-      );
-
-      const calculatedStats = {
-        totalReceived: totalReceived,
-        totalFees: totalFees,
-        netProfit: netProfit,
-        pendingBalance: 0, // Not available from orders
-        refunds: refunds,
-        chargebacks: 0, // Not available from orders
+  // Calculate stats and chart data from fetched data
+  const { stats, chartData, feeBreakdown } = useMemo(() => {
+    if (!financialData) {
+      return {
+        stats: {
+          totalReceived: 0,
+          totalFees: 0,
+          netProfit: 0,
+          pendingBalance: 0,
+          refunds: 0,
+          chargebacks: 0,
+        },
+        chartData: [{ date: "Sem dados", received: 0, fees: 0, net: 0 }],
+        feeBreakdown: [],
       };
+    }
 
-      // Group orders by date for chart
-      const ordersByDate = {};
-      paidOrders.forEach((order) => {
-        const dateKey = new Date(order.dateCreated).toLocaleDateString(
-          "pt-BR",
-          { day: "2-digit", month: "2-digit" },
-        );
-        if (!ordersByDate[dateKey]) {
-          ordersByDate[dateKey] = { received: 0, count: 0 };
-        }
-        ordersByDate[dateKey].received += order.totalAmount || 0;
-        ordersByDate[dateKey].count += 1;
+    const { orders, analytics } = financialData;
+    const paidOrders = orders.filter(
+      (o) => o.status === "paid" || o.status === "confirmed",
+    );
+
+    // Get real fees from analytics
+    const realFees = analytics.fees || {};
+    const totalMarketplaceFees = realFees.marketplaceFees || 0;
+    const totalShippingCost = realFees.shippingCost || 0;
+    const totalItemFees = realFees.totalFees || 0;
+
+    // Calculate real statistics
+    const totalReceived = paidOrders.reduce(
+      (sum, o) => sum + (o.totalAmount || 0),
+      0,
+    );
+
+    // Use real fees if available, otherwise estimate
+    const totalFees =
+      totalMarketplaceFees > 0 || totalItemFees > 0
+        ? totalMarketplaceFees + totalItemFees
+        : totalReceived * 0.12;
+
+    const netProfit = totalReceived - totalFees - totalShippingCost;
+    const cancelledOrders = orders.filter((o) => o.status === "cancelled");
+    const refunds = cancelledOrders.reduce(
+      (sum, o) => sum + (o.totalAmount || 0),
+      0,
+    );
+
+    const calculatedStats = {
+      totalReceived: totalReceived,
+      totalFees: totalFees,
+      netProfit: netProfit,
+      pendingBalance: 0,
+      refunds: refunds,
+      chargebacks: 0,
+    };
+
+    // Group orders by date for chart
+    const ordersByDate = {};
+    paidOrders.forEach((order) => {
+      const dateKey = new Date(order.dateCreated).toLocaleDateString("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
       });
+      if (!ordersByDate[dateKey]) {
+        ordersByDate[dateKey] = { received: 0, count: 0 };
+      }
+      ordersByDate[dateKey].received += order.totalAmount || 0;
+      ordersByDate[dateKey].count += 1;
+    });
 
-      const calculatedChartData = Object.keys(ordersByDate)
-        .sort((a, b) => {
-          const [dayA, monthA] = a.split("/");
-          const [dayB, monthB] = b.split("/");
-          return (
-            parseInt(monthA) * 100 +
-            parseInt(dayA) -
-            (parseInt(monthB) * 100 + parseInt(dayB))
-          );
-        })
-        .map((dateKey) => ({
-          date: dateKey,
-          received: Math.round(ordersByDate[dateKey].received),
-          fees: Math.round(
+    const calculatedChartData = Object.keys(ordersByDate)
+      .sort((a, b) => {
+        const [dayA, monthA] = a.split("/");
+        const [dayB, monthB] = b.split("/");
+        return (
+          parseInt(monthA) * 100 +
+          parseInt(dayA) -
+          (parseInt(monthB) * 100 + parseInt(dayB))
+        );
+      })
+      .map((dateKey) => ({
+        date: dateKey,
+        received: Math.round(ordersByDate[dateKey].received),
+        fees: Math.round(
+          (ordersByDate[dateKey].received * totalFees) / totalReceived || 0,
+        ),
+        net: Math.round(
+          ordersByDate[dateKey].received -
             (ordersByDate[dateKey].received * totalFees) / totalReceived || 0,
-          ),
-          net: Math.round(
-            ordersByDate[dateKey].received -
-              (ordersByDate[dateKey].received * totalFees) / totalReceived || 0,
-          ),
-        }));
+        ),
+      }));
 
-      // Fee breakdown with real data
-      const feePercentage =
-        totalReceived > 0 ? (totalFees / totalReceived) * 100 : 0;
-      const shippingPercentage =
-        totalReceived > 0 ? (totalShippingCost / totalReceived) * 100 : 0;
+    // Fee breakdown with real data
+    const feePercentage =
+      totalReceived > 0 ? (totalFees / totalReceived) * 100 : 0;
+    const shippingPercentage =
+      totalReceived > 0 ? (totalShippingCost / totalReceived) * 100 : 0;
 
-      const calculatedFeeBreakdown = [
-        {
-          name: "Taxa ML/MP",
-          value: Math.round(totalFees),
-          percentage: Math.round(feePercentage * 10) / 10,
-        },
-        {
-          name: "Frete",
-          value: Math.round(totalShippingCost),
-          percentage: Math.round(shippingPercentage * 10) / 10,
-        },
-        {
-          name: "Outros",
-          value: 0,
-          percentage: 0,
-        },
-      ];
+    const calculatedFeeBreakdown = [
+      {
+        name: "Taxa ML/MP",
+        value: Math.round(totalFees),
+        percentage: Math.round(feePercentage * 10) / 10,
+      },
+      {
+        name: "Frete",
+        value: Math.round(totalShippingCost),
+        percentage: Math.round(shippingPercentage * 10) / 10,
+      },
+      {
+        name: "Outros",
+        value: 0,
+        percentage: 0,
+      },
+    ];
 
-      setStats(calculatedStats);
-      setChartData(
+    return {
+      stats: calculatedStats,
+      chartData:
         calculatedChartData.length > 0
           ? calculatedChartData
           : [{ date: "Sem dados", received: 0, fees: 0, net: 0 }],
-      );
-      setFeeBreakdown(calculatedFeeBreakdown);
-      setReports([]); // No reports available from orders API
-    } catch (error) {
-      console.error("Error fetching financial data:", error);
-      // Set empty data on error
-      setStats({
-        totalReceived: 0,
-        totalFees: 0,
-        netProfit: 0,
-        pendingBalance: 0,
-        refunds: 0,
-        chargebacks: 0,
-      });
-      setChartData([{ date: "Erro", received: 0, fees: 0, net: 0 }]);
-      setFeeBreakdown([]);
-      setReports([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+      feeBreakdown: calculatedFeeBreakdown,
+    };
+  }, [financialData]);
 
   const handleExportCSV = () => {
     exportFinancialReportToCSV(stats, chartData, feeBreakdown, dateRange);
@@ -249,17 +195,11 @@ function FinancialReports() {
   };
 
   const handleGenerateReport = async () => {
-    try {
-      alert(`Gerando relatorio de ${reportType} para o periodo selecionado...`);
-      // In real implementation, call MP API to generate report
-    } catch (error) {
-      console.error("Error generating report:", error);
-    }
+    alert(`Gerando relatorio de ${reportType} para o periodo selecionado...`);
   };
 
   const handleDownloadReport = (report) => {
     if (report.status === "ready") {
-      // In real implementation, download from MP
       alert(`Baixando relatorio ${report.id}...`);
     }
   };
@@ -455,7 +395,7 @@ function FinancialReports() {
             </button>
           </div>
 
-          {loading ? (
+          {dataLoading ? (
             <div className="loading-state">
               <div className="spinner"></div>
               <p>Carregando dados financeiros...</p>

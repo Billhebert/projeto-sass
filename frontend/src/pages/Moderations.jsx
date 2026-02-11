@@ -1,130 +1,109 @@
-import { useState, useEffect } from 'react'
-import { useAuthStore } from '../store/authStore'
-import api from '../services/api'
-import { moderationsService } from '../services/modules'
-import './Moderations.css'
+import { useState } from "react";
+import {
+  useMLAccounts,
+  useModerations,
+  useSellerReputation,
+  useItemHealth,
+  useItemActions,
+  useFixItemIssues,
+} from "../hooks/useApi";
+import "./Moderations.css";
 
 function Moderations() {
-  const { token } = useAuthStore()
-  const [accounts, setAccounts] = useState([])
-  const [selectedAccount, setSelectedAccount] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const [success, setSuccess] = useState(null)
-  
-  // Data states
-  const [moderations, setModerations] = useState(null)
-  const [reputation, setReputation] = useState(null)
-  const [selectedItem, setSelectedItem] = useState(null)
-  const [itemHealth, setItemHealth] = useState(null)
-  const [itemActions, setItemActions] = useState(null)
-  
+  // Accounts
+  const { data: accounts = [], isLoading: accountsLoading } = useMLAccounts();
+  const [selectedAccount, setSelectedAccount] = useState("");
+
+  // Set initial account when accounts load
+  useState(() => {
+    if (accounts.length > 0 && !selectedAccount) {
+      setSelectedAccount(accounts[0].id);
+    }
+  }, [accounts]);
+
+  // Data queries
+  const {
+    data: moderations,
+    isLoading: moderationsLoading,
+    refetch: refetchModerations,
+  } = useModerations(selectedAccount);
+  const { data: reputation, refetch: refetchReputation } =
+    useSellerReputation(selectedAccount);
+
   // UI states
-  const [showModal, setShowModal] = useState(false)
-  const [fixing, setFixing] = useState(false)
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [showModal, setShowModal] = useState(false);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
 
-  useEffect(() => {
-    loadAccounts()
-  }, [])
+  // Item details queries (only when modal is open)
+  const { data: itemHealth } = useItemHealth(
+    selectedAccount,
+    selectedItem?.item?.id,
+  );
+  const { data: itemActions } = useItemActions(
+    selectedAccount,
+    selectedItem?.item?.id,
+  );
 
-  useEffect(() => {
-    if (selectedAccount) {
-      loadData()
-    }
-  }, [selectedAccount])
+  // Mutations
+  const fixItemIssues = useFixItemIssues();
 
-  const loadAccounts = async () => {
-    try {
-      const response = await api.get('/ml-accounts')
-      const accountsList = response.data.data?.accounts || response.data.accounts || []
-      setAccounts(accountsList)
-      if (accountsList.length > 0) {
-        setSelectedAccount(accountsList[0].id)
-      }
-    } catch (err) {
-      setError('Erro ao carregar contas')
-    }
-  }
+  const loading = accountsLoading || moderationsLoading;
 
-  const loadData = async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const [moderationsRes, reputationRes] = await Promise.all([
-        moderationsService.getAll(selectedAccount),
-        moderationsService.getSellerReputation(selectedAccount),
-      ])
-      
-      setModerations(moderationsRes.data.data)
-      setReputation(reputationRes.data.data)
-    } catch (err) {
-      setError('Erro ao carregar moderacoes')
-      console.error(err)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const loadData = () => {
+    refetchModerations();
+    refetchReputation();
+  };
 
-  const viewItemDetails = async (item) => {
-    setSelectedItem(item)
-    setShowModal(true)
-    
-    try {
-      const [healthRes, actionsRes] = await Promise.all([
-        moderationsService.getHealth(selectedAccount, item.item.id),
-        moderationsService.getActions(selectedAccount, item.item.id),
-      ])
-      
-      setItemHealth(healthRes.data.data)
-      setItemActions(actionsRes.data.data)
-    } catch (err) {
-      console.error('Erro ao carregar detalhes:', err)
-    }
-  }
+  const viewItemDetails = (item) => {
+    setSelectedItem(item);
+    setShowModal(true);
+  };
 
   const handleFix = async (fixes) => {
-    if (!selectedItem) return
-    
-    setFixing(true)
+    if (!selectedItem) return;
+
     try {
-      await moderationsService.fixIssues(selectedAccount, selectedItem.item.id, fixes)
-      setSuccess('Correcoes aplicadas com sucesso!')
-      setShowModal(false)
-      await loadData()
+      await fixItemIssues.mutateAsync({
+        accountId: selectedAccount,
+        itemId: selectedItem.item.id,
+        fixes,
+      });
+      setSuccess("Correcoes aplicadas com sucesso!");
+      setShowModal(false);
     } catch (err) {
-      setError('Erro ao aplicar correcoes')
-    } finally {
-      setFixing(false)
+      setError("Erro ao aplicar correcoes");
     }
-  }
+  };
 
   const getHealthScoreColor = (score) => {
-    if (score >= 80) return 'success'
-    if (score >= 50) return 'warning'
-    return 'danger'
-  }
+    if (score >= 80) return "success";
+    if (score >= 50) return "warning";
+    return "danger";
+  };
 
   const getStatusBadge = (status) => {
     const statusMap = {
-      'active': { label: 'Ativo', class: 'success' },
-      'paused': { label: 'Pausado', class: 'warning' },
-      'inactive': { label: 'Inativo', class: 'danger' },
-      'under_review': { label: 'Em Revisao', class: 'warning' },
-      'closed': { label: 'Fechado', class: 'secondary' },
-    }
-    return statusMap[status] || { label: status, class: 'secondary' }
-  }
+      active: { label: "Ativo", class: "success" },
+      paused: { label: "Pausado", class: "warning" },
+      inactive: { label: "Inativo", class: "danger" },
+      under_review: { label: "Em Revisao", class: "warning" },
+      closed: { label: "Fechado", class: "secondary" },
+    };
+    return statusMap[status] || { label: status, class: "secondary" };
+  };
 
   const getReputationLevel = (levelId) => {
     const levels = {
-      '1_red': { label: 'Vermelho', color: '#ef4444' },
-      '2_orange': { label: 'Laranja', color: '#f97316' },
-      '3_yellow': { label: 'Amarelo', color: '#eab308' },
-      '4_light_green': { label: 'Verde Claro', color: '#84cc16' },
-      '5_green': { label: 'Verde', color: '#22c55e' },
-    }
-    return levels[levelId] || { label: levelId, color: '#6b7280' }
-  }
+      "1_red": { label: "Vermelho", color: "#ef4444" },
+      "2_orange": { label: "Laranja", color: "#f97316" },
+      "3_yellow": { label: "Amarelo", color: "#eab308" },
+      "4_light_green": { label: "Verde Claro", color: "#84cc16" },
+      "5_green": { label: "Verde", color: "#22c55e" },
+    };
+    return levels[levelId] || { label: levelId, color: "#6b7280" };
+  };
 
   return (
     <div className="moderations-page">
@@ -142,13 +121,13 @@ function Moderations() {
             value={selectedAccount}
             onChange={(e) => setSelectedAccount(e.target.value)}
           >
-            {accounts.map(acc => (
+            {accounts.map((acc) => (
               <option key={acc.id} value={acc.id}>
                 {acc.nickname || acc.mlUserId}
               </option>
             ))}
           </select>
-          <button 
+          <button
             className="btn btn-primary"
             onClick={loadData}
             disabled={loading}
@@ -176,25 +155,35 @@ function Moderations() {
           </div>
           <div className="reputation-content">
             <div className="reputation-level">
-              <div 
+              <div
                 className="level-indicator"
-                style={{ backgroundColor: getReputationLevel(reputation.reputation?.level_id).color }}
+                style={{
+                  backgroundColor: getReputationLevel(
+                    reputation.reputation?.level_id,
+                  ).color,
+                }}
               >
                 <span className="material-icons">star</span>
               </div>
               <div className="level-info">
-                <span className="level-name">{getReputationLevel(reputation.reputation?.level_id).label}</span>
+                <span className="level-name">
+                  {getReputationLevel(reputation.reputation?.level_id).label}
+                </span>
                 <span className="seller-nickname">{reputation.nickname}</span>
               </div>
             </div>
             {reputation.reputation?.transactions && (
               <div className="reputation-stats">
                 <div className="rep-stat">
-                  <span className="rep-value">{reputation.reputation.transactions.completed || 0}</span>
+                  <span className="rep-value">
+                    {reputation.reputation.transactions.completed || 0}
+                  </span>
                   <span className="rep-label">Vendas</span>
                 </div>
                 <div className="rep-stat">
-                  <span className="rep-value">{reputation.reputation.transactions.canceled || 0}</span>
+                  <span className="rep-value">
+                    {reputation.reputation.transactions.canceled || 0}
+                  </span>
                   <span className="rep-label">Canceladas</span>
                 </div>
               </div>
@@ -211,7 +200,9 @@ function Moderations() {
               <span className="material-icons">pending_actions</span>
             </div>
             <div className="summary-info">
-              <span className="summary-value">{moderations.summary.under_review}</span>
+              <span className="summary-value">
+                {moderations.summary.under_review}
+              </span>
               <span className="summary-label">Em Revisao</span>
             </div>
           </div>
@@ -220,7 +211,9 @@ function Moderations() {
               <span className="material-icons">block</span>
             </div>
             <div className="summary-info">
-              <span className="summary-value">{moderations.summary.inactive}</span>
+              <span className="summary-value">
+                {moderations.summary.inactive}
+              </span>
               <span className="summary-label">Inativos</span>
             </div>
           </div>
@@ -229,7 +222,9 @@ function Moderations() {
               <span className="material-icons">pause_circle</span>
             </div>
             <div className="summary-info">
-              <span className="summary-value">{moderations.summary.paused}</span>
+              <span className="summary-value">
+                {moderations.summary.paused}
+              </span>
               <span className="summary-label">Pausados</span>
             </div>
           </div>
@@ -270,10 +265,12 @@ function Moderations() {
         <div className="items-section">
           <div className="section-header">
             <h3>Itens com Problemas</h3>
-            <span className="count">{moderations?.items?.length || 0} itens</span>
+            <span className="count">
+              {moderations?.items?.length || 0} itens
+            </span>
           </div>
 
-          {(!moderations?.items || moderations.items.length === 0) ? (
+          {!moderations?.items || moderations.items.length === 0 ? (
             <div className="empty-state success">
               <span className="material-icons">check_circle</span>
               <h3>Todos os anuncios estao saudaveis!</h3>
@@ -292,7 +289,9 @@ function Moderations() {
                       )}
                     </div>
                     <div className="item-info">
-                      <h4 className="item-title">{item.item?.title?.substring(0, 60)}...</h4>
+                      <h4 className="item-title">
+                        {item.item?.title?.substring(0, 60)}...
+                      </h4>
                       <span className="item-id">{item.item?.id}</span>
                     </div>
                   </div>
@@ -301,21 +300,27 @@ function Moderations() {
                     <div className="health-bar-container">
                       <div className="health-label">
                         <span>Saude</span>
-                        <span className={`health-value ${getHealthScoreColor(item.health?.health_score || 100)}`}>
+                        <span
+                          className={`health-value ${getHealthScoreColor(item.health?.health_score || 100)}`}
+                        >
                           {item.health?.health_score || 100}%
                         </span>
                       </div>
                       <div className="health-bar">
-                        <div 
+                        <div
                           className={`health-fill ${getHealthScoreColor(item.health?.health_score || 100)}`}
-                          style={{ width: `${item.health?.health_score || 100}%` }}
+                          style={{
+                            width: `${item.health?.health_score || 100}%`,
+                          }}
                         ></div>
                       </div>
                     </div>
                   </div>
 
                   <div className="item-status">
-                    <span className={`status-badge ${getStatusBadge(item.item?.status).class}`}>
+                    <span
+                      className={`status-badge ${getStatusBadge(item.item?.status).class}`}
+                    >
                       {getStatusBadge(item.item?.status).label}
                     </span>
                     {item.health?.warnings?.length > 0 && (
@@ -333,14 +338,14 @@ function Moderations() {
                   </div>
 
                   <div className="item-actions">
-                    <button 
+                    <button
                       className="btn btn-outline"
                       onClick={() => viewItemDetails(item)}
                     >
                       <span className="material-icons">visibility</span>
                       Ver Detalhes
                     </button>
-                    <a 
+                    <a
                       href={item.item?.permalink}
                       target="_blank"
                       rel="noopener noreferrer"
@@ -359,7 +364,10 @@ function Moderations() {
       {/* Item Details Modal */}
       {showModal && selectedItem && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal-content large" onClick={e => e.stopPropagation()}>
+          <div
+            className="modal-content large"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="modal-header">
               <h2>Detalhes do Item</h2>
               <button className="btn-close" onClick={() => setShowModal(false)}>
@@ -370,7 +378,10 @@ function Moderations() {
               <div className="item-detail-header">
                 <div className="item-image-large">
                   {selectedItem.item?.thumbnail ? (
-                    <img src={selectedItem.item.thumbnail} alt={selectedItem.item.title} />
+                    <img
+                      src={selectedItem.item.thumbnail}
+                      alt={selectedItem.item.title}
+                    />
                   ) : (
                     <span className="material-icons">image</span>
                   )}
@@ -378,7 +389,9 @@ function Moderations() {
                 <div className="item-detail-info">
                   <h3>{selectedItem.item?.title}</h3>
                   <p className="item-id">{selectedItem.item?.id}</p>
-                  <span className={`status-badge ${getStatusBadge(selectedItem.item?.status).class}`}>
+                  <span
+                    className={`status-badge ${getStatusBadge(selectedItem.item?.status).class}`}
+                  >
                     {getStatusBadge(selectedItem.item?.status).label}
                   </span>
                 </div>
@@ -388,8 +401,10 @@ function Moderations() {
                 <div className="health-details">
                   <h4>
                     <span className="material-icons">health_and_safety</span>
-                    Pontuacao de Saude: 
-                    <span className={`score ${getHealthScoreColor(itemHealth.health_score)}`}>
+                    Pontuacao de Saude:
+                    <span
+                      className={`score ${getHealthScoreColor(itemHealth.health_score)}`}
+                    >
                       {itemHealth.health_score}%
                     </span>
                   </h4>
@@ -400,12 +415,20 @@ function Moderations() {
                       {itemHealth.issues.map((issue, idx) => (
                         <div key={idx} className={`issue-item ${issue.type}`}>
                           <span className="material-icons">
-                            {issue.type === 'error' ? 'error' : issue.type === 'warning' ? 'warning' : 'info'}
+                            {issue.type === "error"
+                              ? "error"
+                              : issue.type === "warning"
+                                ? "warning"
+                                : "info"}
                           </span>
                           <div className="issue-content">
-                            <span className="issue-message">{issue.message}</span>
+                            <span className="issue-message">
+                              {issue.message}
+                            </span>
                             {issue.recommendation && (
-                              <span className="issue-recommendation">{issue.recommendation}</span>
+                              <span className="issue-recommendation">
+                                {issue.recommendation}
+                              </span>
                             )}
                           </div>
                         </div>
@@ -415,27 +438,34 @@ function Moderations() {
                 </div>
               )}
 
-              {itemActions && itemActions.actions && itemActions.actions.length > 0 && (
-                <div className="actions-section">
-                  <h4>
-                    <span className="material-icons">build</span>
-                    Acoes Recomendadas
-                  </h4>
-                  <div className="actions-list">
-                    {itemActions.actions.map((action, idx) => (
-                      <div key={idx} className={`action-item priority-${action.priority}`}>
-                        <span className={`priority-badge ${action.priority}`}>
-                          {action.priority}
-                        </span>
-                        <span className="action-message">{action.message}</span>
-                      </div>
-                    ))}
+              {itemActions &&
+                itemActions.actions &&
+                itemActions.actions.length > 0 && (
+                  <div className="actions-section">
+                    <h4>
+                      <span className="material-icons">build</span>
+                      Acoes Recomendadas
+                    </h4>
+                    <div className="actions-list">
+                      {itemActions.actions.map((action, idx) => (
+                        <div
+                          key={idx}
+                          className={`action-item priority-${action.priority}`}
+                        >
+                          <span className={`priority-badge ${action.priority}`}>
+                            {action.priority}
+                          </span>
+                          <span className="action-message">
+                            {action.message}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
             </div>
             <div className="modal-footer">
-              <a 
+              <a
                 href={selectedItem.item?.permalink}
                 target="_blank"
                 rel="noopener noreferrer"
@@ -444,23 +474,26 @@ function Moderations() {
                 <span className="material-icons">open_in_new</span>
                 Abrir no ML
               </a>
-              <button 
+              <button
                 className="btn btn-primary"
                 onClick={() => {
                   // Try to activate if item is paused/inactive
-                  handleFix([{ type: 'activate' }])
+                  handleFix([{ type: "activate" }]);
                 }}
-                disabled={fixing || selectedItem.item?.status === 'active'}
+                disabled={
+                  fixItemIssues.isPending ||
+                  selectedItem.item?.status === "active"
+                }
               >
                 <span className="material-icons">play_arrow</span>
-                {fixing ? 'Processando...' : 'Tentar Ativar'}
+                {fixItemIssues.isPending ? "Processando..." : "Tentar Ativar"}
               </button>
             </div>
           </div>
         </div>
       )}
     </div>
-  )
+  );
 }
 
-export default Moderations
+export default Moderations;

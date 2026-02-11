@@ -1,14 +1,21 @@
-import { useState, useEffect } from 'react'
-import { useAuth } from '../store/authStore'
-import { toast } from '../store/toastStore'
-import api from '../services/api'
-import './Pages.css'
+import { useState, useEffect } from "react";
+import { useAuth } from "../store/authStore";
+import { toast } from "../store/toastStore";
+import {
+  useUserProfile,
+  useUpdateProfile,
+  useChangePassword,
+} from "../hooks/useApi";
+import "./Pages.css";
 
 function Settings() {
   const { user, logout, updateUser } = useAuth()
   const [activeTab, setActiveTab] = useState('profile')
-  const [loading, setLoading] = useState(false)
-  const [loadingProfile, setLoadingProfile] = useState(true)
+
+  // React Query hooks
+  const { data: userProfile, isLoading: loadingProfile } = useUserProfile()
+  const updateProfileMutation = useUpdateProfile()
+  const changePasswordMutation = useChangePassword()
 
   // Profile form state
   const [profileData, setProfileData] = useState({
@@ -34,99 +41,126 @@ function Settings() {
     emailNotifications: true,
   })
 
+  // Load preferences from localStorage
   useEffect(() => {
-    // Load preferences from localStorage
     const savedPreferences = localStorage.getItem('preferences')
     if (savedPreferences) {
       setPreferences(JSON.parse(savedPreferences))
     }
-    loadProfile()
   }, [])
+
+  // Update form when profile data is loaded
+  useEffect(() => {
+    if (userProfile) {
+      setProfileData({
+        firstName: userProfile.firstName || '',
+        lastName: userProfile.lastName || '',
+        email: userProfile.email || '',
+        phone: userProfile.phone || '',
+        company: userProfile.company || '',
+      })
+    } else if (user) {
+      // Fallback to auth store data
+      setProfileData({
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
+        email: user.email || '',
+        phone: user.phone || '',
+        company: user.company || '',
+      })
+    }
+  }, [userProfile, user])
+    loadProfile();
+  }, []);
 
   const loadProfile = async () => {
     try {
-      setLoadingProfile(true)
-      const response = await api.get('/user/profile')
+      setLoadingProfile(true);
+      const response = await api.get("/user/profile");
       if (response.data.success) {
-        const userData = response.data.data.user
+        const userData = response.data.data.user;
         setProfileData({
-          firstName: userData.firstName || '',
-          lastName: userData.lastName || '',
-          email: userData.email || '',
-          phone: userData.phone || '',
-          company: userData.company || '',
-        })
+          firstName: userData.firstName || "",
+          lastName: userData.lastName || "",
+          email: userData.email || "",
+          phone: userData.phone || "",
+          company: userData.company || "",
+        });
       }
     } catch (err) {
-      console.error('Error loading profile:', err)
+      console.error("Error loading profile:", err);
       // Use data from auth store as fallback
       if (user) {
         setProfileData({
-          firstName: user.firstName || '',
-          lastName: user.lastName || '',
-          email: user.email || '',
-          phone: user.phone || '',
-          company: user.company || '',
-        })
+          firstName: user.firstName || "",
+          lastName: user.lastName || "",
+          email: user.email || "",
+          phone: user.phone || "",
+          company: user.company || "",
+        });
       }
     } finally {
-      setLoadingProfile(false)
+      setLoadingProfile(false);
     }
-  }
+  };
 
   const handleProfileChange = (e) => {
-    const { name, value } = e.target
-    setProfileData(prev => ({
+    const { name, value } = e.target;
+    setProfileData((prev) => ({
       ...prev,
-      [name]: value
-    }))
-  }
+      [name]: value,
+    }));
+  };
 
   const handlePasswordChange = (e) => {
-    const { name, value } = e.target
-    setPasswordData(prev => ({
+    const { name, value } = e.target;
+    setPasswordData((prev) => ({
       ...prev,
-      [name]: value
-    }))
-  }
+      [name]: value,
+    }));
+  };
 
   const handlePreferenceChange = (key) => {
-    setPreferences(prev => {
+    setPreferences((prev) => {
       const updated = {
         ...prev,
-        [key]: typeof prev[key] === 'boolean' ? !prev[key] : prev[key],
-      }
-      localStorage.setItem('preferences', JSON.stringify(updated))
-      toast.success('Preferência salva')
-      return updated
-    })
-  }
+        [key]: typeof prev[key] === "boolean" ? !prev[key] : prev[key],
+      };
+      localStorage.setItem("preferences", JSON.stringify(updated));
+      toast.success("Preferência salva");
+      return updated;
+    });
+  };
 
   const handleProfileSubmit = async (e) => {
     e.preventDefault()
     try {
-      setLoading(true)
-      
-      const response = await api.put('/user/profile', {
+      const response = await updateProfileMutation.mutateAsync({
         firstName: profileData.firstName,
         lastName: profileData.lastName,
         phone: profileData.phone,
         company: profileData.company,
       })
       
-      if (response.data.success) {
+      if (response.success) {
         // Update user in auth store
-        if (updateUser) {
-          updateUser(response.data.data.user)
+        if (updateUser && response.data?.user) {
+          updateUser(response.data.user)
         }
         toast.success('Perfil atualizado com sucesso!')
       }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Erro ao atualizar perfil')
-    } finally {
-      setLoading(false)
     }
   }
+        toast.success("Perfil atualizado com sucesso!");
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Erro ao atualizar perfil");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handlePasswordSubmit = async (e) => {
     e.preventDefault()
@@ -142,14 +176,12 @@ function Settings() {
     }
 
     try {
-      setLoading(true)
-
-      const response = await api.post('/user/change-password', {
+      const response = await changePasswordMutation.mutateAsync({
         currentPassword: passwordData.currentPassword,
         newPassword: passwordData.newPassword,
       })
 
-      if (response.data.success) {
+      if (response.success) {
         setPasswordData({
           currentPassword: '',
           newPassword: '',
@@ -159,16 +191,42 @@ function Settings() {
       }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Erro ao alterar senha')
-    } finally {
-      setLoading(false)
     }
   }
 
-  const handleLogout = () => {
-    if (window.confirm('Tem certeza que deseja fazer logout?')) {
-      logout()
+    if (passwordData.newPassword.length < 8) {
+      toast.error("A nova senha deve ter no mínimo 8 caracteres");
+      return;
     }
-  }
+
+    try {
+      setLoading(true);
+
+      const response = await api.post("/user/change-password", {
+        currentPassword: passwordData.currentPassword,
+        newPassword: passwordData.newPassword,
+      });
+
+      if (response.data.success) {
+        setPasswordData({
+          currentPassword: "",
+          newPassword: "",
+          confirmPassword: "",
+        });
+        toast.success("Senha alterada com sucesso!");
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Erro ao alterar senha");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    if (window.confirm("Tem certeza que deseja fazer logout?")) {
+      logout();
+    }
+  };
 
   return (
     <div className="page">
@@ -181,28 +239,34 @@ function Settings() {
         {/* Sidebar Navigation */}
         <div className="settings-sidebar">
           <button
-            className={`settings-nav-item ${activeTab === 'profile' ? 'active' : ''}`}
-            onClick={() => setActiveTab('profile')}
+            className={`settings-nav-item ${activeTab === "profile" ? "active" : ""}`}
+            onClick={() => setActiveTab("profile")}
           >
             Meu Perfil
           </button>
           <button
-            className={`settings-nav-item ${activeTab === 'password' ? 'active' : ''}`}
-            onClick={() => setActiveTab('password')}
+            className={`settings-nav-item ${activeTab === "password" ? "active" : ""}`}
+            onClick={() => setActiveTab("password")}
           >
             Alterar Senha
           </button>
           <button
-            className={`settings-nav-item ${activeTab === 'preferences' ? 'active' : ''}`}
-            onClick={() => setActiveTab('preferences')}
+            className={`settings-nav-item ${activeTab === "preferences" ? "active" : ""}`}
+            onClick={() => setActiveTab("preferences")}
           >
             Preferências
           </button>
-          <hr style={{ margin: '1rem 0', border: 'none', borderTop: '1px solid #e0e0e0' }} />
+          <hr
+            style={{
+              margin: "1rem 0",
+              border: "none",
+              borderTop: "1px solid #e0e0e0",
+            }}
+          />
           <button
             className="settings-nav-item"
             onClick={handleLogout}
-            style={{ color: '#dc3545' }}
+            style={{ color: "#dc3545" }}
           >
             Fazer Logout
           </button>
@@ -211,7 +275,7 @@ function Settings() {
         {/* Main Content */}
         <div className="settings-content">
           {/* Profile Tab */}
-          {activeTab === 'profile' && (
+          {activeTab === "profile" && (
             <div className="settings-section">
               <h3>Informações do Perfil</h3>
               {loadingProfile ? (
@@ -221,7 +285,14 @@ function Settings() {
                 </div>
               ) : (
                 <form onSubmit={handleProfileSubmit} className="settings-form">
-                  <div className="form-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div
+                    className="form-row"
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: "1rem",
+                    }}
+                  >
                     <div className="form-group">
                       <label>Nome</label>
                       <input
@@ -251,9 +322,14 @@ function Settings() {
                       name="email"
                       value={profileData.email}
                       disabled
-                      style={{ backgroundColor: '#f5f5f5', cursor: 'not-allowed' }}
+                      style={{
+                        backgroundColor: "#f5f5f5",
+                        cursor: "not-allowed",
+                      }}
                     />
-                    <small style={{ color: '#666' }}>O email não pode ser alterado</small>
+                    <small style={{ color: "#666" }}>
+                      O email não pode ser alterado
+                    </small>
                   </div>
 
                   <div className="form-group">
@@ -278,8 +354,12 @@ function Settings() {
                     />
                   </div>
 
-                  <button type="submit" className="btn btn-primary" disabled={loading}>
-                    {loading ? 'Salvando...' : 'Salvar Alterações'}
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={updateProfileMutation.isPending}
+                  >
+                    {updateProfileMutation.isPending ? "Salvando..." : "Salvar Alterações"}
                   </button>
                 </form>
               )}
@@ -287,10 +367,10 @@ function Settings() {
           )}
 
           {/* Password Tab */}
-          {activeTab === 'password' && (
+          {activeTab === "password" && (
             <div className="settings-section">
               <h3>Alterar Senha</h3>
-              <p style={{ color: '#666', marginBottom: '1.5rem' }}>
+              <p style={{ color: "#666", marginBottom: "1.5rem" }}>
                 Escolha uma senha forte com no mínimo 8 caracteres
               </p>
               <form onSubmit={handlePasswordSubmit} className="settings-form">
@@ -330,26 +410,34 @@ function Settings() {
                   />
                 </div>
 
-                <button type="submit" className="btn btn-primary" disabled={loading}>
-                  {loading ? 'Atualizando...' : 'Atualizar Senha'}
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={changePasswordMutation.isPending}
+                >
+                  {changePasswordMutation.isPending ? "Atualizando..." : "Atualizar Senha"}
                 </button>
               </form>
             </div>
           )}
 
           {/* Preferences Tab */}
-          {activeTab === 'preferences' && (
+          {activeTab === "preferences" && (
             <div className="settings-section">
               <h3>Preferências</h3>
               <div className="preference-item">
                 <div>
                   <h4>Idioma</h4>
-                  <p style={{ color: '#999', marginTop: '0.5rem' }}>Escolha seu idioma preferido</p>
+                  <p style={{ color: "#999", marginTop: "0.5rem" }}>
+                    Escolha seu idioma preferido
+                  </p>
                 </div>
                 <select
                   value={preferences.language}
-                  onChange={(e) => setPreferences({ ...preferences, language: e.target.value })}
-                  style={{ width: '150px' }}
+                  onChange={(e) =>
+                    setPreferences({ ...preferences, language: e.target.value })
+                  }
+                  style={{ width: "150px" }}
                 >
                   <option value="pt-BR">Português (Brasil)</option>
                   <option value="en-US">English (US)</option>
@@ -360,12 +448,16 @@ function Settings() {
               <div className="preference-item">
                 <div>
                   <h4>Tema</h4>
-                  <p style={{ color: '#999', marginTop: '0.5rem' }}>Escolha entre tema claro ou escuro</p>
+                  <p style={{ color: "#999", marginTop: "0.5rem" }}>
+                    Escolha entre tema claro ou escuro
+                  </p>
                 </div>
                 <select
                   value={preferences.theme}
-                  onChange={(e) => setPreferences({ ...preferences, theme: e.target.value })}
-                  style={{ width: '150px' }}
+                  onChange={(e) =>
+                    setPreferences({ ...preferences, theme: e.target.value })
+                  }
+                  style={{ width: "150px" }}
                 >
                   <option value="light">Claro</option>
                   <option value="dark">Escuro</option>
@@ -376,13 +468,15 @@ function Settings() {
               <div className="preference-item">
                 <div>
                   <h4>Notificações no Dashboard</h4>
-                  <p style={{ color: '#999', marginTop: '0.5rem' }}>Receba alertas sobre suas contas</p>
+                  <p style={{ color: "#999", marginTop: "0.5rem" }}>
+                    Receba alertas sobre suas contas
+                  </p>
                 </div>
                 <label className="toggle-switch">
                   <input
                     type="checkbox"
                     checked={preferences.notifications}
-                    onChange={() => handlePreferenceChange('notifications')}
+                    onChange={() => handlePreferenceChange("notifications")}
                   />
                   <span className="toggle-slider"></span>
                 </label>
@@ -391,13 +485,17 @@ function Settings() {
               <div className="preference-item">
                 <div>
                   <h4>Notificações por Email</h4>
-                  <p style={{ color: '#999', marginTop: '0.5rem' }}>Receba atualizações importantes por email</p>
+                  <p style={{ color: "#999", marginTop: "0.5rem" }}>
+                    Receba atualizações importantes por email
+                  </p>
                 </div>
                 <label className="toggle-switch">
                   <input
                     type="checkbox"
                     checked={preferences.emailNotifications}
-                    onChange={() => handlePreferenceChange('emailNotifications')}
+                    onChange={() =>
+                      handlePreferenceChange("emailNotifications")
+                    }
                   />
                   <span className="toggle-slider"></span>
                 </label>
@@ -407,7 +505,7 @@ function Settings() {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
-export default Settings
+export default Settings;

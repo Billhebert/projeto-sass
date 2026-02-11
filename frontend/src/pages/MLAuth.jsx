@@ -37,7 +37,7 @@ function MLAuth() {
 
   const fetchAccounts = async () => {
     try {
-      const response = await api.get("/auth/ml-auth/status");
+      const response = await api.get("/ml-auth/status");
       setAccounts(response.data.accounts || []);
     } catch (err) {
       console.error("Error:", err);
@@ -62,37 +62,43 @@ function MLAuth() {
   const handleOAuthAutomatico = async () => {
     try {
       toast.info("Redirecionando...");
-      const response = await api.get("/auth/ml-auth/url");
-      console.log("ML Auth URL response:", response.data);
+      const response = await api.get("/ml-auth/url");
+      console.log("[ML-AUTH] Response received:", response.data);
 
       if (response.data.success) {
+        const authUrl = response.data.data.authorizationUrl || response.data.data.authUrl;
+        console.log("[ML-AUTH] Auth URL extracted:", authUrl);
+        
+        if (!authUrl) {
+          console.error("[ML-AUTH] No authorization URL in response");
+          toast.error("Erro: URL de autorização não encontrada");
+          return;
+        }
+
         const config = {
-          clientId: response.data.data.clientId || "1706187223829083",
-          clientSecret: response.data.data.clientSecret || "",
-          redirectUri:
-            response.data.data.redirectUri ||
-            "https://vendata.com.br/auth/callback",
+          clientId: "1706187223829083",
+          clientSecret: "vjEgzPD85Ehwe6aefX3TGij4xGdRV0jG",
+          redirectUri: "https://vendata.com.br/auth/callback",
         };
-        console.log("Saving to sessionStorage:", config);
+        console.log("[ML-AUTH] Saving config to sessionStorage");
         sessionStorage.setItem("ml_oauth_config", JSON.stringify(config));
 
-        const saved = sessionStorage.getItem("ml_oauth_config");
-        console.log("Verification - Saved value:", saved);
-
-        if (saved) {
-          console.log("Redirecting to:", response.data.data.authUrl);
-          window.location.href = response.data.data.authUrl;
-        } else {
-          console.error("Failed to save sessionStorage!");
-          toast.error("Erro ao salvar configurações");
-        }
+        console.log("[ML-AUTH] Redirecting to:", authUrl);
+        window.location.href = authUrl;
       } else {
-        console.error("Failed to get auth URL:", response.data.error);
+        console.error("[ML-AUTH] Failed to get auth URL:", response.data.error);
         toast.error(response.data.error || "Erro ao conectar");
       }
     } catch (err) {
-      console.error("Error getting ML auth URL:", err);
-      toast.error("Erro ao conectar");
+      console.error("[ML-AUTH] Error getting ML auth URL:", err);
+      console.error("[ML-AUTH] Error details:", {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status
+      });
+      toast.error("Erro ao conectar com Mercado Livre");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -245,31 +251,36 @@ function TabOAuthAutomatico({ onSuccess }) {
   const handle = async () => {
     setLoading(true);
     try {
+      // Check if token exists
+      const token = localStorage.getItem("token");
+      console.log("[ML-AUTH] Button clicked - Token exists:", !!token);
+      console.log("[ML-AUTH] Token preview:", token ? token.substring(0, 20) + "..." : "null");
+      
       toast.info("Redirecionando...");
-      const response = await api.get("/auth/ml-auth/url");
-      console.log("ML Auth URL response:", response.data);
+      console.log("[ML-AUTH] Calling GET /ml-auth/url");
+      
+      const response = await api.get("/ml-auth/url");
+      console.log("[ML-AUTH] Response received:", response.data);
 
       if (response.data.success) {
+        const authUrl = response.data.data.authorizationUrl || response.data.data.authUrl;
+        
+        if (!authUrl) {
+          console.error("No authorization URL in response");
+          toast.error("Erro: URL de autorização não encontrada");
+          return;
+        }
+
         const config = {
-          clientId: response.data.data.clientId || "1706187223829083",
-          clientSecret: response.data.data.clientSecret || "",
-          redirectUri:
-            response.data.data.redirectUri ||
-            "https://vendata.com.br/auth/callback",
+          clientId: "1706187223829083",
+          clientSecret: "vjEgzPD85Ehwe6aefX3TGij4xGdRV0jG",
+          redirectUri: "https://vendata.com.br/auth/callback",
         };
         console.log("Saving to sessionStorage:", config);
         sessionStorage.setItem("ml_oauth_config", JSON.stringify(config));
 
-        const saved = sessionStorage.getItem("ml_oauth_config");
-        console.log("Verification - Saved value:", saved);
-
-        if (saved) {
-          console.log("Redirecting to:", response.data.data.authUrl);
-          window.location.href = response.data.data.authUrl;
-        } else {
-          console.error("Failed to save sessionStorage!");
-          toast.error("Erro ao salvar configurações");
-        }
+        console.log("Redirecting to:", authUrl);
+        window.location.href = authUrl;
       } else {
         console.error("Failed to get auth URL:", response.data.error);
         toast.error(response.data.error || "Erro ao conectar");

@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import api from "../services/api";
+import { useTrends } from "../hooks/useApi";
 import {
   BarChart,
   Bar,
@@ -17,12 +17,7 @@ import {
 import "./Trends.css";
 
 function Trends() {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [trends, setTrends] = useState([]);
-  const [categoryTrends, setCategoryTrends] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState("");
-  const [categories, setCategories] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
 
   const popularCategories = [
@@ -37,46 +32,16 @@ function Trends() {
     { id: "MLB1953", name: "Mais Categorias" },
   ];
 
-  useEffect(() => {
-    setCategories(popularCategories);
-    loadGeneralTrends();
-  }, []);
+  // Use React Query hook for trends
+  const {
+    data: trendsData,
+    isLoading,
+    error,
+    refetch,
+  } = useTrends(selectedCategory);
 
-  useEffect(() => {
-    if (selectedCategory) {
-      loadCategoryTrends();
-    }
-  }, [selectedCategory]);
-
-  const loadGeneralTrends = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await api.get("/trends");
-      setTrends(response.data.trends || []);
-    } catch (err) {
-      console.error("Error loading trends:", err);
-      setError(
-        "Erro ao carregar tendências. Dados de tendências não disponíveis.",
-      );
-      setTrends([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadCategoryTrends = async () => {
-    setLoading(true);
-    try {
-      const response = await api.get(`/trends/category/${selectedCategory}`);
-      setCategoryTrends(response.data.trends || []);
-    } catch (err) {
-      console.error("Error loading category trends:", err);
-      setCategoryTrends([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Extract trends from response
+  const trends = trendsData?.trends || [];
 
   const getGrowthColor = (growth) => {
     if (growth > 15) return "#10b981";
@@ -120,7 +85,7 @@ function Trends() {
           <p>Descubra o que esta vendendo mais no Mercado Livre</p>
         </div>
         <div className="header-actions">
-          <button className="btn btn-secondary" onClick={loadGeneralTrends}>
+          <button className="btn btn-secondary" onClick={() => refetch()}>
             <span className="material-icons">refresh</span>
             Atualizar
           </button>
@@ -130,7 +95,7 @@ function Trends() {
       {error && (
         <div className="alert alert-danger">
           <span className="material-icons">error</span>
-          {error}
+          Erro ao carregar tendências. Dados de tendências não disponíveis.
         </div>
       )}
 
@@ -158,7 +123,7 @@ function Trends() {
           >
             Todas
           </button>
-          {categories.map((cat) => (
+          {popularCategories.map((cat) => (
             <button
               key={cat.id}
               className={`chip ${selectedCategory === cat.id ? "active" : ""}`}
@@ -170,7 +135,7 @@ function Trends() {
         </div>
       </section>
 
-      {loading ? (
+      {isLoading ? (
         <div className="loading-state">
           <div className="spinner-large"></div>
           <p>Carregando tendencias...</p>

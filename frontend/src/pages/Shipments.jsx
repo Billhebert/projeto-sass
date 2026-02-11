@@ -1,72 +1,41 @@
-import { useState, useEffect } from "react";
-import { useAuthStore } from "../store/authStore";
+import { useState } from "react";
+import {
+  useMLAccounts,
+  useShipments,
+  useShipmentDetails,
+  useShipmentTracking,
+  useSyncShipments,
+} from "../hooks/useApi";
 import api from "../services/api";
 import "./Shipments.css";
 
 function Shipments() {
-  const { token } = useAuthStore();
-  const [accounts, setAccounts] = useState([]);
-  const [selectedAccount, setSelectedAccount] = useState("");
-  const [shipments, setShipments] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [error, setError] = useState(null);
+  const { data: accounts = [] } = useMLAccounts();
+  const [selectedAccount, setSelectedAccount] = useState(accounts[0]?.id || "");
   const [filter, setFilter] = useState("pending");
   const [selectedShipment, setSelectedShipment] = useState(null);
   const [showModal, setShowModal] = useState(false);
-  const [tracking, setTracking] = useState(null);
+  const [error, setError] = useState(null);
 
-  useEffect(() => {
-    loadAccounts();
-  }, []);
-
-  useEffect(() => {
-    if (selectedAccount) {
-      loadShipments();
+  // Auto-select first account
+  useState(() => {
+    if (accounts.length > 0 && !selectedAccount) {
+      setSelectedAccount(accounts[0].id);
     }
-  }, [selectedAccount, filter]);
+  }, [accounts]);
 
-  const loadAccounts = async () => {
-    try {
-      const response = await api.get("/ml-accounts");
-      const accountsList =
-        response.data.data?.accounts || response.data.accounts || [];
-      setAccounts(accountsList);
-      if (accountsList.length > 0) {
-        setSelectedAccount(accountsList[0].id);
-      }
-    } catch (err) {
-      setError("Erro ao carregar contas");
-    }
-  };
+  const { data: shipments = [], isLoading } = useShipments(
+    selectedAccount,
+    filter === "pending" ? "pending" : null,
+  );
 
-  const loadShipments = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const endpoint =
-        filter === "pending"
-          ? `/shipments/${selectedAccount}/pending`
-          : `/shipments/${selectedAccount}`;
-      const response = await api.get(endpoint);
-      setShipments(response.data.shipments || []);
-    } catch (err) {
-      setError("Erro ao carregar envios");
-      setShipments([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const syncShipmentsMutation = useSyncShipments();
 
   const syncShipments = async () => {
-    setSyncing(true);
     try {
-      await api.post(`/shipments/${selectedAccount}/sync`, { all: true });
-      await loadShipments();
+      await syncShipmentsMutation.mutateAsync({ accountId: selectedAccount });
     } catch (err) {
       setError("Erro ao sincronizar envios");
-    } finally {
-      setSyncing(false);
     }
   };
 
@@ -76,8 +45,10 @@ function Shipments() {
         api.get(`/shipments/${selectedAccount}/${shipmentId}`),
         api.get(`/shipments/${selectedAccount}/${shipmentId}/tracking`),
       ]);
-      setSelectedShipment(detailsRes.data.shipment);
-      setTracking(trackingRes.data.tracking);
+      setSelectedShipment({
+        ...detailsRes.data.shipment,
+        tracking: trackingRes.data.tracking,
+      });
       setShowModal(true);
     } catch (err) {
       setError("Erro ao carregar detalhes do envio");
@@ -151,10 +122,12 @@ function Shipments() {
           <button
             className="btn btn-primary"
             onClick={syncShipments}
-            disabled={syncing || !selectedAccount}
+            disabled={syncShipmentsMutation.isPending || !selectedAccount}
           >
             <span className="material-icons">sync</span>
-            {syncing ? "Sincronizando..." : "Sincronizar"}
+            {syncShipmentsMutation.isPending
+              ? "Sincronizando..."
+              : "Sincronizar"}
           </button>
         </div>
       </div>
@@ -186,7 +159,7 @@ function Shipments() {
       )}
 
       <div className="shipments-grid">
-        {loading ? (
+        {isLoading ? (
           <div className="loading-state">
             <div className="spinner"></div>
             <p>Carregando envios...</p>
@@ -329,11 +302,11 @@ function Shipments() {
                 </div>
               )}
 
-              {tracking && tracking.history?.length > 0 && (
+              {selectedShipment.tracking?.history?.length > 0 && (
                 <div className="shipment-detail-section">
                   <h3>Historico de Rastreamento</h3>
                   <div className="tracking-timeline">
-                    {tracking.history.map((event, idx) => (
+                    {selectedShipment.tracking.history.map((event, idx) => (
                       <div key={idx} className="tracking-event">
                         <div className="event-dot"></div>
                         <div className="event-content">

@@ -1,24 +1,25 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import api from "../services/api";
+import {
+  useMLAccounts,
+  useCreateMLAccount,
+  useUpdateMLAccount,
+  useDeleteMLAccount,
+  useGenerateMLOAuthUrl,
+  useUpdateAccountOAuthCredentials,
+} from "../hooks/useApi";
 import { toast } from "../store/toastStore";
 import TokenStatus from "../components/TokenStatus";
 import "./Pages.css";
 
 function Accounts() {
   const navigate = useNavigate();
-  const [accounts, setAccounts] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const [showMLLoginModal, setShowMLLoginModal] = useState(false);
   const [showOAuthModal, setShowOAuthModal] = useState(false);
   const [showCredentialsModal, setShowCredentialsModal] = useState(false);
   const [selectedAccountForCredentials, setSelectedAccountForCredentials] =
     useState(null);
   const [editingId, setEditingId] = useState(null);
-  const [mlLoginLoading, setMLLoginLoading] = useState(false);
-  const [oauthLoading, setOAuthLoading] = useState(false);
-  const [credentialsLoading, setCredentialsLoading] = useState(false);
   const [formData, setFormData] = useState({
     accessToken: "",
     refreshToken: "",
@@ -35,32 +36,18 @@ function Accounts() {
     redirectUri: "",
     refreshToken: "",
   });
-  const [submitting, setSubmitting] = useState(false);
-  const [deletingId, setDeletingId] = useState(null);
 
-  useEffect(() => {
-    fetchAccounts();
-  }, []);
-
-  const fetchAccounts = async () => {
-    try {
-      setLoading(true);
-      const response = await api.get("/ml-accounts");
-      // Handle the API response structure: { success, data: { accounts: [], total } }
-      const accountsList =
-        response.data.data?.accounts ||
-        response.data.data ||
-        response.data ||
-        [];
-      setAccounts(Array.isArray(accountsList) ? accountsList : []);
-    } catch (err) {
-      toast.error("Erro ao carregar contas");
-      setAccounts([]);
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // React Query hooks
+  const {
+    data: accounts = [],
+    isLoading: loading,
+    refetch: refetchAccounts,
+  } = useMLAccounts();
+  const createAccountMutation = useCreateMLAccount();
+  const updateAccountMutation = useUpdateMLAccount();
+  const deleteAccountMutation = useDeleteMLAccount();
+  const generateOAuthUrlMutation = useGenerateMLOAuthUrl();
+  const updateCredentialsMutation = useUpdateAccountOAuthCredentials();
 
   const openModal = (account = null) => {
     if (account) {
@@ -101,23 +88,22 @@ function Accounts() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!formData.accessToken) {
+    if (!formData.accessToken && !editingId) {
       toast.error("Token de acesso é obrigatório");
       return;
     }
 
     try {
-      setSubmitting(true);
-
       if (editingId) {
         // Update existing account (nome apenas)
-        await api.put(`/ml-accounts/${editingId}`, {
-          accountName: formData.accountName,
+        await updateAccountMutation.mutateAsync({
+          accountId: editingId,
+          data: { accountName: formData.accountName },
         });
         toast.success("Conta atualizada com sucesso!");
       } else {
         // Create new account com access token (e opcionalmente refresh token)
-        await api.post("/ml-accounts", {
+        await createAccountMutation.mutateAsync({
           accessToken: formData.accessToken,
           refreshToken: formData.refreshToken || null,
           accountName: formData.accountName || "",
@@ -125,13 +111,10 @@ function Accounts() {
         toast.success("Conta criada com sucesso!");
       }
 
-      await fetchAccounts();
       closeModal();
     } catch (err) {
       toast.error(err.response?.data?.message || "Erro ao salvar conta");
       console.error(err);
-    } finally {
-      setSubmitting(false);
     }
   };
 
@@ -145,10 +128,8 @@ function Accounts() {
     }
 
     try {
-      setDeletingId(accountId);
-      await api.delete(`/ml-accounts/${accountId}`);
+      await deleteAccountMutation.mutateAsync(accountId);
       toast.success("Conta deletada com sucesso!");
-      fetchAccounts();
     } catch (err) {
       const errorMsg =
         err.response?.data?.message ||
@@ -161,8 +142,6 @@ function Accounts() {
         data: err.response?.data,
         message: err.message,
       });
-    } finally {
-      setDeletingId(null);
     }
   };
 
@@ -197,16 +176,14 @@ function Accounts() {
     }
 
     try {
-      setOAuthLoading(true);
-
       // Call backend to generate OAuth URL with credentials
-      const response = await api.post("/auth/ml-oauth-url", {
+      const response = await generateOAuthUrlMutation.mutateAsync({
         clientId: oauthFormData.appId,
         clientSecret: oauthFormData.appSecret,
         redirectUri: oauthFormData.redirectUrl,
       });
 
-      const { authUrl } = response.data.data;
+      const { authUrl } = response.data;
 
       // Store credentials in session storage for callback to use
       sessionStorage.setItem(
@@ -225,8 +202,6 @@ function Accounts() {
         err.response?.data?.message || "Erro ao gerar link de autenticação",
       );
       console.error(err);
-    } finally {
-      setOAuthLoading(false);
     }
   };
 
@@ -280,23 +255,20 @@ function Accounts() {
     }
 
     try {
-      setCredentialsLoading(true);
-
-      const response = await api.put(
-        `/ml-accounts/${selectedAccountForCredentials.id}/oauth-credentials`,
-        {
+      const response = await updateCredentialsMutation.mutateAsync({
+        accountId: selectedAccountForCredentials.id,
+        credentials: {
           clientId: credentialsFormData.clientId || null,
           clientSecret: credentialsFormData.clientSecret || null,
           redirectUri: credentialsFormData.redirectUri || null,
           refreshToken: credentialsFormData.refreshToken,
         },
-      );
+      });
 
-      if (response.data.success) {
+      if (response.success) {
         toast.success(
           "Refresh Token salvo com sucesso! Renovacao automatica ativada.",
         );
-        await fetchAccounts();
         closeCredentialsModal();
       }
     } catch (err) {
@@ -304,8 +276,6 @@ function Accounts() {
         err.response?.data?.message || "Erro ao salvar refresh token",
       );
       console.error(err);
-    } finally {
-      setCredentialsLoading(false);
     }
   };
 
@@ -356,9 +326,11 @@ function Accounts() {
             <button
               className="btn btn-primary"
               onClick={handleMLLogin}
-              disabled={mlLoginLoading}
+              disabled={generateOAuthUrlMutation.isPending}
             >
-              {mlLoginLoading ? "Conectando..." : "🏪 Mercado Livre"}
+              {generateOAuthUrlMutation.isPending
+                ? "Conectando..."
+                : "🏪 Mercado Livre"}
             </button>
             <button className="btn btn-secondary" onClick={() => openModal()}>
               + Adicionar
@@ -386,9 +358,9 @@ function Accounts() {
               <button
                 className="btn btn-primary"
                 onClick={handleMLLogin}
-                disabled={mlLoginLoading}
+                disabled={generateOAuthUrlMutation.isPending}
               >
-                {mlLoginLoading
+                {generateOAuthUrlMutation.isPending
                   ? "Conectando..."
                   : "🏪 Conectar com Mercado Livre"}
               </button>
@@ -445,7 +417,7 @@ function Accounts() {
                   canAutoRefresh={account.canAutoRefresh}
                   hasRefreshToken={account.hasRefreshToken}
                   tokenExpiresAt={account.tokenExpiresAt}
-                  onRefreshSuccess={() => fetchAccounts()}
+                  onRefreshSuccess={() => refetchAccounts()}
                   onConfigureOAuth={() => openCredentialsModal(account)}
                 />
 
@@ -474,9 +446,11 @@ function Accounts() {
                   <button
                     className="btn btn-danger btn-sm"
                     onClick={() => handleDelete(account.id)}
-                    disabled={deletingId === account.id}
+                    disabled={deleteAccountMutation.isPending}
                   >
-                    {deletingId === account.id ? "Deletando..." : "Deletar"}
+                    {deleteAccountMutation.isPending
+                      ? "Deletando..."
+                      : "Deletar"}
                   </button>
                 </div>
               </div>
@@ -559,16 +533,25 @@ function Accounts() {
                   type="button"
                   className="btn btn-secondary"
                   onClick={closeModal}
-                  disabled={submitting}
+                  disabled={
+                    createAccountMutation.isPending ||
+                    updateAccountMutation.isPending
+                  }
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   className="btn btn-primary"
-                  disabled={submitting}
+                  disabled={
+                    createAccountMutation.isPending ||
+                    updateAccountMutation.isPending
+                  }
                 >
-                  {submitting ? "Salvando..." : "Salvar"}
+                  {createAccountMutation.isPending ||
+                  updateAccountMutation.isPending
+                    ? "Salvando..."
+                    : "Salvar"}
                 </button>
               </div>
             </form>
@@ -653,16 +636,18 @@ function Accounts() {
                   type="button"
                   className="btn btn-secondary"
                   onClick={closeOAuthModal}
-                  disabled={oauthLoading}
+                  disabled={generateOAuthUrlMutation.isPending}
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   className="btn btn-primary"
-                  disabled={oauthLoading}
+                  disabled={generateOAuthUrlMutation.isPending}
                 >
-                  {oauthLoading ? "Conectando..." : "Conectar com OAuth"}
+                  {generateOAuthUrlMutation.isPending
+                    ? "Conectando..."
+                    : "Conectar com OAuth"}
                 </button>
               </div>
 
@@ -783,16 +768,18 @@ function Accounts() {
                   type="button"
                   className="btn btn-secondary"
                   onClick={closeCredentialsModal}
-                  disabled={credentialsLoading}
+                  disabled={updateCredentialsMutation.isPending}
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   className="btn btn-primary"
-                  disabled={credentialsLoading}
+                  disabled={updateCredentialsMutation.isPending}
                 >
-                  {credentialsLoading ? "Salvando..." : "Salvar"}
+                  {updateCredentialsMutation.isPending
+                    ? "Salvando..."
+                    : "Salvar"}
                 </button>
               </div>
             </form>

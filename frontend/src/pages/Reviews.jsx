@@ -1,134 +1,125 @@
-import { useState, useEffect } from 'react'
-import { useAuthStore } from '../store/authStore'
-import api from '../services/api'
-import { reviewsService } from '../services/modules'
-import './Reviews.css'
+import { useState } from "react";
+import {
+  useMLAccounts,
+  useReviewsStats,
+  useAllReviews,
+  usePendingReviews,
+  useNegativeReviews,
+  useReplyToReview,
+} from "../hooks/useApi";
+import "./Reviews.css";
 
 function Reviews() {
-  const { token } = useAuthStore()
-  const [accounts, setAccounts] = useState([])
-  const [selectedAccount, setSelectedAccount] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const [success, setSuccess] = useState(null)
-  
-  // Data states
-  const [stats, setStats] = useState(null)
-  const [reviews, setReviews] = useState([])
-  const [pendingReviews, setPendingReviews] = useState([])
-  const [negativeReviews, setNegativeReviews] = useState([])
-  
-  // UI states
-  const [activeTab, setActiveTab] = useState('all')
-  const [selectedReview, setSelectedReview] = useState(null)
-  const [replyText, setReplyText] = useState('')
-  const [replying, setReplying] = useState(false)
+  // Load accounts and select first one
+  const { data: accounts = [] } = useMLAccounts();
+  const [selectedAccount, setSelectedAccount] = useState(accounts[0]?.id || "");
 
-  useEffect(() => {
-    loadAccounts()
-  }, [])
+  // Fetch reviews data using React Query hooks
+  const { data: stats, isLoading: statsLoading } =
+    useReviewsStats(selectedAccount);
+  const {
+    data: reviews = [],
+    isLoading: reviewsLoading,
+    refetch: refetchReviews,
+  } = useAllReviews(selectedAccount, 100);
+  const {
+    data: pendingReviews = [],
+    isLoading: pendingLoading,
+    refetch: refetchPending,
+  } = usePendingReviews(selectedAccount);
+  const {
+    data: negativeReviews = [],
+    isLoading: negativeLoading,
+    refetch: refetchNegative,
+  } = useNegativeReviews(selectedAccount);
 
-  useEffect(() => {
-    if (selectedAccount) {
-      loadData()
+  // Reply mutation
+  const replyMutation = useReplyToReview();
+
+  // Local UI states
+  const [activeTab, setActiveTab] = useState("all");
+  const [selectedReview, setSelectedReview] = useState(null);
+  const [replyText, setReplyText] = useState("");
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
+
+  // Update selected account when accounts load
+  useState(() => {
+    if (accounts.length > 0 && !selectedAccount) {
+      setSelectedAccount(accounts[0].id);
     }
-  }, [selectedAccount])
+  }, [accounts]);
 
-  const loadAccounts = async () => {
-    try {
-      const response = await api.get('/ml-accounts')
-      const accountsList = response.data.data?.accounts || response.data.accounts || []
-      setAccounts(accountsList)
-      if (accountsList.length > 0) {
-        setSelectedAccount(accountsList[0].id)
-      }
-    } catch (err) {
-      setError('Erro ao carregar contas')
-    }
-  }
+  // Combined loading state
+  const loading =
+    statsLoading || reviewsLoading || pendingLoading || negativeLoading;
 
-  const loadData = async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const [statsRes, reviewsRes, pendingRes, negativeRes] = await Promise.all([
-        reviewsService.getStats(selectedAccount),
-        reviewsService.getAllReviews(selectedAccount, 100),
-        reviewsService.getPendingReviews(selectedAccount),
-        reviewsService.getNegativeReviews(selectedAccount),
-      ])
-      
-      setStats(statsRes.data.data)
-      setReviews(reviewsRes.data.data?.reviews || [])
-      setPendingReviews(pendingRes.data.data?.pending_reviews || [])
-      setNegativeReviews(negativeRes.data.data?.negative_reviews || [])
-    } catch (err) {
-      setError('Erro ao carregar avaliacoes')
-      console.error(err)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const handleRefresh = () => {
+    refetchReviews();
+    refetchPending();
+    refetchNegative();
+  };
 
   const handleReply = async (reviewId) => {
     if (!replyText.trim()) {
-      setError('Digite uma resposta')
-      return
+      setError("Digite uma resposta");
+      return;
     }
-    
-    setReplying(true)
+
     try {
-      await reviewsService.replyToReview(selectedAccount, reviewId, replyText)
-      setSuccess('Resposta enviada com sucesso!')
-      setReplyText('')
-      setSelectedReview(null)
-      await loadData()
+      await replyMutation.mutateAsync({
+        accountId: selectedAccount,
+        reviewId,
+        text: replyText,
+      });
+      setSuccess("Resposta enviada com sucesso!");
+      setReplyText("");
+      setSelectedReview(null);
+      // React Query will automatically refetch
     } catch (err) {
-      setError('Erro ao enviar resposta')
-    } finally {
-      setReplying(false)
+      setError("Erro ao enviar resposta");
     }
-  }
+  };
 
   const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleDateString('pt-BR', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric'
-    })
-  }
+    return new Date(dateString).toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    });
+  };
 
   const renderStars = (rating) => {
     return (
       <div className="stars">
-        {[1, 2, 3, 4, 5].map(star => (
-          <span 
-            key={star} 
-            className={`material-icons star ${star <= rating ? 'filled' : ''}`}
+        {[1, 2, 3, 4, 5].map((star) => (
+          <span
+            key={star}
+            className={`material-icons star ${star <= rating ? "filled" : ""}`}
           >
             star
           </span>
         ))}
       </div>
-    )
-  }
+    );
+  };
 
   const getRatingColor = (rating) => {
-    if (rating >= 4) return 'success'
-    if (rating === 3) return 'warning'
-    return 'danger'
-  }
+    if (rating >= 4) return "success";
+    if (rating === 3) return "warning";
+    return "danger";
+  };
 
   const getDisplayReviews = () => {
     switch (activeTab) {
-      case 'pending':
-        return pendingReviews
-      case 'negative':
-        return negativeReviews
+      case "pending":
+        return pendingReviews;
+      case "negative":
+        return negativeReviews;
       default:
-        return reviews
+        return reviews;
     }
-  }
+  };
 
   return (
     <div className="reviews-page">
@@ -146,15 +137,15 @@ function Reviews() {
             value={selectedAccount}
             onChange={(e) => setSelectedAccount(e.target.value)}
           >
-            {accounts.map(acc => (
+            {accounts.map((acc) => (
               <option key={acc.id} value={acc.id}>
                 {acc.nickname || acc.mlUserId}
               </option>
             ))}
           </select>
-          <button 
+          <button
             className="btn btn-primary"
-            onClick={loadData}
+            onClick={handleRefresh}
             disabled={loading}
           >
             <span className="material-icons">refresh</span>
@@ -168,7 +159,7 @@ function Reviews() {
         <div className="stats-cards">
           <div className="stat-card primary">
             <div className="stat-value">
-              {stats.average_rating?.toFixed(1) || '0.0'}
+              {stats.average_rating?.toFixed(1) || "0.0"}
               <span className="material-icons">star</span>
             </div>
             <div className="stat-label">Media Geral</div>
@@ -196,36 +187,48 @@ function Reviews() {
             <div className="sentiment-bar">
               <div className="sentiment-info">
                 <span className="sentiment-label success">Positivas (4-5)</span>
-                <span className="sentiment-count">{stats.sentiment.positive}</span>
+                <span className="sentiment-count">
+                  {stats.sentiment.positive}
+                </span>
               </div>
               <div className="bar-track">
-                <div 
-                  className="bar-fill success" 
-                  style={{ width: `${stats.total_reviews > 0 ? (stats.sentiment.positive / stats.total_reviews * 100) : 0}%` }}
+                <div
+                  className="bar-fill success"
+                  style={{
+                    width: `${stats.total_reviews > 0 ? (stats.sentiment.positive / stats.total_reviews) * 100 : 0}%`,
+                  }}
                 ></div>
               </div>
             </div>
             <div className="sentiment-bar">
               <div className="sentiment-info">
                 <span className="sentiment-label warning">Neutras (3)</span>
-                <span className="sentiment-count">{stats.sentiment.neutral}</span>
+                <span className="sentiment-count">
+                  {stats.sentiment.neutral}
+                </span>
               </div>
               <div className="bar-track">
-                <div 
-                  className="bar-fill warning" 
-                  style={{ width: `${stats.total_reviews > 0 ? (stats.sentiment.neutral / stats.total_reviews * 100) : 0}%` }}
+                <div
+                  className="bar-fill warning"
+                  style={{
+                    width: `${stats.total_reviews > 0 ? (stats.sentiment.neutral / stats.total_reviews) * 100 : 0}%`,
+                  }}
                 ></div>
               </div>
             </div>
             <div className="sentiment-bar">
               <div className="sentiment-info">
                 <span className="sentiment-label danger">Negativas (1-2)</span>
-                <span className="sentiment-count">{stats.sentiment.negative}</span>
+                <span className="sentiment-count">
+                  {stats.sentiment.negative}
+                </span>
               </div>
               <div className="bar-track">
-                <div 
-                  className="bar-fill danger" 
-                  style={{ width: `${stats.total_reviews > 0 ? (stats.sentiment.negative / stats.total_reviews * 100) : 0}%` }}
+                <div
+                  className="bar-fill danger"
+                  style={{
+                    width: `${stats.total_reviews > 0 ? (stats.sentiment.negative / stats.total_reviews) * 100 : 0}%`,
+                  }}
                 ></div>
               </div>
             </div>
@@ -235,23 +238,23 @@ function Reviews() {
 
       {/* Tabs */}
       <div className="reviews-tabs">
-        <button 
-          className={`tab ${activeTab === 'all' ? 'active' : ''}`}
-          onClick={() => setActiveTab('all')}
+        <button
+          className={`tab ${activeTab === "all" ? "active" : ""}`}
+          onClick={() => setActiveTab("all")}
         >
           <span className="material-icons">list</span>
           Todas ({reviews.length})
         </button>
-        <button 
-          className={`tab ${activeTab === 'pending' ? 'active' : ''}`}
-          onClick={() => setActiveTab('pending')}
+        <button
+          className={`tab ${activeTab === "pending" ? "active" : ""}`}
+          onClick={() => setActiveTab("pending")}
         >
           <span className="material-icons">pending</span>
           Pendentes ({pendingReviews.length})
         </button>
-        <button 
-          className={`tab ${activeTab === 'negative' ? 'active' : ''}`}
-          onClick={() => setActiveTab('negative')}
+        <button
+          className={`tab ${activeTab === "negative" ? "active" : ""}`}
+          onClick={() => setActiveTab("negative")}
         >
           <span className="material-icons">thumb_down</span>
           Negativas ({negativeReviews.length})
@@ -286,37 +289,50 @@ function Reviews() {
               <span className="material-icons">rate_review</span>
               <h3>Nenhuma avaliacao encontrada</h3>
               <p>
-                {activeTab === 'pending' 
-                  ? 'Todas as avaliacoes foram respondidas!' 
-                  : activeTab === 'negative'
-                  ? 'Otimo! Nenhuma avaliacao negativa.'
-                  : 'Suas avaliacoes aparecerao aqui'}
+                {activeTab === "pending"
+                  ? "Todas as avaliacoes foram respondidas!"
+                  : activeTab === "negative"
+                    ? "Otimo! Nenhuma avaliacao negativa."
+                    : "Suas avaliacoes aparecerao aqui"}
               </p>
             </div>
           ) : (
             getDisplayReviews().map((review, idx) => (
-              <div key={idx} className={`review-card rating-${getRatingColor(review.rate)}`}>
+              <div
+                key={idx}
+                className={`review-card rating-${getRatingColor(review.rate)}`}
+              >
                 <div className="review-header">
                   <div className="reviewer-info">
                     <div className="reviewer-avatar">
-                      {review.reviewer?.nickname?.charAt(0) || '?'}
+                      {review.reviewer?.nickname?.charAt(0) || "?"}
                     </div>
                     <div className="reviewer-details">
-                      <span className="reviewer-name">{review.reviewer?.nickname || 'Comprador'}</span>
-                      <span className="review-date">{formatDate(review.date_created)}</span>
+                      <span className="reviewer-name">
+                        {review.reviewer?.nickname || "Comprador"}
+                      </span>
+                      <span className="review-date">
+                        {formatDate(review.date_created)}
+                      </span>
                     </div>
                   </div>
                   <div className="review-rating">
                     {renderStars(review.rate)}
-                    <span className={`rating-badge ${getRatingColor(review.rate)}`}>
+                    <span
+                      className={`rating-badge ${getRatingColor(review.rate)}`}
+                    >
                       {review.rate}/5
                     </span>
                   </div>
                 </div>
 
                 <div className="review-content">
-                  {review.title && <h4 className="review-title">{review.title}</h4>}
-                  <p className="review-text">{review.content || 'Sem comentario'}</p>
+                  {review.title && (
+                    <h4 className="review-title">{review.title}</h4>
+                  )}
+                  <p className="review-text">
+                    {review.content || "Sem comentario"}
+                  </p>
                 </div>
 
                 {review.item_id && (
@@ -345,26 +361,28 @@ function Reviews() {
                           rows={3}
                         />
                         <div className="reply-buttons">
-                          <button 
+                          <button
                             className="btn btn-secondary"
                             onClick={() => {
-                              setSelectedReview(null)
-                              setReplyText('')
+                              setSelectedReview(null);
+                              setReplyText("");
                             }}
                           >
                             Cancelar
                           </button>
-                          <button 
+                          <button
                             className="btn btn-primary"
                             onClick={() => handleReply(review.id)}
-                            disabled={replying}
+                            disabled={replyMutation.isPending}
                           >
-                            {replying ? 'Enviando...' : 'Enviar Resposta'}
+                            {replyMutation.isPending
+                              ? "Enviando..."
+                              : "Enviar Resposta"}
                           </button>
                         </div>
                       </div>
                     ) : (
-                      <button 
+                      <button
                         className="btn btn-outline"
                         onClick={() => setSelectedReview(review.id)}
                       >
@@ -380,7 +398,7 @@ function Reviews() {
         </div>
       )}
     </div>
-  )
+  );
 }
 
-export default Reviews
+export default Reviews;

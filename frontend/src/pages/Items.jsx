@@ -1,127 +1,49 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useAuthStore } from "../store/authStore";
-import api from "../services/api";
+import { useMLAccounts, useItems, useUpdateItemStatus } from "../hooks/useApi";
 import "./Items.css";
 
 function Items() {
-  const { token } = useAuthStore();
-  const [accounts, setAccounts] = useState([]);
-  const [selectedAccount, setSelectedAccount] = useState("");
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const { data: accounts = [], isLoading: accountsLoading } = useMLAccounts();
+  const [selectedAccount, setSelectedAccount] = useState(
+    accounts[0]?._id || accounts[0]?.id || "",
+  );
   const [filters, setFilters] = useState({
     status: "",
     search: "",
   });
   const [pagination, setPagination] = useState({
     offset: 0,
-    limit: 1000, // Increased limit to fetch more items
-    total: 0,
+    limit: 1000,
   });
 
-  useEffect(() => {
-    loadAccounts();
-  }, []);
-
-  useEffect(() => {
-    if (selectedAccount) {
-      loadItems();
+  // Auto-select first account when accounts load
+  useState(() => {
+    if (accounts.length > 0 && !selectedAccount) {
+      setSelectedAccount(accounts[0]._id || accounts[0].id);
     }
-  }, [selectedAccount, filters, pagination.offset]);
+  }, [accounts]);
 
-  const loadAccounts = async () => {
-    try {
-      const response = await api.get("/ml-accounts");
-      console.log("ML Accounts API response:", response.data);
+  const {
+    data: itemsData,
+    isLoading,
+    error,
+  } = useItems(selectedAccount, {
+    ...filters,
+    ...pagination,
+  });
 
-      // Handle different API response formats (same as Dashboard)
-      let accountsList = [];
-      if (Array.isArray(response.data)) {
-        accountsList = response.data;
-      } else if (Array.isArray(response.data?.data?.accounts)) {
-        accountsList = response.data.data.accounts;
-      } else if (Array.isArray(response.data?.accounts)) {
-        accountsList = response.data.accounts;
-      } else if (Array.isArray(response.data?.data)) {
-        accountsList = response.data.data;
-      }
+  const updateItemStatusMutation = useUpdateItemStatus();
 
-      console.log("Parsed accounts list:", accountsList);
-      setAccounts(accountsList);
-
-      if (accountsList.length > 0) {
-        const firstAccountId = accountsList[0]._id || accountsList[0].id;
-        console.log("Auto-selecting first account:", firstAccountId);
-        setSelectedAccount(firstAccountId);
-      }
-    } catch (err) {
-      console.error("Error loading accounts:", err);
-      setError("Erro ao carregar contas");
-    }
-  };
-
-  const loadItems = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const params = new URLSearchParams();
-      params.append("offset", pagination.offset);
-      params.append("limit", pagination.limit);
-      if (filters.status) params.append("status", filters.status);
-      if (filters.search) params.append("search", filters.search);
-
-      const response = await api.get(`/items/${selectedAccount}?${params}`);
-      console.log("Items API response:", response.data);
-
-      // Handle different response formats (same as Dashboard)
-      let itemsData = { items: [], paging: { total: 0 } };
-      const resData = response.data;
-
-      if (resData?.success && resData?.data) {
-        itemsData = resData.data;
-      } else if (resData?.items) {
-        itemsData = resData;
-      } else if (Array.isArray(resData)) {
-        itemsData = { items: resData, paging: { total: resData.length } };
-      }
-
-      console.log("Parsed itemsData:", itemsData);
-      console.log("Items array:", itemsData.items);
-
-      setItems(itemsData.items || []);
-      setPagination((prev) => ({
-        ...prev,
-        total:
-          itemsData.paging?.total ||
-          itemsData.total ||
-          itemsData.items?.length ||
-          0,
-      }));
-    } catch (err) {
-      console.error("Error loading items:", err);
-      // Show ML token errors with more detail
-      if (err.response?.data?.code?.startsWith("ML_")) {
-        setError(
-          `Erro de token ML: ${err.response.data.message}. Por favor, reconecte sua conta.`,
-        );
-      } else {
-        setError("Erro ao carregar anuncios");
-      }
-      setItems([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const items = itemsData?.items || [];
+  const total = itemsData?.paging?.total || itemsData?.total || 0;
 
   const updateItemStatus = async (itemId, status) => {
-    try {
-      await api.put(`/items/${selectedAccount}/${itemId}/status`, { status });
-      await loadItems();
-    } catch (err) {
-      setError("Erro ao atualizar status");
-    }
+    await updateItemStatusMutation.mutateAsync({
+      accountId: selectedAccount,
+      itemId,
+      status,
+    });
   };
 
   const getStatusBadgeClass = (status) => {
@@ -151,7 +73,7 @@ function Items() {
     }).format(value);
   };
 
-  const totalPages = Math.ceil(pagination.total / pagination.limit);
+  const totalPages = Math.ceil(total / pagination.limit);
   const currentPage = Math.floor(pagination.offset / pagination.limit) + 1;
 
   return (
@@ -169,6 +91,7 @@ function Items() {
             className="account-select"
             value={selectedAccount}
             onChange={(e) => setSelectedAccount(e.target.value)}
+            disabled={accountsLoading}
           >
             {accounts.map((acc) => (
               <option key={acc._id || acc.id} value={acc._id || acc.id}>
@@ -206,19 +129,19 @@ function Items() {
           />
         </div>
         <div className="filter-stats">
-          <span>{pagination.total} anuncio(s) encontrado(s)</span>
+          <span>{total} anuncio(s) encontrado(s)</span>
         </div>
       </div>
 
       {error && (
         <div className="alert alert-danger">
           <span className="material-icons">error</span>
-          {error}
+          {error.message || "Erro ao carregar anuncios"}
         </div>
       )}
 
       <div className="items-grid">
-        {loading ? (
+        {isLoading ? (
           <div className="loading-state">
             <div className="spinner"></div>
             <p>Carregando anuncios...</p>
@@ -235,7 +158,6 @@ function Items() {
           </div>
         ) : (
           items.map((item) => {
-            // Handle both camelCase and snake_case field names from API
             const itemId = item.id || item.mlItemId || item.ml_item_id;
             const thumbnail = item.thumbnail || item.secure_thumbnail;
             const availableQty =
@@ -299,6 +221,7 @@ function Items() {
                     <button
                       className="btn btn-sm btn-warning"
                       onClick={() => updateItemStatus(itemId, "paused")}
+                      disabled={updateItemStatusMutation.isPending}
                     >
                       <span className="material-icons">pause</span>
                       Pausar
@@ -309,6 +232,7 @@ function Items() {
                     <button
                       className="btn btn-sm btn-success"
                       onClick={() => updateItemStatus(itemId, "active")}
+                      disabled={updateItemStatusMutation.isPending}
                     >
                       <span className="material-icons">play_arrow</span>
                       Ativar
@@ -333,7 +257,7 @@ function Items() {
         )}
       </div>
 
-      {pagination.total > pagination.limit && (
+      {total > pagination.limit && (
         <div className="pagination">
           <button
             className="btn btn-sm btn-secondary"

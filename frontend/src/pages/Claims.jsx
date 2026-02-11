@@ -1,124 +1,62 @@
-import { useState, useEffect } from "react";
-import { useAuthStore } from "../store/authStore";
-import api from "../services/api";
+import { useState } from "react";
+import {
+  useMLAccounts,
+  useClaims,
+  useClaimDetails,
+  useSyncClaims,
+  useSendClaimMessage,
+} from "../hooks/useApi";
 import "./Claims.css";
 
 function Claims() {
-  const { token } = useAuthStore();
-  const [accounts, setAccounts] = useState([]);
-  const [selectedAccount, setSelectedAccount] = useState("");
-  const [claims, setClaims] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [error, setError] = useState(null);
+  const { data: accounts = [] } = useMLAccounts();
+  const [selectedAccount, setSelectedAccount] = useState(accounts[0]?.id || "");
   const [filter, setFilter] = useState("open");
-  const [selectedClaim, setSelectedClaim] = useState(null);
+  const [selectedClaimId, setSelectedClaimId] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [newMessage, setNewMessage] = useState("");
-  const [sending, setSending] = useState(false);
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 1000, // Increased limit to fetch more claims
-    total: 0,
-    totalPages: 0,
-  });
 
-  useEffect(() => {
-    loadAccounts();
-  }, []);
-
-  useEffect(() => {
-    if (selectedAccount) {
-      loadClaims();
+  // Auto-select first account
+  useState(() => {
+    if (accounts.length > 0 && !selectedAccount) {
+      setSelectedAccount(accounts[0].id);
     }
-  }, [selectedAccount, filter, pagination.page]);
+  }, [accounts]);
 
-  const loadAccounts = async () => {
-    try {
-      const response = await api.get("/ml-accounts");
-      const accountsList =
-        response.data.data?.accounts || response.data.accounts || [];
-      setAccounts(accountsList);
-      if (accountsList.length > 0) {
-        setSelectedAccount(accountsList[0].id);
-      }
-    } catch (err) {
-      setError("Erro ao carregar contas");
-    }
-  };
+  const {
+    data: claimsData,
+    isLoading,
+    error,
+  } = useClaims(selectedAccount, filter);
 
-  const loadClaims = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const offset = (pagination.page - 1) * pagination.limit;
-      const endpoint =
-        filter === "open"
-          ? `/claims/${selectedAccount}/open`
-          : `/claims/${selectedAccount}`;
-      const response = await api.get(endpoint, {
-        params: {
-          offset,
-          limit: pagination.limit,
-        },
-      });
-      setClaims(response.data.claims || []);
+  const { data: selectedClaimDetails } = useClaimDetails(
+    selectedAccount,
+    selectedClaimId,
+  );
 
-      // Update pagination info from response
-      const total = response.data.total || response.data.claims?.length || 0;
-      setPagination((prev) => ({
-        ...prev,
-        total,
-        totalPages: Math.ceil(total / prev.limit),
-      }));
-    } catch (err) {
-      setError("Erro ao carregar reclamacoes");
-      setClaims([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const syncClaimsMutation = useSyncClaims();
+  const sendMessageMutation = useSendClaimMessage();
+
+  const claims = claimsData?.claims || [];
 
   const syncClaims = async () => {
-    setSyncing(true);
-    try {
-      await api.post(`/claims/${selectedAccount}/sync`, { all: true });
-      await loadClaims();
-    } catch (err) {
-      setError("Erro ao sincronizar reclamacoes");
-    } finally {
-      setSyncing(false);
-    }
+    await syncClaimsMutation.mutateAsync({ accountId: selectedAccount });
   };
 
   const viewClaimDetails = async (claimId) => {
-    try {
-      const response = await api.get(`/claims/${selectedAccount}/${claimId}`);
-      setSelectedClaim(response.data.claim);
-      setShowModal(true);
-    } catch (err) {
-      setError("Erro ao carregar detalhes");
-    }
+    setSelectedClaimId(claimId);
+    setShowModal(true);
   };
 
   const sendClaimMessage = async () => {
-    if (!newMessage.trim() || !selectedClaim) return;
+    if (!newMessage.trim() || !selectedClaimId) return;
 
-    setSending(true);
-    try {
-      await api.post(
-        `/claims/${selectedAccount}/${selectedClaim.mlClaimId}/message`,
-        {
-          text: newMessage,
-        },
-      );
-      setNewMessage("");
-      await viewClaimDetails(selectedClaim.mlClaimId);
-    } catch (err) {
-      setError("Erro ao enviar mensagem");
-    } finally {
-      setSending(false);
-    }
+    await sendMessageMutation.mutateAsync({
+      accountId: selectedAccount,
+      claimId: selectedClaimId,
+      text: newMessage,
+    });
+    setNewMessage("");
   };
 
   const getStatusBadgeClass = (status) => {
@@ -148,33 +86,6 @@ function Claims() {
     return new Date(dateString).toLocaleString("pt-BR");
   };
 
-  const handleFilterChange = (newFilter) => {
-    setFilter(newFilter);
-    setPagination((prev) => ({ ...prev, page: 1 }));
-  };
-
-  const handleAccountChange = (accountId) => {
-    setSelectedAccount(accountId);
-    setPagination((prev) => ({ ...prev, page: 1 }));
-  };
-
-  const handlePageChange = (newPage) => {
-    setPagination((prev) => ({ ...prev, page: newPage }));
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const handlePrevPage = () => {
-    if (pagination.page > 1) {
-      handlePageChange(pagination.page - 1);
-    }
-  };
-
-  const handleNextPage = () => {
-    if (pagination.page < pagination.totalPages) {
-      handlePageChange(pagination.page + 1);
-    }
-  };
-
   return (
     <div className="claims-page">
       <div className="page-header">
@@ -189,7 +100,7 @@ function Claims() {
           <select
             className="account-select"
             value={selectedAccount}
-            onChange={(e) => handleAccountChange(e.target.value)}
+            onChange={(e) => setSelectedAccount(e.target.value)}
           >
             {accounts.map((acc) => (
               <option key={acc.id} value={acc.id}>
@@ -200,10 +111,10 @@ function Claims() {
           <button
             className="btn btn-primary"
             onClick={syncClaims}
-            disabled={syncing || !selectedAccount}
+            disabled={syncClaimsMutation.isPending || !selectedAccount}
           >
             <span className="material-icons">sync</span>
-            {syncing ? "Sincronizando..." : "Sincronizar"}
+            {syncClaimsMutation.isPending ? "Sincronizando..." : "Sincronizar"}
           </button>
         </div>
       </div>
@@ -212,14 +123,14 @@ function Claims() {
         <div className="filter-tabs">
           <button
             className={`filter-tab ${filter === "open" ? "active" : ""}`}
-            onClick={() => handleFilterChange("open")}
+            onClick={() => setFilter("open")}
           >
             <span className="material-icons">priority_high</span>
             Abertas
           </button>
           <button
             className={`filter-tab ${filter === "all" ? "active" : ""}`}
-            onClick={() => handleFilterChange("all")}
+            onClick={() => setFilter("all")}
           >
             <span className="material-icons">list</span>
             Todas
@@ -230,12 +141,12 @@ function Claims() {
       {error && (
         <div className="alert alert-danger">
           <span className="material-icons">error</span>
-          {error}
+          {error.message || "Erro ao carregar reclamacoes"}
         </div>
       )}
 
       <div className="claims-list">
-        {loading ? (
+        {isLoading ? (
           <div className="loading-state">
             <div className="spinner"></div>
             <p>Carregando reclamacoes...</p>
@@ -314,44 +225,14 @@ function Claims() {
         )}
       </div>
 
-      {!loading && claims.length > 0 && pagination.totalPages > 1 && (
-        <div className="pagination-controls">
-          <button
-            className="btn btn-secondary pagination-btn"
-            onClick={handlePrevPage}
-            disabled={pagination.page === 1}
-          >
-            <span className="material-icons">chevron_left</span>
-            Anterior
-          </button>
-          <div className="pagination-info">
-            <span className="page-text">
-              Pagina {pagination.page} de {pagination.totalPages}
-            </span>
-            <span className="total-text">
-              ({pagination.total}{" "}
-              {pagination.total === 1 ? "reclamacao" : "reclamacoes"})
-            </span>
-          </div>
-          <button
-            className="btn btn-secondary pagination-btn"
-            onClick={handleNextPage}
-            disabled={pagination.page === pagination.totalPages}
-          >
-            Proxima
-            <span className="material-icons">chevron_right</span>
-          </button>
-        </div>
-      )}
-
-      {showModal && selectedClaim && (
+      {showModal && selectedClaimDetails && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div
             className="modal-content claim-modal"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="modal-header">
-              <h2>Reclamacao #{selectedClaim.mlClaimId}</h2>
+              <h2>Reclamacao #{selectedClaimDetails.mlClaimId}</h2>
               <button className="btn-close" onClick={() => setShowModal(false)}>
                 <span className="material-icons">close</span>
               </button>
@@ -363,52 +244,55 @@ function Claims() {
                   <div className="detail-item">
                     <label>Status</label>
                     <span
-                      className={`badge ${getStatusBadgeClass(selectedClaim.status)}`}
+                      className={`badge ${getStatusBadgeClass(selectedClaimDetails.status)}`}
                     >
-                      {getStatusLabel(selectedClaim.status)}
+                      {getStatusLabel(selectedClaimDetails.status)}
                     </span>
                   </div>
                   <div className="detail-item">
                     <label>Motivo</label>
-                    <span>{selectedClaim.reason || "N/A"}</span>
+                    <span>{selectedClaimDetails.reason || "N/A"}</span>
                   </div>
                   <div className="detail-item">
                     <label>Data</label>
-                    <span>{formatDate(selectedClaim.dateCreated)}</span>
+                    <span>{formatDate(selectedClaimDetails.dateCreated)}</span>
                   </div>
                   <div className="detail-item">
                     <label>Comprador</label>
-                    <span>{selectedClaim.buyer?.nickname || "N/A"}</span>
+                    <span>{selectedClaimDetails.buyer?.nickname || "N/A"}</span>
                   </div>
                 </div>
               </div>
 
-              {selectedClaim.messages && selectedClaim.messages.length > 0 && (
-                <div className="claim-detail-section">
-                  <h3>Historico de Mensagens</h3>
-                  <div className="claim-messages">
-                    {selectedClaim.messages.map((msg, idx) => (
-                      <div
-                        key={idx}
-                        className={`claim-message ${msg.senderRole === "seller" ? "sent" : "received"}`}
-                      >
-                        <div className="message-header">
-                          <span className="sender">
-                            {msg.senderRole === "seller" ? "Voce" : "Comprador"}
-                          </span>
-                          <span className="date">
-                            {formatDate(msg.dateCreated)}
-                          </span>
+              {selectedClaimDetails.messages &&
+                selectedClaimDetails.messages.length > 0 && (
+                  <div className="claim-detail-section">
+                    <h3>Historico de Mensagens</h3>
+                    <div className="claim-messages">
+                      {selectedClaimDetails.messages.map((msg, idx) => (
+                        <div
+                          key={idx}
+                          className={`claim-message ${msg.senderRole === "seller" ? "sent" : "received"}`}
+                        >
+                          <div className="message-header">
+                            <span className="sender">
+                              {msg.senderRole === "seller"
+                                ? "Voce"
+                                : "Comprador"}
+                            </span>
+                            <span className="date">
+                              {formatDate(msg.dateCreated)}
+                            </span>
+                          </div>
+                          <p>{msg.text}</p>
                         </div>
-                        <p>{msg.text}</p>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {selectedClaim.status !== "closed" &&
-                selectedClaim.status !== "claim_closed" && (
+              {selectedClaimDetails.status !== "closed" &&
+                selectedClaimDetails.status !== "claim_closed" && (
                   <div className="claim-detail-section">
                     <h3>Responder</h3>
                     <div className="message-form">
@@ -421,9 +305,13 @@ function Claims() {
                       <button
                         className="btn btn-primary"
                         onClick={sendClaimMessage}
-                        disabled={sending || !newMessage.trim()}
+                        disabled={
+                          sendMessageMutation.isPending || !newMessage.trim()
+                        }
                       >
-                        {sending ? "Enviando..." : "Enviar"}
+                        {sendMessageMutation.isPending
+                          ? "Enviando..."
+                          : "Enviar"}
                       </button>
                     </div>
                   </div>

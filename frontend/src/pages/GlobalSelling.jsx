@@ -1,24 +1,27 @@
-import { useState, useEffect } from "react";
-import api from "../services/api";
+import { useState, useMemo } from "react";
+import {
+  useMLAccounts,
+  useGlobalSellingData,
+  useLocalItems,
+} from "../hooks/useApi";
 import "./GlobalSelling.css";
 
 function GlobalSelling() {
+  // React Query hooks
+  const { data: accounts = [], isLoading: accountsLoading } = useMLAccounts();
   const [selectedAccount, setSelectedAccount] = useState("");
-  const [accounts, setAccounts] = useState([]);
+
+  const { data: globalSellingData, isLoading: globalDataLoading } =
+    useGlobalSellingData(selectedAccount);
+  const { data: localItems = [], isLoading: localItemsLoading } =
+    useLocalItems(selectedAccount);
+
+  // Local state
   const [activeTab, setActiveTab] = useState("overview");
-  const [loading, setLoading] = useState(true);
   const [globalItems, setGlobalItems] = useState([]);
-  const [countries, setCountries] = useState([]);
   const [selectedItems, setSelectedItems] = useState([]);
   const [showPublishModal, setShowPublishModal] = useState(false);
-  const [localItems, setLocalItems] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [stats, setStats] = useState({
-    totalGlobalItems: 0,
-    activeCountries: 0,
-    pendingShipments: 0,
-    totalRevenue: 0,
-  });
 
   const [publishForm, setPublishForm] = useState({
     items: [],
@@ -37,138 +40,24 @@ function GlobalSelling() {
     { code: "MEC", name: "Equador", currency: "USD", flag: "🇪🇨" },
   ];
 
-  useEffect(() => {
-    fetchAccounts();
-  }, []);
-
-  useEffect(() => {
-    if (selectedAccount) {
-      fetchGlobalData();
-      fetchLocalItems();
+  // Set first account when accounts load
+  useState(() => {
+    if (accounts.length > 0 && !selectedAccount) {
+      setSelectedAccount(accounts[0].id || accounts[0].accountId);
     }
-  }, [selectedAccount]);
+  }, [accounts, selectedAccount]);
 
-  const fetchAccounts = async () => {
-    try {
-      const response = await api.get("/ml-accounts");
-      if (response.data.success) {
-        const accountsList = response.data.data?.accounts || [];
-        setAccounts(accountsList);
-        if (accountsList.length > 0) {
-          setSelectedAccount(accountsList[0].id || accountsList[0].accountId);
-        }
-      }
-    } catch (error) {
-      console.error("Error fetching accounts:", error);
-    }
-  };
-
-  const fetchGlobalData = async () => {
-    try {
-      setLoading(true);
-
-      // Fetch ALL orders with auto-pagination (no limits!)
-      let allOrders = [];
-      let offset = 0;
-      const limit = 200;
-      let hasMore = true;
-
-      while (hasMore) {
-        const response = await api.get(
-          `/orders/${selectedAccount}?limit=${limit}&offset=${offset}`,
-        );
-
-        if (!response.data.success) {
-          throw new Error("Failed to fetch orders");
-        }
-
-        const orders = response.data.data?.orders || [];
-        allOrders = allOrders.concat(orders);
-
-        if (orders.length < limit) {
-          hasMore = false;
-        } else {
-          offset += limit;
-        }
-      }
-
-      const paidOrders = allOrders.filter(
-        (o) => o.status === "paid" || o.status === "confirmed",
-      );
-
-      // Calculate statistics from real orders
-      const totalRevenue = paidOrders.reduce(
-        (sum, o) => sum + (o.totalAmount || 0),
-        0,
-      );
-      const pendingOrders = allOrders.filter(
-        (o) => o.status === "pending" || o.status === "payment_in_process",
-      );
-
-      // Count unique destination states/countries from shipping info
-      const shippingDestinations = new Set();
-      paidOrders.forEach((order) => {
-        if (order.shipping?.receiverAddress?.state?.name) {
-          shippingDestinations.add(order.shipping.receiverAddress.state.name);
-        }
-      });
-
-      setStats({
-        totalGlobalItems: 0, // Not available from orders
-        activeCountries: shippingDestinations.size,
-        pendingShipments: pendingOrders.length,
-        totalRevenue: totalRevenue,
-      });
-
-      // No global items yet - this would require items API with cross-border flag
-      setGlobalItems([]);
-    } catch (error) {
-      console.error("Error fetching global data:", error);
-      setStats({
+  // Extract stats from global selling data
+  const stats = useMemo(() => {
+    return (
+      globalSellingData?.stats || {
         totalGlobalItems: 0,
         activeCountries: 0,
         pendingShipments: 0,
         totalRevenue: 0,
-      });
-      setGlobalItems([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchLocalItems = async () => {
-    try {
-      // Fetch ALL items with auto-pagination (no limits!)
-      let allItems = [];
-      let offset = 0;
-      const limit = 100;
-      let hasMore = true;
-
-      while (hasMore) {
-        const response = await api.get(
-          `/items/${selectedAccount}/list?limit=${limit}&offset=${offset}`,
-        );
-
-        if (!response.data.success) {
-          break;
-        }
-
-        const items = response.data.data || [];
-        allItems = allItems.concat(items);
-
-        if (items.length < limit) {
-          hasMore = false;
-        } else {
-          offset += limit;
-        }
       }
-
-      setLocalItems(allItems);
-    } catch (error) {
-      console.error("Error fetching local items:", error);
-      setLocalItems([]);
-    }
-  };
+    );
+  }, [globalSellingData]);
 
   const handlePublishGlobal = async () => {
     try {
@@ -176,7 +65,6 @@ function GlobalSelling() {
       console.log("Publishing items globally:", publishForm);
       alert("Produtos publicados com sucesso nos paises selecionados!");
       setShowPublishModal(false);
-      fetchGlobalData();
     } catch (error) {
       console.error("Error publishing globally:", error);
     }
@@ -239,11 +127,15 @@ function GlobalSelling() {
     );
   };
 
-  const filteredLocalItems = localItems.filter(
-    (item) =>
-      item.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.id?.includes(searchTerm),
-  );
+  const filteredLocalItems = useMemo(() => {
+    return localItems.filter(
+      (item) =>
+        item.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.id?.includes(searchTerm),
+    );
+  }, [localItems, searchTerm]);
+
+  const loading = accountsLoading || globalDataLoading;
 
   return (
     <div className="global-selling-page">
@@ -260,6 +152,7 @@ function GlobalSelling() {
             className="account-select"
             value={selectedAccount}
             onChange={(e) => setSelectedAccount(e.target.value)}
+            disabled={accountsLoading}
           >
             <option value="">Selecione uma conta</option>
             {accounts.map((account) => (
@@ -635,47 +528,54 @@ function GlobalSelling() {
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
                 </div>
-                <div className="items-selection">
-                  {filteredLocalItems.slice(0, 10).map((item) => (
-                    <div key={item.id} className="item-checkbox">
-                      <input
-                        type="checkbox"
-                        id={`publish-${item.id}`}
-                        checked={publishForm.items.includes(item.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setPublishForm((prev) => ({
-                              ...prev,
-                              items: [...prev.items, item.id],
-                            }));
-                          } else {
-                            setPublishForm((prev) => ({
-                              ...prev,
-                              items: prev.items.filter((i) => i !== item.id),
-                            }));
-                          }
-                        }}
-                      />
-                      <label htmlFor={`publish-${item.id}`}>
-                        {item.thumbnail && (
-                          <img
-                            src={item.thumbnail}
-                            alt=""
-                            className="item-thumb"
-                          />
-                        )}
-                        <div className="item-details">
-                          <span className="item-title">
-                            {item.title?.substring(0, 50)}...
-                          </span>
-                          <span className="item-price">
-                            {formatCurrency(item.price)}
-                          </span>
-                        </div>
-                      </label>
-                    </div>
-                  ))}
-                </div>
+                {localItemsLoading ? (
+                  <div className="loading-state">
+                    <div className="spinner small"></div>
+                    <p>Carregando produtos...</p>
+                  </div>
+                ) : (
+                  <div className="items-selection">
+                    {filteredLocalItems.slice(0, 10).map((item) => (
+                      <div key={item.id} className="item-checkbox">
+                        <input
+                          type="checkbox"
+                          id={`publish-${item.id}`}
+                          checked={publishForm.items.includes(item.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setPublishForm((prev) => ({
+                                ...prev,
+                                items: [...prev.items, item.id],
+                              }));
+                            } else {
+                              setPublishForm((prev) => ({
+                                ...prev,
+                                items: prev.items.filter((i) => i !== item.id),
+                              }));
+                            }
+                          }}
+                        />
+                        <label htmlFor={`publish-${item.id}`}>
+                          {item.thumbnail && (
+                            <img
+                              src={item.thumbnail}
+                              alt=""
+                              className="item-thumb"
+                            />
+                          )}
+                          <div className="item-details">
+                            <span className="item-title">
+                              {item.title?.substring(0, 50)}...
+                            </span>
+                            <span className="item-price">
+                              {formatCurrency(item.price)}
+                            </span>
+                          </div>
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <p className="selected-count">
                   {publishForm.items.length} produtos selecionados
                 </p>

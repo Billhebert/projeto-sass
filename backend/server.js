@@ -667,8 +667,8 @@ async function startServer() {
       // Don't exit - let server continue without background jobs
     }
 
-    // Start HTTP server
-    server.listen(PORT, () => {
+    // Start HTTP server - bind to 0.0.0.0 to accept connections from Docker network
+    server.listen(PORT, '0.0.0.0', () => {
       logger.info(
         `╔════════════════════════════════════════════════════════════════╗`,
       );

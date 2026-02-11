@@ -1,19 +1,17 @@
-import { useState, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import {
-  mpPaymentsAPI,
   formatMPCurrency,
   getMPStatusColor,
   getMPStatusLabel,
   getMPPaymentTypeLabel,
 } from "../services/mercadopago";
+import { useMPPayments, useRefundMPPayment } from "../hooks/useApi";
 import { useToastStore } from "../store/toastStore";
 import "./MPPayments.css";
 
 function MPPayments() {
-  const [loading, setLoading] = useState(true);
-  const [payments, setPayments] = useState([]);
-  const [paging, setPaging] = useState({ total: 0, limit: 100, offset: 0 });
+  const [paging, setPaging] = useState({ limit: 100, offset: 0 });
   const [filters, setFilters] = useState({
     status: "",
     begin_date: "",
@@ -24,56 +22,59 @@ function MPPayments() {
   const [refundAmount, setRefundAmount] = useState("");
   const { showToast } = useToastStore();
 
-  useEffect(() => {
-    loadPayments();
-  }, [filters, paging.offset]);
+  // Build query params
+  const queryParams = useMemo(() => {
+    const params = {
+      limit: paging.limit,
+      offset: paging.offset,
+      sort: "date_created",
+      criteria: "desc",
+    };
+    if (filters.status) params.status = filters.status;
+    if (filters.begin_date) params.begin_date = filters.begin_date;
+    if (filters.end_date) params.end_date = filters.end_date;
+    return params;
+  }, [filters, paging.limit, paging.offset]);
 
-  const loadPayments = async () => {
-    setLoading(true);
-    try {
-      const params = {
-        limit: paging.limit,
-        offset: paging.offset,
-        sort: "date_created",
-        criteria: "desc",
-      };
+  // Use React Query hooks
+  const {
+    data: paymentsData,
+    isLoading,
+    error,
+    refetch,
+  } = useMPPayments(queryParams);
 
-      if (filters.status) params.status = filters.status;
-      if (filters.begin_date) params.begin_date = filters.begin_date;
-      if (filters.end_date) params.end_date = filters.end_date;
+  const refundMutation = useRefundMPPayment();
 
-      const response = await mpPaymentsAPI.search(params);
-      setPayments(response.data?.results || []);
-      setPaging((prev) => ({
-        ...prev,
-        total: response.data?.paging?.total || 0,
-      }));
-    } catch (error) {
-      console.error("Error loading payments:", error);
-      if (error.response?.status === 501) {
-        showToast(
-          "Integração Mercado Pago não disponível. Use Mercado Livre.",
-          "info",
-        );
-      } else {
-        showToast("Erro ao carregar pagamentos", "error");
-      }
-    } finally {
-      setLoading(false);
+  // Extract payments and paging from response
+  const payments = paymentsData?.results || [];
+  const totalPayments = paymentsData?.paging?.total || 0;
+
+  // Handle error display
+  if (error) {
+    if (error.response?.status === 501) {
+      showToast(
+        "Integração Mercado Pago não disponível. Use Mercado Livre.",
+        "info",
+      );
+    } else {
+      showToast("Erro ao carregar pagamentos", "error");
     }
-  };
+  }
 
   const handleRefund = async () => {
     if (!selectedPayment) return;
 
     try {
       const amount = refundAmount ? parseFloat(refundAmount) : null;
-      await mpPaymentsAPI.refund(selectedPayment.id, amount);
+      await refundMutation.mutateAsync({
+        paymentId: selectedPayment.id,
+        amount,
+      });
       showToast("Reembolso processado com sucesso", "success");
       setShowRefundModal(false);
       setSelectedPayment(null);
       setRefundAmount("");
-      loadPayments();
     } catch (error) {
       console.error("Error refunding payment:", error);
       showToast("Erro ao processar reembolso", "error");
@@ -90,7 +91,7 @@ function MPPayments() {
     setPaging((prev) => ({ ...prev, offset: newOffset }));
   };
 
-  const totalPages = Math.ceil(paging.total / paging.limit);
+  const totalPages = Math.ceil(totalPayments / paging.limit);
   const currentPage = Math.floor(paging.offset / paging.limit) + 1;
 
   return (
@@ -151,7 +152,7 @@ function MPPayments() {
           />
         </div>
 
-        <button className="btn btn-filter" onClick={loadPayments}>
+        <button className="btn btn-filter" onClick={() => refetch()}>
           <span className="material-icons">search</span>
           Buscar
         </button>
@@ -160,14 +161,14 @@ function MPPayments() {
       {/* Stats Summary */}
       <div className="stats-summary">
         <div className="summary-item">
-          <span className="summary-value">{paging.total}</span>
+          <span className="summary-value">{totalPayments}</span>
           <span className="summary-label">Total de Pagamentos</span>
         </div>
       </div>
 
       {/* Payments Table */}
       <div className="payments-container">
-        {loading ? (
+        {isLoading ? (
           <div className="loading-container">
             <div className="spinner"></div>
             <p>Carregando pagamentos...</p>

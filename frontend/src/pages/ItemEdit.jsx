@@ -1,170 +1,202 @@
-import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { useAuthStore } from '../store/authStore'
-import api from '../services/api'
-import './ItemEdit.css'
+import { useState, useEffect } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import {
+  useMLAccounts,
+  useItemDetails,
+  useUpdateItem,
+  useUpdateItemDescription,
+  useUpdateItemPictures,
+  useUpdateItemStatus,
+  useRelistItem,
+} from "../hooks/useApi";
+import "./ItemEdit.css";
 
 function ItemEdit() {
-  const { itemId } = useParams()
-  const navigate = useNavigate()
-  const { token } = useAuthStore()
-  const [accounts, setAccounts] = useState([])
-  const [selectedAccount, setSelectedAccount] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState(null)
-  const [success, setSuccess] = useState(null)
-  const [item, setItem] = useState(null)
+  const { itemId } = useParams();
+  const navigate = useNavigate();
 
+  // React Query hooks
+  const { data: accounts = [], isLoading: accountsLoading } = useMLAccounts();
+  const [selectedAccount, setSelectedAccount] = useState("");
+
+  const {
+    data: item,
+    isLoading: itemLoading,
+    refetch: refetchItem,
+  } = useItemDetails(selectedAccount, itemId);
+
+  const updateItemMutation = useUpdateItem();
+  const updateDescriptionMutation = useUpdateItemDescription();
+  const updatePicturesMutation = useUpdateItemPictures();
+  const updateStatusMutation = useUpdateItemStatus();
+  const relistItemMutation = useRelistItem();
+
+  // Local state
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
   const [formData, setFormData] = useState({
-    title: '',
-    price: '',
+    title: "",
+    price: "",
     availableQuantity: 1,
-    description: '',
-    pictures: []
-  })
+    description: "",
+    pictures: [],
+  });
 
+  // Set first account as selected when accounts load
   useEffect(() => {
-    loadAccounts()
-  }, [])
+    if (accounts.length > 0 && !selectedAccount) {
+      setSelectedAccount(accounts[0].id);
+    }
+  }, [accounts, selectedAccount]);
 
+  // Update form data when item loads
   useEffect(() => {
-    if (selectedAccount && itemId) {
-      loadItem()
-    }
-  }, [selectedAccount, itemId])
-
-  const loadAccounts = async () => {
-    try {
-      const response = await api.get('/ml-accounts')
-      const accountsList = response.data.data?.accounts || response.data.accounts || []
-      setAccounts(accountsList)
-      if (accountsList.length > 0) {
-        setSelectedAccount(accountsList[0].id)
-      }
-    } catch (err) {
-      setError('Erro ao carregar contas')
-      setLoading(false)
-    }
-  }
-
-  const loadItem = async () => {
-    setLoading(true)
-    try {
-      const response = await api.get(`/items/${selectedAccount}/${itemId}`)
-      const itemData = response.data.item
-      setItem(itemData)
+    if (item) {
       setFormData({
-        title: itemData.title || '',
-        price: itemData.price || '',
-        availableQuantity: itemData.availableQuantity || 1,
-        description: itemData.description?.plain_text || '',
-        pictures: itemData.pictures || []
-      })
-    } catch (err) {
-      setError('Erro ao carregar anuncio')
-    } finally {
-      setLoading(false)
+        title: item.title || "",
+        price: item.price || "",
+        availableQuantity: item.availableQuantity || 1,
+        description: item.description?.plain_text || "",
+        pictures: item.pictures || [],
+      });
     }
-  }
+  }, [item]);
 
   const handleInputChange = (e) => {
-    const { name, value } = e.target
-    setFormData(prev => ({ ...prev, [name]: value }))
-  }
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
 
   const handlePictureAdd = () => {
-    const url = prompt('URL da imagem:')
+    const url = prompt("URL da imagem:");
     if (url) {
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
-        pictures: [...prev.pictures, { source: url }]
-      }))
+        pictures: [...prev.pictures, { source: url }],
+      }));
     }
-  }
+  };
 
   const handlePictureRemove = (index) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      pictures: prev.pictures.filter((_, i) => i !== index)
-    }))
-  }
+      pictures: prev.pictures.filter((_, i) => i !== index),
+    }));
+  };
 
   const handleSave = async () => {
-    setSaving(true)
-    setError(null)
+    setError(null);
 
-    try {
-      await api.put(`/items/${selectedAccount}/${itemId}`, {
-        title: formData.title,
-        price: parseFloat(formData.price),
-        available_quantity: parseInt(formData.availableQuantity)
-      })
-
-      setSuccess('Anuncio atualizado com sucesso!')
-      setTimeout(() => setSuccess(null), 3000)
-    } catch (err) {
-      setError(err.response?.data?.error || 'Erro ao atualizar anuncio')
-    } finally {
-      setSaving(false)
-    }
-  }
+    updateItemMutation.mutate(
+      {
+        accountId: selectedAccount,
+        itemId,
+        itemData: {
+          title: formData.title,
+          price: parseFloat(formData.price),
+          available_quantity: parseInt(formData.availableQuantity),
+        },
+      },
+      {
+        onSuccess: () => {
+          setSuccess("Anuncio atualizado com sucesso!");
+          setTimeout(() => setSuccess(null), 3000);
+          refetchItem();
+        },
+        onError: (err) => {
+          setError(err.response?.data?.error || "Erro ao atualizar anuncio");
+        },
+      },
+    );
+  };
 
   const handleUpdateDescription = async () => {
-    setSaving(true)
-    setError(null)
+    setError(null);
 
-    try {
-      await api.put(`/items/${selectedAccount}/${itemId}/description`, {
-        plain_text: formData.description
-      })
-
-      setSuccess('Descricao atualizada!')
-      setTimeout(() => setSuccess(null), 3000)
-    } catch (err) {
-      setError(err.response?.data?.error || 'Erro ao atualizar descricao')
-    } finally {
-      setSaving(false)
-    }
-  }
+    updateDescriptionMutation.mutate(
+      {
+        accountId: selectedAccount,
+        itemId,
+        description: { plain_text: formData.description },
+      },
+      {
+        onSuccess: () => {
+          setSuccess("Descricao atualizada!");
+          setTimeout(() => setSuccess(null), 3000);
+        },
+        onError: (err) => {
+          setError(err.response?.data?.error || "Erro ao atualizar descricao");
+        },
+      },
+    );
+  };
 
   const handleUpdatePictures = async () => {
-    setSaving(true)
-    setError(null)
+    setError(null);
 
-    try {
-      await api.put(`/items/${selectedAccount}/${itemId}/pictures`, {
-        pictures: formData.pictures
-      })
-
-      setSuccess('Imagens atualizadas!')
-      setTimeout(() => setSuccess(null), 3000)
-    } catch (err) {
-      setError(err.response?.data?.error || 'Erro ao atualizar imagens')
-    } finally {
-      setSaving(false)
-    }
-  }
+    updatePicturesMutation.mutate(
+      {
+        accountId: selectedAccount,
+        itemId,
+        pictures: { pictures: formData.pictures },
+      },
+      {
+        onSuccess: () => {
+          setSuccess("Imagens atualizadas!");
+          setTimeout(() => setSuccess(null), 3000);
+        },
+        onError: (err) => {
+          setError(err.response?.data?.error || "Erro ao atualizar imagens");
+        },
+      },
+    );
+  };
 
   const handleStatusChange = async (status) => {
-    try {
-      await api.put(`/items/${selectedAccount}/${itemId}/status`, { status })
-      await loadItem()
-      setSuccess(`Status alterado para ${status}`)
-      setTimeout(() => setSuccess(null), 3000)
-    } catch (err) {
-      setError('Erro ao alterar status')
-    }
-  }
+    updateStatusMutation.mutate(
+      { accountId: selectedAccount, itemId, status },
+      {
+        onSuccess: () => {
+          setSuccess(`Status alterado para ${status}`);
+          setTimeout(() => setSuccess(null), 3000);
+          refetchItem();
+        },
+        onError: () => {
+          setError("Erro ao alterar status");
+        },
+      },
+    );
+  };
 
-  const formatCurrency = (value, currency = 'BRL') => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: currency
-    }).format(value)
-  }
+  const handleRelist = async () => {
+    relistItemMutation.mutate(
+      { accountId: selectedAccount, itemId },
+      {
+        onSuccess: () => {
+          setSuccess("Anuncio republicado!");
+          refetchItem();
+        },
+        onError: () => {
+          setError("Erro ao republicar");
+        },
+      },
+    );
+  };
 
-  if (loading) {
+  const formatCurrency = (value, currency = "BRL") => {
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: currency,
+    }).format(value);
+  };
+
+  const isLoading = accountsLoading || itemLoading;
+  const isSaving =
+    updateItemMutation.isPending ||
+    updateDescriptionMutation.isPending ||
+    updatePicturesMutation.isPending;
+
+  if (isLoading) {
     return (
       <div className="item-edit-page">
         <div className="loading-state">
@@ -172,14 +204,14 @@ function ItemEdit() {
           <p>Carregando anuncio...</p>
         </div>
       </div>
-    )
+    );
   }
 
   return (
     <div className="item-edit-page">
       <div className="page-header">
         <div className="header-content">
-          <button className="btn-back" onClick={() => navigate('/items')}>
+          <button className="btn-back" onClick={() => navigate("/items")}>
             <span className="material-icons">arrow_back</span>
           </button>
           <div>
@@ -193,15 +225,18 @@ function ItemEdit() {
             value={selectedAccount}
             onChange={(e) => setSelectedAccount(e.target.value)}
           >
-            {accounts.map(acc => (
+            {accounts.map((acc) => (
               <option key={acc.id} value={acc.id}>
                 {acc.nickname || acc.mlUserId}
               </option>
             ))}
           </select>
-          
+
           <a
-            href={item?.permalink || `https://produto.mercadolivre.com.br/MLB-${itemId}`}
+            href={
+              item?.permalink ||
+              `https://produto.mercadolivre.com.br/MLB-${itemId}`
+            }
             target="_blank"
             rel="noopener noreferrer"
             className="btn btn-secondary"
@@ -229,7 +264,9 @@ function ItemEdit() {
       {item && (
         <div className="item-status-bar">
           <div className="status-info">
-            <span className={`badge badge-${item.status === 'active' ? 'success' : item.status === 'paused' ? 'warning' : 'secondary'}`}>
+            <span
+              className={`badge badge-${item.status === "active" ? "success" : item.status === "paused" ? "warning" : "secondary"}`}
+            >
               {item.status}
             </span>
             <span className="item-stats">
@@ -242,36 +279,31 @@ function ItemEdit() {
             </span>
           </div>
           <div className="status-actions">
-            {item.status === 'active' && (
+            {item.status === "active" && (
               <button
                 className="btn btn-sm btn-warning"
-                onClick={() => handleStatusChange('paused')}
+                onClick={() => handleStatusChange("paused")}
+                disabled={updateStatusMutation.isPending}
               >
                 <span className="material-icons">pause</span>
                 Pausar
               </button>
             )}
-            {item.status === 'paused' && (
+            {item.status === "paused" && (
               <button
                 className="btn btn-sm btn-success"
-                onClick={() => handleStatusChange('active')}
+                onClick={() => handleStatusChange("active")}
+                disabled={updateStatusMutation.isPending}
               >
                 <span className="material-icons">play_arrow</span>
                 Ativar
               </button>
             )}
-            {item.status === 'closed' && (
+            {item.status === "closed" && (
               <button
                 className="btn btn-sm btn-primary"
-                onClick={async () => {
-                  try {
-                    await api.post(`/items/${selectedAccount}/${itemId}/relist`)
-                    await loadItem()
-                    setSuccess('Anuncio republicado!')
-                  } catch (err) {
-                    setError('Erro ao republicar')
-                  }
-                }}
+                onClick={handleRelist}
+                disabled={relistItemMutation.isPending}
               >
                 <span className="material-icons">refresh</span>
                 Republicar
@@ -291,9 +323,9 @@ function ItemEdit() {
             <button
               className="btn btn-primary"
               onClick={handleSave}
-              disabled={saving}
+              disabled={isSaving}
             >
-              {saving ? 'Salvando...' : 'Salvar'}
+              {isSaving ? "Salvando..." : "Salvar"}
             </button>
           </div>
 
@@ -347,16 +379,19 @@ function ItemEdit() {
             <button
               className="btn btn-primary"
               onClick={handleUpdatePictures}
-              disabled={saving}
+              disabled={isSaving}
             >
-              {saving ? 'Salvando...' : 'Atualizar Imagens'}
+              {isSaving ? "Salvando..." : "Atualizar Imagens"}
             </button>
           </div>
 
           <div className="pictures-grid">
             {formData.pictures.map((pic, index) => (
               <div key={index} className="picture-item">
-                <img src={pic.source || pic.url || pic.secure_url} alt={`Imagem ${index + 1}`} />
+                <img
+                  src={pic.source || pic.url || pic.secure_url}
+                  alt={`Imagem ${index + 1}`}
+                />
                 <button
                   type="button"
                   className="btn-remove"
@@ -386,9 +421,9 @@ function ItemEdit() {
             <button
               className="btn btn-primary"
               onClick={handleUpdateDescription}
-              disabled={saving}
+              disabled={isSaving}
             >
-              {saving ? 'Salvando...' : 'Atualizar Descricao'}
+              {isSaving ? "Salvando..." : "Atualizar Descricao"}
             </button>
           </div>
 
@@ -404,7 +439,7 @@ function ItemEdit() {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
-export default ItemEdit
+export default ItemEdit;

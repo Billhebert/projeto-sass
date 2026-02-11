@@ -1,108 +1,47 @@
-import { useState, useEffect } from "react";
-import { useAuthStore } from "../store/authStore";
-import api from "../services/api";
+import { useState } from "react";
+import {
+  useMLAccounts,
+  useQuestions,
+  useQuestionsStats,
+  useAnswerQuestion,
+  useSyncQuestions,
+} from "../hooks/useApi";
 import "./Questions.css";
 
 function Questions() {
-  const { token } = useAuthStore();
-  const [accounts, setAccounts] = useState([]);
-  const [selectedAccount, setSelectedAccount] = useState("");
-  const [questions, setQuestions] = useState([]);
-  const [stats, setStats] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [error, setError] = useState(null);
+  const { data: accounts = [] } = useMLAccounts();
+  const [selectedAccount, setSelectedAccount] = useState(accounts[0]?.id || "");
   const [filter, setFilter] = useState("unanswered");
   const [answerModal, setAnswerModal] = useState({
     show: false,
     question: null,
   });
   const [answerText, setAnswerText] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 1000, // Increased limit to fetch more questions
-    total: 0,
-    totalPages: 0,
-  });
 
-  useEffect(() => {
-    loadAccounts();
-  }, []);
-
-  useEffect(() => {
-    if (selectedAccount) {
-      loadQuestions();
-      loadStats();
+  // Auto-select first account
+  useState(() => {
+    if (accounts.length > 0 && !selectedAccount) {
+      setSelectedAccount(accounts[0].id);
     }
-  }, [selectedAccount, filter, pagination.page]);
+  }, [accounts]);
 
-  const loadAccounts = async () => {
-    try {
-      const response = await api.get("/ml-accounts");
-      const accountsList =
-        response.data.data?.accounts || response.data.accounts || [];
-      setAccounts(accountsList);
-      if (accountsList.length > 0) {
-        setSelectedAccount(accountsList[0].id);
-      }
-    } catch (err) {
-      setError("Erro ao carregar contas");
-    }
-  };
+  const {
+    data: questionsData,
+    isLoading,
+    error,
+  } = useQuestions(
+    selectedAccount,
+    filter === "unanswered" ? "UNANSWERED" : null,
+  );
 
-  const loadQuestions = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const endpoint =
-        filter === "unanswered"
-          ? `/questions/${selectedAccount}/unanswered`
-          : `/questions/${selectedAccount}`;
-      const response = await api.get(endpoint, {
-        params: {
-          all: true, // Fetch ALL questions without limit
-        },
-      });
-      setQuestions(response.data.questions || []);
+  const { data: stats } = useQuestionsStats(selectedAccount);
+  const answerQuestionMutation = useAnswerQuestion();
+  const syncQuestionsMutation = useSyncQuestions();
 
-      // Update pagination info from response
-      const total = response.data.total || response.data.questions?.length || 0;
-      setPagination((prev) => ({
-        ...prev,
-        total,
-        totalPages: 1, // Single page now since we fetch everything
-      }));
-    } catch (err) {
-      setError("Erro ao carregar perguntas");
-      setQuestions([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadStats = async () => {
-    try {
-      const response = await api.get(`/questions/${selectedAccount}/stats`);
-      setStats(response.data);
-    } catch (err) {
-      console.error("Erro ao carregar estatisticas:", err);
-    }
-  };
+  const questions = questionsData?.questions || [];
 
   const syncQuestions = async () => {
-    setSyncing(true);
-    try {
-      await api.post(`/questions/${selectedAccount}/sync`, {
-        all: true, // Fetch ALL questions without limit
-      });
-      await loadQuestions();
-      await loadStats();
-    } catch (err) {
-      setError("Erro ao sincronizar perguntas");
-    } finally {
-      setSyncing(false);
-    }
+    await syncQuestionsMutation.mutateAsync({ accountId: selectedAccount });
   };
 
   const openAnswerModal = (question) => {
@@ -118,22 +57,13 @@ function Questions() {
   const submitAnswer = async () => {
     if (!answerText.trim()) return;
 
-    setSubmitting(true);
-    try {
-      await api.post(
-        `/questions/${selectedAccount}/${answerModal.question.mlQuestionId}/answer`,
-        {
-          text: answerText,
-        },
-      );
-      closeAnswerModal();
-      await loadQuestions();
-      await loadStats();
-    } catch (err) {
-      setError("Erro ao enviar resposta");
-    } finally {
-      setSubmitting(false);
-    }
+    await answerQuestionMutation.mutateAsync({
+      accountId: selectedAccount,
+      questionId: answerModal.question.mlQuestionId,
+      text: answerText,
+    });
+
+    closeAnswerModal();
   };
 
   const formatDate = (dateString) => {
@@ -150,33 +80,6 @@ function Questions() {
     return `${Math.floor(diff / 1440)} dias atras`;
   };
 
-  const handleFilterChange = (newFilter) => {
-    setFilter(newFilter);
-    setPagination((prev) => ({ ...prev, page: 1 }));
-  };
-
-  const handleAccountChange = (accountId) => {
-    setSelectedAccount(accountId);
-    setPagination((prev) => ({ ...prev, page: 1 }));
-  };
-
-  const handlePageChange = (newPage) => {
-    setPagination((prev) => ({ ...prev, page: newPage }));
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const handlePrevPage = () => {
-    if (pagination.page > 1) {
-      handlePageChange(pagination.page - 1);
-    }
-  };
-
-  const handleNextPage = () => {
-    if (pagination.page < pagination.totalPages) {
-      handlePageChange(pagination.page + 1);
-    }
-  };
-
   return (
     <div className="questions-page">
       <div className="page-header">
@@ -191,7 +94,7 @@ function Questions() {
           <select
             className="account-select"
             value={selectedAccount}
-            onChange={(e) => handleAccountChange(e.target.value)}
+            onChange={(e) => setSelectedAccount(e.target.value)}
           >
             {accounts.map((acc) => (
               <option key={acc.id} value={acc.id}>
@@ -202,10 +105,12 @@ function Questions() {
           <button
             className="btn btn-primary"
             onClick={syncQuestions}
-            disabled={syncing || !selectedAccount}
+            disabled={syncQuestionsMutation.isPending || !selectedAccount}
           >
             <span className="material-icons">sync</span>
-            {syncing ? "Sincronizando..." : "Sincronizar"}
+            {syncQuestionsMutation.isPending
+              ? "Sincronizando..."
+              : "Sincronizar"}
           </button>
         </div>
       </div>
@@ -257,7 +162,7 @@ function Questions() {
         <div className="filter-tabs">
           <button
             className={`filter-tab ${filter === "unanswered" ? "active" : ""}`}
-            onClick={() => handleFilterChange("unanswered")}
+            onClick={() => setFilter("unanswered")}
           >
             <span className="material-icons">schedule</span>
             Pendentes
@@ -267,7 +172,7 @@ function Questions() {
           </button>
           <button
             className={`filter-tab ${filter === "all" ? "active" : ""}`}
-            onClick={() => handleFilterChange("all")}
+            onClick={() => setFilter("all")}
           >
             <span className="material-icons">list</span>
             Todas
@@ -278,12 +183,12 @@ function Questions() {
       {error && (
         <div className="alert alert-danger">
           <span className="material-icons">error</span>
-          {error}
+          {error.message || "Erro ao carregar perguntas"}
         </div>
       )}
 
       <div className="questions-list">
-        {loading ? (
+        {isLoading ? (
           <div className="loading-state">
             <div className="spinner"></div>
             <p>Carregando perguntas...</p>
@@ -381,36 +286,6 @@ function Questions() {
         )}
       </div>
 
-      {!loading && questions.length > 0 && pagination.totalPages > 1 && (
-        <div className="pagination-controls">
-          <button
-            className="btn btn-secondary pagination-btn"
-            onClick={handlePrevPage}
-            disabled={pagination.page === 1}
-          >
-            <span className="material-icons">chevron_left</span>
-            Anterior
-          </button>
-          <div className="pagination-info">
-            <span className="page-text">
-              Pagina {pagination.page} de {pagination.totalPages}
-            </span>
-            <span className="total-text">
-              ({pagination.total}{" "}
-              {pagination.total === 1 ? "pergunta" : "perguntas"})
-            </span>
-          </div>
-          <button
-            className="btn btn-secondary pagination-btn"
-            onClick={handleNextPage}
-            disabled={pagination.page === pagination.totalPages}
-          >
-            Proxima
-            <span className="material-icons">chevron_right</span>
-          </button>
-        </div>
-      )}
-
       {answerModal.show && (
         <div className="modal-overlay" onClick={closeAnswerModal}>
           <div
@@ -447,9 +322,13 @@ function Questions() {
               <button
                 className="btn btn-primary"
                 onClick={submitAnswer}
-                disabled={submitting || !answerText.trim()}
+                disabled={
+                  answerQuestionMutation.isPending || !answerText.trim()
+                }
               >
-                {submitting ? "Enviando..." : "Enviar Resposta"}
+                {answerQuestionMutation.isPending
+                  ? "Enviando..."
+                  : "Enviar Resposta"}
               </button>
             </div>
           </div>

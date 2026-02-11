@@ -1,21 +1,25 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import { mpCustomersAPI } from "../services/mercadopago";
 import { useToastStore } from "../store/toastStore";
+import {
+  useMPCustomers,
+  useMPCustomerCards,
+  useCreateMPCustomer,
+  useUpdateMPCustomer,
+  useDeleteMPCustomer,
+  useDeleteMPCustomerCard,
+} from "../hooks/useApi";
 import "./MPCustomers.css";
 
 function MPCustomers() {
-  const [loading, setLoading] = useState(true);
-  const [customers, setCustomers] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [modalType, setModalType] = useState("view"); // 'view', 'create', 'edit'
-  const [actionLoading, setActionLoading] = useState(false);
-  const [customerCards, setCustomerCards] = useState([]);
   const { showToast } = useToastStore();
 
   // Search
   const [searchEmail, setSearchEmail] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Form state
   const [customerForm, setCustomerForm] = useState({
@@ -37,52 +41,29 @@ function MPCustomers() {
     },
   });
 
-  useEffect(() => {
-    loadCustomers();
-  }, []);
+  // React Query hooks
+  const {
+    data: customers = [],
+    isLoading: loading,
+    refetch,
+  } = useMPCustomers(searchQuery);
 
-  const loadCustomers = async () => {
-    setLoading(true);
-    try {
-      const response = await mpCustomersAPI.search({
-        email: searchEmail || undefined,
-      });
-      setCustomers(response.data?.results || response.data || []);
-    } catch (error) {
-      console.error("Error loading customers:", error);
-      if (error.response?.status === 501) {
-        showToast(
-          "Integração Mercado Pago não disponível. Use Mercado Livre.",
-          "info",
-        );
-      } else {
-        showToast("Erro ao carregar clientes", "error");
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { data: customerCards = [] } = useMPCustomerCards(selectedCustomer?.id);
+
+  const createCustomerMutation = useCreateMPCustomer();
+  const updateCustomerMutation = useUpdateMPCustomer();
+  const deleteCustomerMutation = useDeleteMPCustomer();
+  const deleteCardMutation = useDeleteMPCustomerCard();
 
   const handleSearch = (e) => {
     e.preventDefault();
-    loadCustomers();
-  };
-
-  const loadCustomerCards = async (customerId) => {
-    try {
-      const response = await mpCustomersAPI.getCards(customerId);
-      setCustomerCards(response.data || []);
-    } catch (error) {
-      console.error("Error loading cards:", error);
-      setCustomerCards([]);
-    }
+    setSearchQuery(searchEmail);
   };
 
   const openViewModal = async (customer) => {
     setSelectedCustomer(customer);
     setModalType("view");
     setShowModal(true);
-    await loadCustomerCards(customer.id);
   };
 
   const openCreateModal = () => {
@@ -134,7 +115,6 @@ function MPCustomers() {
 
   const handleCreateCustomer = async (e) => {
     e.preventDefault();
-    setActionLoading(true);
     try {
       const data = {
         email: customerForm.email,
@@ -154,21 +134,18 @@ function MPCustomers() {
         data.address = customerForm.address;
       }
 
-      await mpCustomersAPI.create(data);
+      await createCustomerMutation.mutateAsync(data);
       showToast("Cliente criado com sucesso", "success");
       setShowModal(false);
-      loadCustomers();
+      refetch();
     } catch (error) {
       console.error("Error creating customer:", error);
       showToast("Erro ao criar cliente", "error");
-    } finally {
-      setActionLoading(false);
     }
   };
 
   const handleUpdateCustomer = async (e) => {
     e.preventDefault();
-    setActionLoading(true);
     try {
       const data = {
         first_name: customerForm.first_name || undefined,
@@ -187,15 +164,16 @@ function MPCustomers() {
         data.address = customerForm.address;
       }
 
-      await mpCustomersAPI.update(selectedCustomer.id, data);
+      await updateCustomerMutation.mutateAsync({
+        customerId: selectedCustomer.id,
+        data,
+      });
       showToast("Cliente atualizado com sucesso", "success");
       setShowModal(false);
-      loadCustomers();
+      refetch();
     } catch (error) {
       console.error("Error updating customer:", error);
       showToast("Erro ao atualizar cliente", "error");
-    } finally {
-      setActionLoading(false);
     }
   };
 
@@ -207,32 +185,25 @@ function MPCustomers() {
     )
       return;
 
-    setActionLoading(true);
     try {
-      await mpCustomersAPI.delete(customerId);
+      await deleteCustomerMutation.mutateAsync(customerId);
       showToast("Cliente excluido com sucesso", "success");
-      loadCustomers();
+      refetch();
     } catch (error) {
       console.error("Error deleting customer:", error);
       showToast("Erro ao excluir cliente", "error");
-    } finally {
-      setActionLoading(false);
     }
   };
 
   const handleDeleteCard = async (customerId, cardId) => {
     if (!window.confirm("Deseja excluir este cartao?")) return;
 
-    setActionLoading(true);
     try {
-      await mpCustomersAPI.deleteCard(customerId, cardId);
+      await deleteCardMutation.mutateAsync({ customerId, cardId });
       showToast("Cartao excluido com sucesso", "success");
-      await loadCustomerCards(customerId);
     } catch (error) {
       console.error("Error deleting card:", error);
       showToast("Erro ao excluir cartao", "error");
-    } finally {
-      setActionLoading(false);
     }
   };
 
@@ -251,6 +222,12 @@ function MPCustomers() {
     };
     return brands[brand?.toLowerCase()] || "credit_card";
   };
+
+  const actionLoading =
+    createCustomerMutation.isPending ||
+    updateCustomerMutation.isPending ||
+    deleteCustomerMutation.isPending ||
+    deleteCardMutation.isPending;
 
   return (
     <div className="mp-customers">

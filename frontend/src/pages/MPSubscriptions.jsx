@@ -1,23 +1,24 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import {
-  mpSubscriptionsAPI,
-  formatMPCurrency,
-  getMPStatusColor,
-} from "../services/mercadopago";
+import { formatMPCurrency, getMPStatusColor } from "../services/mercadopago";
 import { useToastStore } from "../store/toastStore";
+import {
+  useMPSubscriptions,
+  useMPPlans,
+  useMPSubscriptionStats,
+  useCreateMPPlan,
+  useCreateMPSubscription,
+  usePauseMPSubscription,
+  useCancelMPSubscription,
+  useReactivateMPSubscription,
+} from "../hooks/useApi";
 import "./MPSubscriptions.css";
 
 function MPSubscriptions() {
-  const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("subscriptions"); // 'subscriptions' or 'plans'
-  const [subscriptions, setSubscriptions] = useState([]);
-  const [plans, setPlans] = useState([]);
-  const [stats, setStats] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [modalType, setModalType] = useState("view"); // 'view', 'create-plan', 'create-subscription'
-  const [actionLoading, setActionLoading] = useState(false);
   const { showToast } = useToastStore();
 
   // Filters
@@ -42,27 +43,41 @@ function MPSubscriptions() {
     external_reference: "",
   });
 
-  useEffect(() => {
-    loadData();
-  }, [tab, filters]);
+  // React Query hooks
+  const {
+    data: subscriptions = [],
+    isLoading: loadingSubscriptions,
+    error: subscriptionsError,
+    refetch: refetchSubscriptions,
+  } = useMPSubscriptions(tab === "subscriptions" ? filters : { _skip: true });
 
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      if (tab === "subscriptions") {
-        const [subsRes, statsRes] = await Promise.all([
-          mpSubscriptionsAPI.search({ status: filters.status || undefined }),
-          mpSubscriptionsAPI.getStats(),
-        ]);
-        setSubscriptions(subsRes.data?.results || subsRes.data || []);
-        setStats(statsRes.data);
-      } else {
-        const plansRes = await mpSubscriptionsAPI.searchPlans();
-        setPlans(plansRes.data?.results || plansRes.data || []);
-      }
-    } catch (error) {
-      console.error("Error loading data:", error);
-      if (error.response?.status === 501) {
+  const {
+    data: plans = [],
+    isLoading: loadingPlans,
+    refetch: refetchPlans,
+  } = useMPPlans();
+
+  const {
+    data: stats,
+    isLoading: loadingStats,
+    refetch: refetchStats,
+  } = useMPSubscriptionStats();
+
+  const createPlanMutation = useCreateMPPlan();
+  const createSubscriptionMutation = useCreateMPSubscription();
+  const pauseMutation = usePauseMPSubscription();
+  const cancelMutation = useCancelMPSubscription();
+  const reactivateMutation = useReactivateMPSubscription();
+
+  const loading =
+    tab === "subscriptions"
+      ? loadingSubscriptions || loadingStats
+      : loadingPlans;
+
+  // Handle API errors
+  useEffect(() => {
+    if (subscriptionsError) {
+      if (subscriptionsError.response?.status === 501) {
         showToast(
           "Integração Mercado Pago não disponível. Use Mercado Livre.",
           "info",
@@ -70,24 +85,18 @@ function MPSubscriptions() {
       } else {
         showToast("Erro ao carregar dados", "error");
       }
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [subscriptionsError, showToast]);
 
   const handlePauseSubscription = async (subscriptionId) => {
     if (!window.confirm("Deseja pausar esta assinatura?")) return;
 
-    setActionLoading(true);
     try {
-      await mpSubscriptionsAPI.pause(subscriptionId);
+      await pauseMutation.mutateAsync(subscriptionId);
       showToast("Assinatura pausada com sucesso", "success");
-      loadData();
     } catch (error) {
       console.error("Error pausing subscription:", error);
       showToast("Erro ao pausar assinatura", "error");
-    } finally {
-      setActionLoading(false);
     }
   };
 
@@ -99,38 +108,29 @@ function MPSubscriptions() {
     )
       return;
 
-    setActionLoading(true);
     try {
-      await mpSubscriptionsAPI.cancel(subscriptionId);
+      await cancelMutation.mutateAsync(subscriptionId);
       showToast("Assinatura cancelada com sucesso", "success");
-      loadData();
     } catch (error) {
       console.error("Error cancelling subscription:", error);
       showToast("Erro ao cancelar assinatura", "error");
-    } finally {
-      setActionLoading(false);
     }
   };
 
   const handleReactivateSubscription = async (subscriptionId) => {
-    setActionLoading(true);
     try {
-      await mpSubscriptionsAPI.reactivate(subscriptionId);
+      await reactivateMutation.mutateAsync(subscriptionId);
       showToast("Assinatura reativada com sucesso", "success");
-      loadData();
     } catch (error) {
       console.error("Error reactivating subscription:", error);
       showToast("Erro ao reativar assinatura", "error");
-    } finally {
-      setActionLoading(false);
     }
   };
 
   const handleCreatePlan = async (e) => {
     e.preventDefault();
-    setActionLoading(true);
     try {
-      await mpSubscriptionsAPI.createPlan({
+      await createPlanMutation.mutateAsync({
         reason: planForm.reason,
         auto_recurring: {
           frequency: parseInt(planForm.auto_recurring.frequency),
@@ -152,20 +152,16 @@ function MPSubscriptions() {
           currency_id: "BRL",
         },
       });
-      loadData();
     } catch (error) {
       console.error("Error creating plan:", error);
       showToast("Erro ao criar plano", "error");
-    } finally {
-      setActionLoading(false);
     }
   };
 
   const handleCreateSubscription = async (e) => {
     e.preventDefault();
-    setActionLoading(true);
     try {
-      await mpSubscriptionsAPI.create({
+      await createSubscriptionMutation.mutateAsync({
         preapproval_plan_id: subscriptionForm.preapproval_plan_id,
         payer_email: subscriptionForm.payer_email,
         external_reference: subscriptionForm.external_reference || undefined,
@@ -177,12 +173,9 @@ function MPSubscriptions() {
         payer_email: "",
         external_reference: "",
       });
-      loadData();
     } catch (error) {
       console.error("Error creating subscription:", error);
       showToast("Erro ao criar assinatura", "error");
-    } finally {
-      setActionLoading(false);
     }
   };
 
@@ -220,6 +213,13 @@ function MPSubscriptions() {
     if (!dateString) return "-";
     return new Date(dateString).toLocaleDateString("pt-BR");
   };
+
+  const actionLoading =
+    pauseMutation.isPending ||
+    cancelMutation.isPending ||
+    reactivateMutation.isPending ||
+    createPlanMutation.isPending ||
+    createSubscriptionMutation.isPending;
 
   return (
     <div className="mp-subscriptions">

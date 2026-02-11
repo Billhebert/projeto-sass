@@ -1,6 +1,12 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import api from "../services/api";
+import {
+  useMLAccounts,
+  useItems,
+  useAdvertising,
+  useCreateCampaign,
+  useUpdateCampaignStatus,
+} from "../hooks/useApi";
 import {
   AreaChart,
   Area,
@@ -21,16 +27,42 @@ import {
 import "./Advertising.css";
 
 function Advertising() {
-  const [accounts, setAccounts] = useState([]);
   const [selectedAccount, setSelectedAccount] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [campaigns, setCampaigns] = useState([]);
   const [activeTab, setActiveTab] = useState("campaigns");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedCampaign, setSelectedCampaign] = useState(null);
-  const [items, setItems] = useState([]);
-  const [stats, setStats] = useState({
+  const [period, setPeriod] = useState("30");
+
+  // React Query hooks
+  const { data: accountsData, isLoading: accountsLoading } = useMLAccounts();
+  const accounts = accountsData || [];
+
+  // Set first account as default when accounts load
+  if (!selectedAccount && accounts.length > 0 && !accountsLoading) {
+    setSelectedAccount(accounts[0].id);
+  }
+
+  const {
+    data: itemsData,
+    isLoading: itemsLoading,
+    error: itemsError,
+  } = useItems(selectedAccount, { limit: 50 });
+  const items = Array.isArray(itemsData?.items)
+    ? itemsData.items
+    : Array.isArray(itemsData)
+      ? itemsData
+      : [];
+
+  const {
+    data: advertisingData,
+    isLoading: advertisingLoading,
+    error: advertisingError,
+    refetch: refetchAdvertising,
+  } = useAdvertising(selectedAccount, parseInt(period));
+
+  const campaigns = advertisingData?.campaigns || [];
+  const stats = advertisingData?.stats || {
     totalSpend: 0,
     totalClicks: 0,
     totalImpressions: 0,
@@ -38,10 +70,14 @@ function Advertising() {
     avgCpc: 0,
     avgCtr: 0,
     roi: 0,
-  });
-  const [performanceData, setPerformanceData] = useState([]);
-  const [period, setPeriod] = useState("30");
-  const [error, setError] = useState(null);
+  };
+  const performanceData = advertisingData?.performance || [];
+
+  const createCampaignMutation = useCreateCampaign();
+  const updateCampaignStatusMutation = useUpdateCampaignStatus();
+
+  const loading = accountsLoading || itemsLoading || advertisingLoading;
+  const error = advertisingError?.message || itemsError?.message || null;
 
   const [createForm, setCreateForm] = useState({
     name: "",
@@ -66,70 +102,6 @@ function Advertising() {
     "#06b6d4",
   ];
 
-  useEffect(() => {
-    loadAccounts();
-  }, []);
-
-  useEffect(() => {
-    if (selectedAccount) {
-      loadAdvertisingData();
-    }
-  }, [selectedAccount, period]);
-
-  const loadAccounts = async () => {
-    try {
-      const response = await api.get("/ml-accounts");
-      const accountsList =
-        response.data.data?.accounts || response.data.accounts || [];
-      setAccounts(accountsList);
-      if (accountsList.length > 0) {
-        setSelectedAccount(accountsList[0].id);
-      }
-    } catch (err) {
-      setError("Erro ao carregar contas");
-      setLoading(false);
-    }
-  };
-
-  const loadAdvertisingData = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await api.get(
-        `/advertising/${selectedAccount}?days=${period}`,
-      );
-      setCampaigns(response.data.campaigns || []);
-      setStats(response.data.stats || {});
-      setPerformanceData(response.data.performance || []);
-      await fetchItems();
-    } catch (err) {
-      console.error("Error loading advertising data:", err);
-      setError(
-        "Erro ao carregar dados de publicidade. Verifique se você tem campanhas configuradas.",
-      );
-      setCampaigns([]);
-      setStats({});
-      setPerformanceData([]);
-      setItems([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchItems = async () => {
-    try {
-      const response = await api.get(`/items/${selectedAccount}?limit=50`);
-      if (response.data.success) {
-        setItems(Array.isArray(response.data.data) ? response.data.data : []);
-      } else {
-        setItems([]);
-      }
-    } catch (err) {
-      console.error("Error fetching items:", err);
-      setItems([]);
-    }
-  };
-
   const handleCreateCampaign = async () => {
     try {
       const campaignData = {
@@ -139,22 +111,18 @@ function Advertising() {
         bidAmount: parseFloat(createForm.bidAmount) || 0,
       };
 
-      // API call to create campaign
-      const response = await api.post(
-        `/advertising/${selectedAccount}/campaigns`,
-        campaignData,
-      );
+      await createCampaignMutation.mutateAsync({
+        accountId: selectedAccount,
+        data: campaignData,
+      });
 
-      if (response.data.success) {
-        setCampaigns((prev) => [...prev, response.data.data]);
-        setShowCreateModal(false);
-        resetCreateForm();
-      }
+      setShowCreateModal(false);
+      resetCreateForm();
+
+      // Refetch advertising data
+      refetchAdvertising();
     } catch (err) {
       console.error("Error creating campaign:", err);
-      setError(
-        "Erro ao criar campanha. Verifique suas permissões de publicidade.",
-      );
     }
   };
 
@@ -213,21 +181,16 @@ function Advertising() {
   const toggleCampaignStatus = async (campaignId, currentStatus) => {
     const newStatus = currentStatus === "active" ? "paused" : "active";
     try {
-      await api.put(`/advertising/${selectedAccount}/${campaignId}/status`, {
+      await updateCampaignStatusMutation.mutateAsync({
+        accountId: selectedAccount,
+        campaignId,
         status: newStatus,
       });
-      setCampaigns(
-        campaigns.map((c) =>
-          c.id === campaignId ? { ...c, status: newStatus } : c,
-        ),
-      );
+
+      // Refetch advertising data to update UI
+      refetchAdvertising();
     } catch (err) {
-      // Update locally for demo
-      setCampaigns(
-        campaigns.map((c) =>
-          c.id === campaignId ? { ...c, status: newStatus } : c,
-        ),
-      );
+      console.error("Error updating campaign status:", err);
     }
   };
 

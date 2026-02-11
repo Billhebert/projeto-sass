@@ -1,14 +1,18 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import {
-  mpPaymentsAPI,
-  mpSubscriptionsAPI,
-  mpAccountAPI,
   formatMPCurrency,
   getMPStatusColor,
   getMPStatusLabel,
 } from "../services/mercadopago";
 import { useToastStore } from "../store/toastStore";
+import {
+  useMPAccount,
+  useMPBalance,
+  useMPPaymentsStats,
+  useMPSubscriptionStats,
+  useMPPayments,
+} from "../hooks/useApi";
 import {
   LineChart,
   Line,
@@ -26,87 +30,72 @@ import {
 import "./MPDashboard.css";
 
 function MPDashboard() {
-  const [loading, setLoading] = useState(true);
-  const [accountInfo, setAccountInfo] = useState(null);
-  const [balance, setBalance] = useState(null);
-  const [paymentStats, setPaymentStats] = useState(null);
-  const [subscriptionStats, setSubscriptionStats] = useState(null);
-  const [recentPayments, setRecentPayments] = useState([]);
   const { showToast } = useToastStore();
 
+  // React Query hooks
+  const {
+    data: accountInfo,
+    isLoading: accountLoading,
+    error: accountError,
+  } = useMPAccount();
+  const {
+    data: balance,
+    isLoading: balanceLoading,
+    error: balanceError,
+  } = useMPBalance();
+  const {
+    data: paymentStats,
+    isLoading: statsLoading,
+    error: statsError,
+  } = useMPPaymentsStats({});
+  const {
+    data: subscriptionStats,
+    isLoading: subsLoading,
+    error: subsError,
+  } = useMPSubscriptionStats();
+  const {
+    data: recentPaymentsData,
+    isLoading: paymentsLoading,
+    error: paymentsError,
+  } = useMPPayments({
+    limit: 100,
+    sort: "date_created",
+    criteria: "desc",
+  });
+
+  const loading =
+    accountLoading ||
+    balanceLoading ||
+    statsLoading ||
+    subsLoading ||
+    paymentsLoading;
+  const recentPayments = recentPaymentsData?.results || [];
+
+  // Check if all requests failed with 501 (MP disabled)
   useEffect(() => {
-    loadDashboardData();
-  }, []);
+    const errors = [
+      accountError,
+      balanceError,
+      statsError,
+      subsError,
+      paymentsError,
+    ];
+    const all501 = errors.every((err) => err && err.response?.status === 501);
 
-  const loadDashboardData = async () => {
-    setLoading(true);
-    try {
-      // Load all data in parallel
-      const [accountRes, balanceRes, paymentsRes, subsStatsRes, recentRes] =
-        await Promise.allSettled([
-          mpAccountAPI.getMe(),
-          mpAccountAPI.getBalance(),
-          mpPaymentsAPI.getStats({}),
-          mpSubscriptionsAPI.getStats(),
-          mpPaymentsAPI.search({
-            limit: 100, // Increased limit to fetch more recent payments
-            sort: "date_created",
-            criteria: "desc",
-          }),
-        ]);
-
-      if (accountRes.status === "fulfilled") {
-        setAccountInfo(accountRes.value.data);
-      }
-
-      if (balanceRes.status === "fulfilled") {
-        setBalance(balanceRes.value.data);
-      }
-
-      if (paymentsRes.status === "fulfilled") {
-        setPaymentStats(paymentsRes.value.data);
-      }
-
-      if (subsStatsRes.status === "fulfilled") {
-        setSubscriptionStats(subsStatsRes.value.data);
-      }
-
-      if (recentRes.status === "fulfilled") {
-        setRecentPayments(recentRes.value.data?.results || []);
-      }
-
-      // Check if all requests failed with 501 (MP disabled)
-      const all501 = [
-        accountRes,
-        balanceRes,
-        paymentsRes,
-        subsStatsRes,
-        recentRes,
-      ].every(
-        (res) =>
-          res.status === "rejected" && res.reason?.response?.status === 501,
+    if (all501 && errors.some((err) => err)) {
+      showToast(
+        "Integração Mercado Pago não disponível. Use Mercado Livre.",
+        "info",
       );
-
-      if (all501) {
-        showToast(
-          "Integração Mercado Pago não disponível. Use Mercado Livre.",
-          "info",
-        );
-      }
-    } catch (error) {
-      console.error("Error loading dashboard:", error);
-      if (error.response?.status === 501) {
-        showToast(
-          "Integração Mercado Pago não disponível. Use Mercado Livre.",
-          "info",
-        );
-      } else {
-        showToast("Erro ao carregar dados do dashboard", "error");
-      }
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [
+    accountError,
+    balanceError,
+    statsError,
+    subsError,
+    paymentsError,
+    showToast,
+  ]);
 
   const getPaymentChartData = () => {
     if (!paymentStats?.payment) return [];

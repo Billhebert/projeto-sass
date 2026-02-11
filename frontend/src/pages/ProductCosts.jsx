@@ -1,80 +1,51 @@
 import { useState, useEffect } from "react";
-import api from "../services/api";
+import {
+  useMLAccounts,
+  useProductCosts,
+  useUpdateProductCost,
+  useDeleteProductCost,
+  useSyncProductCosts,
+} from "../hooks/useApi";
 import "./ProductCosts.css";
 
 function ProductCosts() {
   const [selectedAccount, setSelectedAccount] = useState("");
-  const [accounts, setAccounts] = useState([]);
-  const [costs, setCosts] = useState([]);
-  const [loading, setLoading] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editValue, setEditValue] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [syncStatus, setSyncStatus] = useState(null);
 
+  // React Query hooks
+  const { data: accounts = [], isLoading: accountsLoading } = useMLAccounts();
+  const { data: costs = [], isLoading: costsLoading } =
+    useProductCosts(selectedAccount);
+  const updateProductCost = useUpdateProductCost();
+  const deleteProductCost = useDeleteProductCost();
+  const syncProductCosts = useSyncProductCosts();
+
+  // Auto-select first account
   useEffect(() => {
-    fetchAccounts();
-  }, []);
-
-  useEffect(() => {
-    if (selectedAccount) {
-      fetchCosts();
+    if (accounts.length > 0 && !selectedAccount) {
+      setSelectedAccount(accounts[0].accountId);
     }
-  }, [selectedAccount]);
-
-  const fetchAccounts = async () => {
-    try {
-      const response = await api.get("/api/ml-accounts");
-      if (response.data.success) {
-        setAccounts(response.data.data);
-        if (response.data.data.length > 0) {
-          setSelectedAccount(response.data.data[0].accountId);
-        }
-      }
-    } catch (error) {
-      console.error("Error fetching accounts:", error);
-    }
-  };
-
-  const fetchCosts = async () => {
-    if (!selectedAccount) return;
-
-    setLoading(true);
-    try {
-      const response = await api.get(`/api/product-costs/${selectedAccount}`);
-      if (response.data.success) {
-        setCosts(response.data.data);
-      }
-    } catch (error) {
-      console.error("Error fetching costs:", error);
-      alert("Erro ao buscar custos dos produtos");
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [accounts, selectedAccount]);
 
   const handleSyncProducts = async () => {
     if (!selectedAccount) return;
 
-    setLoading(true);
     setSyncStatus("Sincronizando produtos...");
     try {
-      const response = await api.get(
-        `/api/product-costs/${selectedAccount}/sync`,
-      );
-      if (response.data.success) {
-        setSyncStatus(
-          `✅ ${response.data.data.newCosts} novos produtos adicionados!`,
-        );
-        fetchCosts();
+      const result = await syncProductCosts.mutateAsync({
+        accountId: selectedAccount,
+      });
+      if (result.success) {
+        setSyncStatus(`${result.data.newCosts} novos produtos adicionados!`);
         setTimeout(() => setSyncStatus(null), 3000);
       }
     } catch (error) {
       console.error("Error syncing products:", error);
-      setSyncStatus("❌ Erro ao sincronizar produtos");
+      setSyncStatus("Erro ao sincronizar produtos");
       setTimeout(() => setSyncStatus(null), 3000);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -90,22 +61,13 @@ function ProductCosts() {
     }
 
     try {
-      const response = await api.put(
-        `/api/product-costs/${selectedAccount}/${cost.itemId}`,
-        {
-          cogs: parseFloat(editValue),
-        },
-      );
-
-      if (response.data.success) {
-        setCosts(
-          costs.map((c) =>
-            c._id === cost._id ? { ...c, cogs: parseFloat(editValue) } : c,
-          ),
-        );
-        setEditingId(null);
-        setEditValue("");
-      }
+      await updateProductCost.mutateAsync({
+        accountId: selectedAccount,
+        itemId: cost.itemId,
+        cogs: parseFloat(editValue),
+      });
+      setEditingId(null);
+      setEditValue("");
     } catch (error) {
       console.error("Error updating cost:", error);
       alert("Erro ao atualizar custo");
@@ -127,13 +89,10 @@ function ProductCosts() {
     }
 
     try {
-      const response = await api.delete(
-        `/api/product-costs/${selectedAccount}/${cost.itemId}`,
-      );
-
-      if (response.data.success) {
-        setCosts(costs.filter((c) => c._id !== cost._id));
-      }
+      await deleteProductCost.mutateAsync({
+        accountId: selectedAccount,
+        itemId: cost.itemId,
+      });
     } catch (error) {
       console.error("Error deleting cost:", error);
       alert("Erro ao deletar custo");
@@ -163,12 +122,14 @@ function ProductCosts() {
         : 0,
   };
 
+  const loading = accountsLoading || costsLoading || syncProductCosts.isPending;
+
   return (
     <div className="product-costs-container">
       <div className="product-costs-header">
-        <h1>💰 Gestão de Custos (COGS)</h1>
+        <h1>Gestao de Custos (COGS)</h1>
         <p>
-          Gerencie os custos dos seus produtos para cálculo preciso de margem de
+          Gerencie os custos dos seus produtos para calculo preciso de margem de
           lucro
         </p>
       </div>
@@ -191,7 +152,7 @@ function ProductCosts() {
           onClick={handleSyncProducts}
           disabled={!selectedAccount || loading}
         >
-          🔄 Sincronizar Produtos
+          Sincronizar Produtos
         </button>
 
         <input
@@ -244,8 +205,8 @@ function ProductCosts() {
                 <th>ID do Item</th>
                 <th>Título do Produto</th>
                 <th>Custo (COGS)</th>
-                <th>Última Atualização</th>
-                <th>Ações</th>
+                <th>Ultima Atualizacao</th>
+                <th>Acoes</th>
               </tr>
             </thead>
             <tbody>
@@ -290,13 +251,13 @@ function ProductCosts() {
                           className="btn btn-sm btn-success"
                           onClick={() => handleSave(cost)}
                         >
-                          ✓ Salvar
+                          Salvar
                         </button>
                         <button
                           className="btn btn-sm btn-secondary"
                           onClick={handleCancel}
                         >
-                          ✕ Cancelar
+                          Cancelar
                         </button>
                       </div>
                     ) : (
@@ -305,13 +266,13 @@ function ProductCosts() {
                           className="btn btn-sm btn-primary"
                           onClick={() => handleEdit(cost)}
                         >
-                          ✎ Editar
+                          Editar
                         </button>
                         <button
                           className="btn btn-sm btn-danger"
                           onClick={() => handleDelete(cost)}
                         >
-                          🗑 Deletar
+                          Deletar
                         </button>
                       </div>
                     )}
@@ -324,18 +285,18 @@ function ProductCosts() {
       )}
 
       <div className="help-text">
-        <h3>ℹ️ Como funciona?</h3>
+        <h3>Como funciona?</h3>
         <ul>
           <li>
             <strong>COGS (Cost of Goods Sold)</strong>: Custo do produto que
-            você paga ao fornecedor
+            voce paga ao fornecedor
           </li>
           <li>
-            Adicione os custos dos produtos para ter cálculo preciso de margem
+            Adicione os custos dos produtos para ter calculo preciso de margem
             de lucro
           </li>
           <li>
-            A margem verdadeira será:{" "}
+            A margem verdadeira sera:{" "}
             <code>(Receita - Taxas - COGS) / Receita</code>
           </li>
           <li>

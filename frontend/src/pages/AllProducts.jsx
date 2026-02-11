@@ -1,188 +1,74 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import api from "../services/api";
 import { toast } from "../store/toastStore";
 import {
   exportToCSV,
   exportToPDF,
   prepareProductsForExport,
 } from "../utils/export";
+import {
+  useMLAccounts,
+  useAllProducts,
+  useSyncProducts,
+} from "../hooks/useApi";
 import "./Products.css";
 
 export default function AllProducts() {
   const navigate = useNavigate();
 
-  const [products, setProducts] = useState([]);
-  const [accounts, setAccounts] = useState([]);
-  const [stats, setStats] = useState({
-    total: 0,
-    active: 0,
-    paused: 0,
-    lowStock: 0,
-    totalSales: 0,
-    totalValue: 0,
-  });
-  const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
-  const [syncingAccountId, setSyncingAccountId] = useState(null);
   const [selectedAccount, setSelectedAccount] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [sortBy, setSortBy] = useState("-createdAt");
+  const [syncingAccountId, setSyncingAccountId] = useState(null);
 
-  // Fetch all accounts first
-  const fetchAccounts = useCallback(async () => {
-    try {
-      const response = await api.get("/ml-accounts");
-      const accountsList =
-        response.data.data?.accounts || response.data.data || [];
-      setAccounts(Array.isArray(accountsList) ? accountsList : []);
-      return Array.isArray(accountsList) ? accountsList : [];
-    } catch (err) {
-      console.error("Error fetching accounts:", err);
-      return [];
-    }
-  }, []);
+  // Fetch accounts and products using React Query
+  const { data: accounts = [], isLoading: accountsLoading } = useMLAccounts();
+  const {
+    data: allProductsData = { products: [], stats: {} },
+    isLoading: productsLoading,
+    refetch: refetchProducts,
+  } = useAllProducts({ sort: sortBy, status: filterStatus });
 
-  // Fetch products from all accounts
-  const fetchAllProducts = useCallback(
-    async (accountsList) => {
-      if (!accountsList || accountsList.length === 0) {
-        setLoading(false);
-        return;
-      }
+  const { mutateAsync: syncProducts } = useSyncProducts();
 
-      setLoading(true);
-      let allProducts = [];
-      let totalStats = {
-        total: 0,
-        active: 0,
-        paused: 0,
-        lowStock: 0,
-        totalSales: 0,
-        totalValue: 0,
-      };
-
-      for (const account of accountsList) {
-        try {
-          // Fetch ALL products with auto-pagination (no limits!)
-          let accountProducts = [];
-          let offset = 0;
-          const limit = 100;
-          let hasMore = true;
-
-          while (hasMore) {
-            const query = new URLSearchParams({
-              limit: limit.toString(),
-              offset: offset.toString(),
-              sort: sortBy,
-            });
-
-            if (filterStatus) {
-              query.append("status", filterStatus);
-            }
-
-            const response = await api.get(
-              `/products/${account.id}?${query.toString()}`,
-            );
-
-            if (response.data.success) {
-              const products = response.data.data.products.map((p) => ({
-                ...p,
-                accountId: account.id,
-                accountName: account.nickname,
-              }));
-              accountProducts = accountProducts.concat(products);
-
-              if (products.length < limit) {
-                hasMore = false;
-              } else {
-                offset += limit;
-              }
-            } else {
-              hasMore = false;
-            }
-          }
-
-          allProducts = allProducts.concat(accountProducts);
-
-          // Fetch stats
-          const statsResponse = await api.get(`/products/${account.id}/stats`);
-          if (statsResponse.data.success) {
-            const s = statsResponse.data.data;
-            totalStats.total += s.products?.total || 0;
-            totalStats.active += s.products?.active || 0;
-            totalStats.paused += s.products?.paused || 0;
-            totalStats.lowStock += s.products?.lowStock || 0;
-            totalStats.totalSales += s.sales || 0;
-            totalStats.totalValue += s.estimatedValue || 0;
-          }
-        } catch (err) {
-          console.error(
-            `Error fetching products for account ${account.id}:`,
-            err,
-          );
-        }
-      }
-
-      setProducts(allProducts);
-      setStats(totalStats);
-      setLoading(false);
-    },
-    [sortBy, filterStatus],
-  );
-
-  // Initial fetch
-  useEffect(() => {
-    const loadData = async () => {
-      const accountsList = await fetchAccounts();
-      await fetchAllProducts(accountsList);
-    };
-    loadData();
-  }, []);
-
-  // Refetch when filters change
-  useEffect(() => {
-    if (accounts.length > 0) {
-      fetchAllProducts(accounts);
-    }
-  }, [sortBy, filterStatus]);
+  const { products = [], stats = {} } = allProductsData;
+  const loading = accountsLoading || productsLoading;
+  const syncing = syncingAccountId !== null;
 
   // Sync products for a specific account
   const handleSyncAccount = async (accountId) => {
     setSyncingAccountId(accountId);
-    setSyncing(true);
 
     try {
-      const response = await api.post(`/products/${accountId}/sync`);
-      if (response.data.success) {
+      const response = await syncProducts({ accountId });
+      if (response.success) {
         toast.success(
-          `${response.data.data.productsCount || 0} produtos sincronizados!`,
+          `${response.data.productsCount || 0} produtos sincronizados!`,
         );
-        // Refresh products
-        await fetchAllProducts(accounts);
+        // Refetch all products
+        await refetchProducts();
       }
     } catch (err) {
       toast.error(
         err.response?.data?.message || "Falha ao sincronizar produtos",
       );
     } finally {
-      setSyncing(false);
       setSyncingAccountId(null);
     }
   };
 
   // Sync all accounts
   const handleSyncAll = async () => {
-    setSyncing(true);
+    setSyncingAccountId("all");
     let totalSynced = 0;
 
     for (const account of accounts) {
       try {
         setSyncingAccountId(account.id);
-        const response = await api.post(`/products/${account.id}/sync`);
-        if (response.data.success) {
-          totalSynced += response.data.data.productsCount || 0;
+        const response = await syncProducts({ accountId: account.id });
+        if (response.success) {
+          totalSynced += response.data.productsCount || 0;
         }
       } catch (err) {
         console.error(`Error syncing account ${account.id}:`, err);
@@ -192,20 +78,21 @@ export default function AllProducts() {
     toast.success(
       `${totalSynced} produtos sincronizados de ${accounts.length} conta(s)!`,
     );
-    await fetchAllProducts(accounts);
-    setSyncing(false);
+    await refetchProducts();
     setSyncingAccountId(null);
   };
 
   // Filter products by search and selected account
-  const filteredProducts = products.filter((product) => {
-    const matchesSearch = product.title
-      ?.toLowerCase()
-      .includes(searchTerm.toLowerCase());
-    const matchesAccount =
-      !selectedAccount || product.accountId === selectedAccount;
-    return matchesSearch && matchesAccount;
-  });
+  const filteredProducts = useMemo(() => {
+    return products.filter((product) => {
+      const matchesSearch = product.title
+        ?.toLowerCase()
+        .includes(searchTerm.toLowerCase());
+      const matchesAccount =
+        !selectedAccount || product.accountId === selectedAccount;
+      return matchesSearch && matchesAccount;
+    });
+  }, [products, searchTerm, selectedAccount]);
 
   const hasProducts = filteredProducts.length > 0;
 

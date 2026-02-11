@@ -1,22 +1,21 @@
-import { useState, useEffect } from "react";
-import api from "../services/api";
+import { useState, useMemo } from "react";
+import {
+  useMLAccounts,
+  usePriceAutomationRules,
+  usePriceAutomationItems,
+  useCreatePriceRule,
+  useUpdatePriceRule,
+  useDeletePriceRule,
+  useExecutePriceRule,
+  useTogglePriceRule,
+} from "../hooks/useApi";
 import "./PriceAutomation.css";
 
 function PriceAutomation() {
   const [selectedAccount, setSelectedAccount] = useState("");
-  const [accounts, setAccounts] = useState([]);
-  const [rules, setRules] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingRule, setEditingRule] = useState(null);
-  const [items, setItems] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [stats, setStats] = useState({
-    totalRules: 0,
-    activeRules: 0,
-    itemsAffected: 0,
-    lastExecution: null,
-  });
 
   const [formData, setFormData] = useState({
     name: "",
@@ -39,81 +38,41 @@ function PriceAutomation() {
     },
   });
 
-  useEffect(() => {
-    fetchAccounts();
-  }, []);
+  // React Query hooks
+  const { data: accounts = [], isLoading: accountsLoading } = useMLAccounts();
+  const { data: rules = [], isLoading: rulesLoading } =
+    usePriceAutomationRules(selectedAccount);
+  const { data: items = [] } = usePriceAutomationItems(selectedAccount);
 
-  useEffect(() => {
-    if (selectedAccount) {
-      fetchRules();
-      fetchItems();
+  const createRuleMutation = useCreatePriceRule();
+  const updateRuleMutation = useUpdatePriceRule();
+  const deleteRuleMutation = useDeletePriceRule();
+  const executeRuleMutation = useExecutePriceRule();
+  const toggleRuleMutation = useTogglePriceRule();
+
+  // Auto-select first account
+  useMemo(() => {
+    if (accounts.length > 0 && !selectedAccount) {
+      setSelectedAccount(accounts[0].id || accounts[0].accountId);
     }
-  }, [selectedAccount]);
+  }, [accounts, selectedAccount]);
 
-  const fetchAccounts = async () => {
-    try {
-      const response = await api.get("/ml-accounts");
-      if (response.data.success) {
-        const accountsList = response.data.data?.accounts || [];
-        setAccounts(accountsList);
-        if (accountsList.length > 0) {
-          setSelectedAccount(accountsList[0].id || accountsList[0].accountId);
-        }
-      }
-    } catch (error) {
-      console.error("Error fetching accounts:", error);
-    }
-  };
+  // Calculate stats from rules
+  const stats = useMemo(() => {
+    return {
+      totalRules: rules.length,
+      activeRules: rules.filter(
+        (r) => r.status === "active" || r.schedule?.active,
+      ).length,
+      itemsAffected: rules.reduce(
+        (acc, r) => acc + (r.itemsCount || r.items?.length || 0),
+        0,
+      ),
+      lastExecution: rules[0]?.lastRun || rules[0]?.last_execution || null,
+    };
+  }, [rules]);
 
-  const fetchRules = async () => {
-    try {
-      setLoading(true);
-      const response = await api.get(
-        `/price-automation/${selectedAccount}/rules`,
-      );
-      const rulesData = response.data.data?.rules || response.data.rules || [];
-      setRules(rulesData);
-
-      // Calculate stats from real data
-      setStats({
-        totalRules: rulesData.length,
-        activeRules: rulesData.filter(
-          (r) => r.status === "active" || r.schedule?.active,
-        ).length,
-        itemsAffected: rulesData.reduce(
-          (acc, r) => acc + (r.itemsCount || r.items?.length || 0),
-          0,
-        ),
-        lastExecution:
-          rulesData[0]?.lastRun || rulesData[0]?.last_execution || null,
-      });
-    } catch (error) {
-      console.error("Error fetching rules:", error);
-      // Set empty data on error instead of mock data
-      setRules([]);
-      setStats({
-        totalRules: 0,
-        activeRules: 0,
-        itemsAffected: 0,
-        lastExecution: null,
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchItems = async () => {
-    try {
-      const response = await api.get(
-        `/items/${selectedAccount}/list?limit=100`,
-      );
-      if (response.data.success) {
-        setItems(response.data.data || []);
-      }
-    } catch (error) {
-      console.error("Error fetching items:", error);
-    }
-  };
+  const loading = accountsLoading || rulesLoading;
 
   const handleCreateRule = () => {
     setEditingRule(null);
@@ -150,59 +109,70 @@ function PriceAutomation() {
     try {
       if (editingRule) {
         // Update rule
-        setRules((prev) =>
-          prev.map((r) =>
-            r.id === editingRule.id ? { ...r, ...formData } : r,
-          ),
-        );
+        await updateRuleMutation.mutateAsync({
+          accountId: selectedAccount,
+          ruleId: editingRule.id,
+          ruleData: formData,
+        });
       } else {
         // Create rule
-        const newRule = {
-          id: Date.now(),
-          ...formData,
-          itemsCount: formData.items.length,
-          status: "active",
-          lastRun: null,
-        };
-        setRules((prev) => [...prev, newRule]);
+        await createRuleMutation.mutateAsync({
+          accountId: selectedAccount,
+          ruleData: {
+            ...formData,
+            itemsCount: formData.items.length,
+            status: "active",
+          },
+        });
       }
       setShowModal(false);
     } catch (error) {
       console.error("Error saving rule:", error);
+      alert("Erro ao salvar regra. Tente novamente.");
     }
   };
 
-  const handleToggleRule = (ruleId) => {
-    setRules((prev) =>
-      prev.map((r) => {
-        if (r.id === ruleId) {
-          return { ...r, status: r.status === "active" ? "paused" : "active" };
-        }
-        return r;
-      }),
-    );
+  const handleToggleRule = async (ruleId) => {
+    const rule = rules.find((r) => r.id === ruleId);
+    if (!rule) return;
+
+    const newStatus = rule.status === "active" ? "paused" : "active";
+    try {
+      await toggleRuleMutation.mutateAsync({
+        accountId: selectedAccount,
+        ruleId,
+        status: newStatus,
+      });
+    } catch (error) {
+      console.error("Error toggling rule:", error);
+      alert("Erro ao alternar status da regra.");
+    }
   };
 
-  const handleDeleteRule = (ruleId) => {
+  const handleDeleteRule = async (ruleId) => {
     if (window.confirm("Tem certeza que deseja excluir esta regra?")) {
-      setRules((prev) => prev.filter((r) => r.id !== ruleId));
+      try {
+        await deleteRuleMutation.mutateAsync({
+          accountId: selectedAccount,
+          ruleId,
+        });
+      } catch (error) {
+        console.error("Error deleting rule:", error);
+        alert("Erro ao excluir regra. Tente novamente.");
+      }
     }
   };
 
   const handleRunRule = async (ruleId) => {
     try {
-      // Simulated execution
-      setRules((prev) =>
-        prev.map((r) => {
-          if (r.id === ruleId) {
-            return { ...r, lastRun: new Date().toISOString() };
-          }
-          return r;
-        }),
-      );
+      await executeRuleMutation.mutateAsync({
+        accountId: selectedAccount,
+        ruleId,
+      });
       alert("Regra executada com sucesso!");
     } catch (error) {
       console.error("Error running rule:", error);
+      alert("Erro ao executar regra. Tente novamente.");
     }
   };
 

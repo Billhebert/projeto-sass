@@ -1,124 +1,126 @@
-import { useState, useEffect } from 'react'
-import { useAuthStore } from '../store/authStore'
-import api from '../services/api'
-import './Fulfillment.css'
+import { useState } from "react";
+import {
+  useMLAccounts,
+  useFulfillmentInventory,
+  useFulfillmentShipments,
+  useFulfillmentStats,
+} from "../hooks/useApi";
+import "./Fulfillment.css";
 
 function Fulfillment() {
-  const { token } = useAuthStore()
-  const [accounts, setAccounts] = useState([])
-  const [selectedAccount, setSelectedAccount] = useState('')
-  const [inventory, setInventory] = useState([])
-  const [shipments, setShipments] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const [activeTab, setActiveTab] = useState('inventory')
-  const [stats, setStats] = useState({
-    totalItems: 0,
-    inStock: 0,
-    lowStock: 0,
-    outOfStock: 0,
-    pendingShipments: 0,
-    inTransit: 0
-  })
+  // Accounts
+  const { data: accounts = [], isLoading: accountsLoading } = useMLAccounts();
+  const [selectedAccount, setSelectedAccount] = useState("");
+
+  // Set initial account when accounts load
+  useState(() => {
+    if (accounts.length > 0 && !selectedAccount) {
+      setSelectedAccount(accounts[0].id);
+    }
+  }, [accounts]);
+
+  // UI states
+  const [activeTab, setActiveTab] = useState("inventory");
   const [filters, setFilters] = useState({
-    status: 'all',
-    warehouse: 'all'
-  })
+    status: "all",
+    warehouse: "all",
+  });
+  const [error, setError] = useState(null);
 
-  useEffect(() => {
-    loadAccounts()
-  }, [])
+  // Data queries based on active tab
+  const {
+    data: inventory = [],
+    isLoading: inventoryLoading,
+    refetch: refetchInventory,
+  } = useFulfillmentInventory(selectedAccount);
 
-  useEffect(() => {
-    if (selectedAccount) {
-      loadData()
+  const {
+    data: shipments = [],
+    isLoading: shipmentsLoading,
+    refetch: refetchShipments,
+  } = useFulfillmentShipments(selectedAccount);
+
+  const {
+    data: stats = {
+      totalItems: 0,
+      inStock: 0,
+      lowStock: 0,
+      outOfStock: 0,
+      pendingShipments: 0,
+      inTransit: 0,
+    },
+    refetch: refetchStats,
+  } = useFulfillmentStats(selectedAccount);
+
+  const loading =
+    accountsLoading ||
+    (activeTab === "inventory" ? inventoryLoading : shipmentsLoading);
+
+  const loadData = () => {
+    if (activeTab === "inventory") {
+      refetchInventory();
+    } else {
+      refetchShipments();
     }
-  }, [selectedAccount, activeTab])
-
-  const loadAccounts = async () => {
-    try {
-      const response = await api.get('/ml-accounts')
-      const accountsList = response.data.data?.accounts || response.data.accounts || []
-      setAccounts(accountsList)
-      if (accountsList.length > 0) {
-        setSelectedAccount(accountsList[0].id)
-      }
-    } catch (err) {
-      setError('Erro ao carregar contas')
-    }
-  }
-
-  const loadData = async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      if (activeTab === 'inventory') {
-        await loadInventory()
-      } else {
-        await loadShipments()
-      }
-      await loadStats()
-    } catch (err) {
-      setError('Erro ao carregar dados')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const loadInventory = async () => {
-    const response = await api.get(`/fulfillment/${selectedAccount}/inventory`)
-    setInventory(response.data.inventory || [])
-  }
-
-  const loadShipments = async () => {
-    const response = await api.get(`/fulfillment/${selectedAccount}/shipments`)
-    setShipments(response.data.shipments || [])
-  }
-
-  const loadStats = async () => {
-    try {
-      const response = await api.get(`/fulfillment/${selectedAccount}/stats`)
-      setStats(response.data.stats || stats)
-    } catch (err) {
-      console.error('Erro ao carregar estatisticas:', err)
-    }
-  }
+    refetchStats();
+  };
 
   const getStockStatusBadge = (quantity, minStock = 5) => {
-    if (quantity === 0) return { class: 'badge-danger', text: 'Sem Estoque', icon: 'error' }
-    if (quantity <= minStock) return { class: 'badge-warning', text: 'Estoque Baixo', icon: 'warning' }
-    return { class: 'badge-success', text: 'Em Estoque', icon: 'check_circle' }
-  }
+    if (quantity === 0)
+      return { class: "badge-danger", text: "Sem Estoque", icon: "error" };
+    if (quantity <= minStock)
+      return { class: "badge-warning", text: "Estoque Baixo", icon: "warning" };
+    return { class: "badge-success", text: "Em Estoque", icon: "check_circle" };
+  };
 
   const getShipmentStatusBadge = (status) => {
     const statuses = {
-      'pending': { class: 'badge-warning', text: 'Pendente', icon: 'schedule' },
-      'ready_to_ship': { class: 'badge-info', text: 'Pronto para Envio', icon: 'inventory_2' },
-      'shipped': { class: 'badge-primary', text: 'Enviado', icon: 'local_shipping' },
-      'delivered': { class: 'badge-success', text: 'Entregue', icon: 'check_circle' },
-      'cancelled': { class: 'badge-danger', text: 'Cancelado', icon: 'cancel' }
-    }
-    return statuses[status] || { class: 'badge-secondary', text: status, icon: 'help' }
-  }
+      pending: { class: "badge-warning", text: "Pendente", icon: "schedule" },
+      ready_to_ship: {
+        class: "badge-info",
+        text: "Pronto para Envio",
+        icon: "inventory_2",
+      },
+      shipped: {
+        class: "badge-primary",
+        text: "Enviado",
+        icon: "local_shipping",
+      },
+      delivered: {
+        class: "badge-success",
+        text: "Entregue",
+        icon: "check_circle",
+      },
+      cancelled: { class: "badge-danger", text: "Cancelado", icon: "cancel" },
+    };
+    return (
+      statuses[status] || {
+        class: "badge-secondary",
+        text: status,
+        icon: "help",
+      }
+    );
+  };
 
   const formatDate = (dateString) => {
-    if (!dateString) return 'N/A'
-    return new Date(dateString).toLocaleDateString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
-  }
+    if (!dateString) return "N/A";
+    return new Date(dateString).toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
 
-  const filteredInventory = inventory.filter(item => {
-    if (filters.status === 'all') return true
-    if (filters.status === 'in_stock') return item.available_quantity > 5
-    if (filters.status === 'low_stock') return item.available_quantity > 0 && item.available_quantity <= 5
-    if (filters.status === 'out_of_stock') return item.available_quantity === 0
-    return true
-  })
+  const filteredInventory = inventory.filter((item) => {
+    if (filters.status === "all") return true;
+    if (filters.status === "in_stock") return item.available_quantity > 5;
+    if (filters.status === "low_stock")
+      return item.available_quantity > 0 && item.available_quantity <= 5;
+    if (filters.status === "out_of_stock") return item.available_quantity === 0;
+    return true;
+  });
 
   return (
     <div className="fulfillment-page">
@@ -136,13 +138,13 @@ function Fulfillment() {
             value={selectedAccount}
             onChange={(e) => setSelectedAccount(e.target.value)}
           >
-            {accounts.map(acc => (
+            {accounts.map((acc) => (
               <option key={acc.id} value={acc.id}>
                 {acc.nickname || acc.mlUserId}
               </option>
             ))}
           </select>
-          <button 
+          <button
             className="btn btn-primary"
             onClick={loadData}
             disabled={loading || !selectedAccount}
@@ -214,22 +216,22 @@ function Fulfillment() {
       {/* Tabs */}
       <div className="tabs-bar">
         <button
-          className={`tab ${activeTab === 'inventory' ? 'active' : ''}`}
-          onClick={() => setActiveTab('inventory')}
+          className={`tab ${activeTab === "inventory" ? "active" : ""}`}
+          onClick={() => setActiveTab("inventory")}
         >
           <span className="material-icons">inventory</span>
           Estoque Full
         </button>
         <button
-          className={`tab ${activeTab === 'shipments' ? 'active' : ''}`}
-          onClick={() => setActiveTab('shipments')}
+          className={`tab ${activeTab === "shipments" ? "active" : ""}`}
+          onClick={() => setActiveTab("shipments")}
         >
           <span className="material-icons">local_shipping</span>
           Envios Full
         </button>
         <button
-          className={`tab ${activeTab === 'inbound' ? 'active' : ''}`}
-          onClick={() => setActiveTab('inbound')}
+          className={`tab ${activeTab === "inbound" ? "active" : ""}`}
+          onClick={() => setActiveTab("inbound")}
         >
           <span className="material-icons">move_to_inbox</span>
           Reposicao
@@ -237,13 +239,15 @@ function Fulfillment() {
       </div>
 
       {/* Filters */}
-      {activeTab === 'inventory' && (
+      {activeTab === "inventory" && (
         <div className="filters-bar">
           <div className="filter-group">
             <label>Status do Estoque:</label>
-            <select 
+            <select
               value={filters.status}
-              onChange={(e) => setFilters({...filters, status: e.target.value})}
+              onChange={(e) =>
+                setFilters({ ...filters, status: e.target.value })
+              }
             >
               <option value="all">Todos</option>
               <option value="in_stock">Em Estoque</option>
@@ -268,12 +272,15 @@ function Fulfillment() {
             <div className="spinner"></div>
             <p>Carregando...</p>
           </div>
-        ) : activeTab === 'inventory' ? (
+        ) : activeTab === "inventory" ? (
           filteredInventory.length === 0 ? (
             <div className="empty-state">
               <span className="material-icons">inventory</span>
               <h3>Nenhum item no Fulfillment</h3>
-              <p>Seus produtos enviados para o centro de distribuicao aparecerao aqui</p>
+              <p>
+                Seus produtos enviados para o centro de distribuicao aparecerao
+                aqui
+              </p>
             </div>
           ) : (
             <div className="inventory-table">
@@ -291,8 +298,10 @@ function Fulfillment() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredInventory.map(item => {
-                    const stockStatus = getStockStatusBadge(item.available_quantity)
+                  {filteredInventory.map((item) => {
+                    const stockStatus = getStockStatusBadge(
+                      item.available_quantity,
+                    );
                     return (
                       <tr key={item.id}>
                         <td>
@@ -305,16 +314,20 @@ function Fulfillment() {
                               )}
                             </div>
                             <div className="product-details">
-                              <span className="product-title">{item.title}</span>
+                              <span className="product-title">
+                                {item.title}
+                              </span>
                               <span className="product-id">{item.item_id}</span>
                             </div>
                           </div>
                         </td>
                         <td>
-                          <span className="sku">{item.seller_sku || '-'}</span>
+                          <span className="sku">{item.seller_sku || "-"}</span>
                         </td>
                         <td>
-                          <span className={`quantity ${item.available_quantity === 0 ? 'zero' : ''}`}>
+                          <span
+                            className={`quantity ${item.available_quantity === 0 ? "zero" : ""}`}
+                          >
                             {item.available_quantity}
                           </span>
                         </td>
@@ -330,34 +343,44 @@ function Fulfillment() {
                         </td>
                         <td>
                           <span className={`badge ${stockStatus.class}`}>
-                            <span className="material-icons">{stockStatus.icon}</span>
+                            <span className="material-icons">
+                              {stockStatus.icon}
+                            </span>
                             {stockStatus.text}
                           </span>
                         </td>
                         <td>
                           <span className="warehouse">
                             <span className="material-icons">location_on</span>
-                            {item.warehouse_id || 'Principal'}
+                            {item.warehouse_id || "Principal"}
                           </span>
                         </td>
                         <td>
                           <div className="actions">
-                            <button className="btn btn-sm btn-secondary" title="Repor estoque">
-                              <span className="material-icons">add_shopping_cart</span>
+                            <button
+                              className="btn btn-sm btn-secondary"
+                              title="Repor estoque"
+                            >
+                              <span className="material-icons">
+                                add_shopping_cart
+                              </span>
                             </button>
-                            <button className="btn btn-sm btn-outline" title="Ver detalhes">
+                            <button
+                              className="btn btn-sm btn-outline"
+                              title="Ver detalhes"
+                            >
                               <span className="material-icons">visibility</span>
                             </button>
                           </div>
                         </td>
                       </tr>
-                    )
+                    );
                   })}
                 </tbody>
               </table>
             </div>
           )
-        ) : activeTab === 'shipments' ? (
+        ) : activeTab === "shipments" ? (
           shipments.length === 0 ? (
             <div className="empty-state">
               <span className="material-icons">local_shipping</span>
@@ -379,8 +402,8 @@ function Fulfillment() {
                   </tr>
                 </thead>
                 <tbody>
-                  {shipments.map(shipment => {
-                    const statusBadge = getShipmentStatusBadge(shipment.status)
+                  {shipments.map((shipment) => {
+                    const statusBadge = getShipmentStatusBadge(shipment.status);
                     return (
                       <tr key={shipment.id}>
                         <td>
@@ -391,13 +414,19 @@ function Fulfillment() {
                         </td>
                         <td>
                           <div className="destination">
-                            <span className="city">{shipment.receiver_city || 'N/A'}</span>
-                            <span className="state">{shipment.receiver_state || ''}</span>
+                            <span className="city">
+                              {shipment.receiver_city || "N/A"}
+                            </span>
+                            <span className="state">
+                              {shipment.receiver_state || ""}
+                            </span>
                           </div>
                         </td>
                         <td>
                           <span className={`badge ${statusBadge.class}`}>
-                            <span className="material-icons">{statusBadge.icon}</span>
+                            <span className="material-icons">
+                              {statusBadge.icon}
+                            </span>
                             {statusBadge.text}
                           </span>
                         </td>
@@ -405,8 +434,13 @@ function Fulfillment() {
                         <td>{formatDate(shipment.estimated_delivery_date)}</td>
                         <td>
                           <div className="actions">
-                            <button className="btn btn-sm btn-secondary" title="Rastrear">
-                              <span className="material-icons">location_searching</span>
+                            <button
+                              className="btn btn-sm btn-secondary"
+                              title="Rastrear"
+                            >
+                              <span className="material-icons">
+                                location_searching
+                              </span>
                             </button>
                             <a
                               href={`https://www.mercadolivre.com.br/envios/${shipment.id}`}
@@ -414,12 +448,14 @@ function Fulfillment() {
                               rel="noopener noreferrer"
                               className="btn btn-sm btn-outline"
                             >
-                              <span className="material-icons">open_in_new</span>
+                              <span className="material-icons">
+                                open_in_new
+                              </span>
                             </a>
                           </div>
                         </td>
                       </tr>
-                    )
+                    );
                   })}
                 </tbody>
               </table>
@@ -430,7 +466,10 @@ function Fulfillment() {
             <div className="empty-state">
               <span className="material-icons">move_to_inbox</span>
               <h3>Central de Reposicao</h3>
-              <p>Crie pedidos de reposicao para enviar mais produtos ao centro de distribuicao</p>
+              <p>
+                Crie pedidos de reposicao para enviar mais produtos ao centro de
+                distribuicao
+              </p>
               <button className="btn btn-primary">
                 <span className="material-icons">add</span>
                 Criar Pedido de Reposicao
@@ -440,7 +479,7 @@ function Fulfillment() {
         )}
       </div>
     </div>
-  )
+  );
 }
 
-export default Fulfillment
+export default Fulfillment;

@@ -12,14 +12,25 @@ api.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+    console.log(`[API-REQUEST] ${config.method.toUpperCase()} ${config.url} - Token attached`);
+  } else {
+    console.log(`[API-REQUEST] ${config.method.toUpperCase()} ${config.url} - No token`);
   }
   return config;
 });
 
 // Handle errors
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    console.log(`[API-RESPONSE] ${response.config.method.toUpperCase()} ${response.config.url} - Status: ${response.status}`);
+    return response;
+  },
   (error) => {
+    const endpoint = error.config?.url || "unknown";
+    const status = error.response?.status || "no-response";
+    console.log(`[API-ERROR] ${error.config?.method?.toUpperCase()} ${endpoint} - Status: ${status}`);
+    console.log(`[API-ERROR] Error data:`, error.response?.data);
+    
     // Only logout for 401 errors from JWT authentication
     // ML token errors now use 400 status code to avoid triggering logout
     if (error.response?.status === 401) {
@@ -27,16 +38,19 @@ api.interceptors.response.use(
       const errorCode = error.response?.data?.code || "";
       const isMLTokenError = errorCode.startsWith("ML_");
 
+      console.log(`[API-ERROR] 401 detected - errorCode: ${errorCode}, isMLTokenError: ${isMLTokenError}`);
+
       if (
         !isMLTokenError &&
         error.response?.data?.message !== "User not found or inactive"
       ) {
         // JWT token expired or invalid - logout
-        console.warn("JWT auth error, logging out:", error.response?.data);
+        console.warn("[API-ERROR] JWT auth error, logging out:", error.response?.data);
         localStorage.removeItem("token");
         localStorage.removeItem("user");
         // Only redirect if not already on login page
         if (!window.location.pathname.includes("/login")) {
+          console.warn("[API-ERROR] Redirecting to /login");
           window.location.href = "/login";
         }
       }

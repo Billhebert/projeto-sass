@@ -653,7 +653,7 @@ router.post("/ml-callback", async (req, res, next) => {
     }
 
     const jwtUserId = verification.decoded.userId;
-    const user = await User.findById(jwtUserId);
+    const user = await User.findOne({ id: jwtUserId });
 
     if (!user) {
       return handleError(
@@ -695,62 +695,95 @@ router.post("/ml-callback", async (req, res, next) => {
       });
     }
 
-    const existingAccount = await getAccountByUserId(userInfo.id);
-    const accountId = existingAccount?.id || generateAccountId();
-    const tokenExpiry = Date.now() + tokenResponse.expires_in * 1000;
+    // Check if this ML account already exists (by mlUserId)
+    let existingAccount = await MLAccount.findOne({ mlUserId: String(userInfo.id) });
+    const tokenExpiry = new Date(Date.now() + tokenResponse.expires_in * 1000);
 
-    const account = {
-      id: accountId,
-      userId: userInfo.id,
-      nickname: userInfo.nickname,
-      email: userInfo.email,
-      firstName: userInfo.first_name,
-      lastName: userInfo.last_name,
-      accessToken: tokenResponse.access_token,
-      refreshToken: tokenResponse.refresh_token,
-      tokenExpiry: tokenExpiry,
-      clientId: clientId || process.env.ML_CLIENT_ID || null,
-      clientSecret: clientSecret || process.env.ML_CLIENT_SECRET || null,
-      redirectUri: redirectUri || process.env.ML_REDIRECT_URI || null,
-      createdAt: existingAccount?.createdAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      status: "connected",
-    };
-
+    let savedAccount;
+    
     if (existingAccount) {
-      await updateAccount(accountId, account);
+      // Update existing account with new tokens
+      existingAccount.accessToken = tokenResponse.access_token;
+      existingAccount.refreshToken = tokenResponse.refresh_token;
+      existingAccount.tokenExpiresAt = tokenExpiry;
+      existingAccount.clientId = clientId || process.env.ML_CLIENT_ID || existingAccount.clientId;
+      existingAccount.clientSecret = clientSecret || process.env.ML_CLIENT_SECRET || existingAccount.clientSecret;
+      existingAccount.redirectUri = redirectUri || process.env.ML_REDIRECT_URI || existingAccount.redirectUri;
+      existingAccount.status = "active";
+      existingAccount.nickname = userInfo.nickname;
+      existingAccount.email = userInfo.email;
+      // Update userId to current user (account can be re-linked to different user)
+      existingAccount.userId = jwtUserId;
+      savedAccount = await existingAccount.save();
+      
+      logger.info({
+        action: "ML_ACCOUNT_UPDATED",
+        accountId: savedAccount.id,
+        mlUserId: userInfo.id,
+        userId: jwtUserId,
+      });
     } else {
-      await saveAccount(account);
+      // Create new ML account
+      const newAccount = new MLAccount({
+        userId: jwtUserId,
+        mlUserId: String(userInfo.id),
+        nickname: userInfo.nickname,
+        email: userInfo.email,
+        accessToken: tokenResponse.access_token,
+        refreshToken: tokenResponse.refresh_token,
+        tokenExpiresAt: tokenExpiry,
+        clientId: clientId || process.env.ML_CLIENT_ID || null,
+        clientSecret: clientSecret || process.env.ML_CLIENT_SECRET || null,
+        redirectUri: redirectUri || process.env.ML_REDIRECT_URI || null,
+        status: "active",
+      });
+      
+      savedAccount = await newAccount.save();
+      
+      logger.info({
+        action: "ML_ACCOUNT_CREATED",
+        accountId: savedAccount.id,
+        mlUserId: userInfo.id,
+        userId: jwtUserId,
+      });
     }
 
+    // Update user's mlAccounts array
     const mlAccountInfo = {
-      accountId: accountId,
-      mlUserId: userInfo.id,
+      accountId: savedAccount.id,
+      mlUserId: String(userInfo.id),
       nickname: userInfo.nickname,
       connectedAt: new Date().toISOString(),
     };
 
     const accountAlreadyLinked = user.mlAccounts.some(
-      (acc) => acc.accountId === accountId,
+      (acc) => acc.accountId === savedAccount.id || acc.mlUserId === String(userInfo.id),
     );
 
     if (!accountAlreadyLinked) {
       user.mlAccounts.push(mlAccountInfo);
       await user.save();
+    } else {
+      // Update existing entry if needed
+      const existingIdx = user.mlAccounts.findIndex(
+        (acc) => acc.mlUserId === String(userInfo.id)
+      );
+      if (existingIdx >= 0) {
+        user.mlAccounts[existingIdx] = mlAccountInfo;
+        await user.save();
+      }
     }
 
     return sendSuccess(
       res,
       {
         account: {
-          id: account.id,
-          userId: account.userId,
-          nickname: account.nickname,
-          email: account.email,
-          firstName: account.firstName,
-          lastName: account.lastName,
-          tokenExpiry: account.tokenExpiry,
-          status: account.status,
+          id: savedAccount.id,
+          mlUserId: savedAccount.mlUserId,
+          nickname: savedAccount.nickname,
+          email: savedAccount.email,
+          tokenExpiresAt: savedAccount.tokenExpiresAt,
+          status: savedAccount.status,
         },
       },
       "OAuth token exchange completed successfully",
@@ -3090,16 +3123,22 @@ async function refreshToken(
 
 /**
  * Get user information from Mercado Livre
+ * Uses direct HTTP call since we don't have an account yet during OAuth callback
  */
 async function getUserInfo(accessToken) {
   try {
-    const response = await sdkManager.execute(null, async (sdk) => {
-      return sdk.axiosInstance.get(`${ML_API_BASE}/users/me`, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-        timeout: 15000,
-      });
+    const axios = require("axios");
+    const response = await axios.get(`${ML_API_BASE}/users/me`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      timeout: 15000,
+    });
+
+    logger.info({
+      action: "GET_USER_INFO_SUCCESS",
+      userId: response.data?.id,
+      nickname: response.data?.nickname,
     });
 
     return response.data;
@@ -3107,6 +3146,7 @@ async function getUserInfo(accessToken) {
     logger.error({
       action: "GET_USER_INFO_FAILED",
       error: error.message,
+      status: error.response?.status,
     });
     throw error;
   }

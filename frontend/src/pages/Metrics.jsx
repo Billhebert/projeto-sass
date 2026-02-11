@@ -1,89 +1,91 @@
-import { useState, useEffect } from 'react'
-import { useAuthStore } from '../store/authStore'
-import api from '../services/api'
-import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
-import './Metrics.css'
+import { useState, useEffect } from "react";
+import {
+  useMLAccounts,
+  useMetrics,
+  useReputation,
+  useMetricsSales,
+  useMetricsVisits,
+} from "../hooks/useApi";
+import {
+  LineChart,
+  Line,
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+} from "recharts";
+import "./Metrics.css";
 
 function Metrics() {
-  const { token } = useAuthStore()
-  const [accounts, setAccounts] = useState([])
-  const [selectedAccount, setSelectedAccount] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const [metrics, setMetrics] = useState(null)
-  const [reputation, setReputation] = useState(null)
-  const [salesData, setSalesData] = useState([])
-  const [visitsData, setVisitsData] = useState([])
-  const [period, setPeriod] = useState('30')
+  const [selectedAccount, setSelectedAccount] = useState("");
+  const [period, setPeriod] = useState("30");
 
-  const COLORS = ['#60a5fa', '#34d399', '#fbbf24', '#f87171', '#a78bfa']
+  const COLORS = ["#60a5fa", "#34d399", "#fbbf24", "#f87171", "#a78bfa"];
 
+  // React Query hooks
+  const { data: accounts = [] } = useMLAccounts();
+  const {
+    data: metrics,
+    isLoading: metricsLoading,
+    error: metricsError,
+  } = useMetrics(selectedAccount);
+  const { data: reputationData, isLoading: reputationLoading } =
+    useReputation(selectedAccount);
+  const { data: salesData = [], isLoading: salesLoading } = useMetricsSales(
+    selectedAccount,
+    period,
+  );
+  const { data: visitsData = [], isLoading: visitsLoading } = useMetricsVisits(
+    selectedAccount,
+    period,
+  );
+
+  // Extract reputation from data
+  const reputation = reputationData?.reputation;
+
+  // Calculate loading state
+  const isLoading =
+    metricsLoading || reputationLoading || salesLoading || visitsLoading;
+
+  // Set initial account when accounts load
   useEffect(() => {
-    loadAccounts()
-  }, [])
-
-  useEffect(() => {
-    if (selectedAccount) {
-      loadAllMetrics()
+    if (accounts.length > 0 && !selectedAccount) {
+      setSelectedAccount(accounts[0].id);
     }
-  }, [selectedAccount, period])
+  }, [accounts, selectedAccount]);
 
-  const loadAccounts = async () => {
-    try {
-      const response = await api.get('/ml-accounts')
-      const accountsList = response.data.data?.accounts || response.data.accounts || []
-      setAccounts(accountsList)
-      if (accountsList.length > 0) {
-        setSelectedAccount(accountsList[0].id)
-      }
-    } catch (err) {
-      setError('Erro ao carregar contas')
-    }
-  }
-
-  const loadAllMetrics = async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const [metricsRes, reputationRes, salesRes, visitsRes] = await Promise.all([
-        api.get(`/metrics/${selectedAccount}`),
-        api.get(`/metrics/${selectedAccount}/reputation`),
-        api.get(`/metrics/${selectedAccount}/sales?days=${period}`),
-        api.get(`/metrics/${selectedAccount}/visits?days=${period}`)
-      ])
-
-      setMetrics(metricsRes.data)
-      setReputation(reputationRes.data.reputation)
-      setSalesData(salesRes.data.sales || [])
-      setVisitsData(visitsRes.data.visits || [])
-    } catch (err) {
-      setError('Erro ao carregar metricas')
-    } finally {
-      setLoading(false)
-    }
-  }
+  // Format error message
+  const error = metricsError ? "Erro ao carregar metricas" : null;
 
   const getReputationColor = (level) => {
     const colors = {
-      '5_green': '#22c55e',
-      '4_light_green': '#84cc16',
-      '3_yellow': '#eab308',
-      '2_orange': '#f97316',
-      '1_red': '#ef4444'
-    }
-    return colors[level] || '#6b7280'
-  }
+      "5_green": "#22c55e",
+      "4_light_green": "#84cc16",
+      "3_yellow": "#eab308",
+      "2_orange": "#f97316",
+      "1_red": "#ef4444",
+    };
+    return colors[level] || "#6b7280";
+  };
 
   const formatCurrency = (value) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL'
-    }).format(value)
-  }
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    }).format(value);
+  };
 
   const formatPercent = (value) => {
-    return `${(value * 100).toFixed(1)}%`
-  }
+    return `${(value * 100).toFixed(1)}%`;
+  };
 
   return (
     <div className="metrics-page">
@@ -101,7 +103,7 @@ function Metrics() {
             value={selectedAccount}
             onChange={(e) => setSelectedAccount(e.target.value)}
           >
-            {accounts.map(acc => (
+            {accounts.map((acc) => (
               <option key={acc.id} value={acc.id}>
                 {acc.nickname || acc.mlUserId}
               </option>
@@ -126,7 +128,7 @@ function Metrics() {
         </div>
       )}
 
-      {loading ? (
+      {isLoading ? (
         <div className="loading-state">
           <div className="spinner"></div>
           <p>Carregando metricas...</p>
@@ -137,26 +139,39 @@ function Metrics() {
             <div className="reputation-section">
               <h2>Reputacao</h2>
               <div className="reputation-card">
-                <div className="reputation-level" style={{ backgroundColor: getReputationColor(reputation.level_id) }}>
+                <div
+                  className="reputation-level"
+                  style={{
+                    backgroundColor: getReputationColor(reputation.level_id),
+                  }}
+                >
                   <span className="material-icons">verified</span>
-                  <span>{reputation.level_id?.replace('_', ' ') || 'N/A'}</span>
+                  <span>{reputation.level_id?.replace("_", " ") || "N/A"}</span>
                 </div>
                 <div className="reputation-stats">
                   <div className="rep-stat">
                     <span className="label">Vendas Completadas</span>
-                    <span className="value">{reputation.transactions?.completed || 0}</span>
+                    <span className="value">
+                      {reputation.transactions?.completed || 0}
+                    </span>
                   </div>
                   <div className="rep-stat">
                     <span className="label">Vendas Canceladas</span>
-                    <span className="value">{reputation.transactions?.canceled || 0}</span>
+                    <span className="value">
+                      {reputation.transactions?.canceled || 0}
+                    </span>
                   </div>
                   <div className="rep-stat">
                     <span className="label">Avaliacoes Positivas</span>
-                    <span className="value">{reputation.transactions?.ratings?.positive || 0}</span>
+                    <span className="value">
+                      {reputation.transactions?.ratings?.positive || 0}
+                    </span>
                   </div>
                   <div className="rep-stat">
                     <span className="label">Avaliacoes Negativas</span>
-                    <span className="value">{reputation.transactions?.ratings?.negative || 0}</span>
+                    <span className="value">
+                      {reputation.transactions?.ratings?.negative || 0}
+                    </span>
                   </div>
                 </div>
                 {reputation.metrics && (
@@ -164,32 +179,48 @@ function Metrics() {
                     <div className="metric-bar">
                       <span className="label">Vendas</span>
                       <div className="bar">
-                        <div 
-                          className="fill green" 
-                          style={{ width: `${(reputation.metrics.sales?.completed || 0) * 100}%` }}
+                        <div
+                          className="fill green"
+                          style={{
+                            width: `${(reputation.metrics.sales?.completed || 0) * 100}%`,
+                          }}
                         ></div>
                       </div>
-                      <span className="value">{formatPercent(reputation.metrics.sales?.completed || 0)}</span>
+                      <span className="value">
+                        {formatPercent(
+                          reputation.metrics.sales?.completed || 0,
+                        )}
+                      </span>
                     </div>
                     <div className="metric-bar">
                       <span className="label">Reclamacoes</span>
                       <div className="bar">
-                        <div 
-                          className="fill red" 
-                          style={{ width: `${(reputation.metrics.claims?.rate || 0) * 100}%` }}
+                        <div
+                          className="fill red"
+                          style={{
+                            width: `${(reputation.metrics.claims?.rate || 0) * 100}%`,
+                          }}
                         ></div>
                       </div>
-                      <span className="value">{formatPercent(reputation.metrics.claims?.rate || 0)}</span>
+                      <span className="value">
+                        {formatPercent(reputation.metrics.claims?.rate || 0)}
+                      </span>
                     </div>
                     <div className="metric-bar">
                       <span className="label">Atrasos</span>
                       <div className="bar">
-                        <div 
-                          className="fill yellow" 
-                          style={{ width: `${(reputation.metrics.delayed_handling_time?.rate || 0) * 100}%` }}
+                        <div
+                          className="fill yellow"
+                          style={{
+                            width: `${(reputation.metrics.delayed_handling_time?.rate || 0) * 100}%`,
+                          }}
                         ></div>
                       </div>
-                      <span className="value">{formatPercent(reputation.metrics.delayed_handling_time?.rate || 0)}</span>
+                      <span className="value">
+                        {formatPercent(
+                          reputation.metrics.delayed_handling_time?.rate || 0,
+                        )}
+                      </span>
                     </div>
                   </div>
                 )}
@@ -204,7 +235,9 @@ function Metrics() {
                   <span className="material-icons">shopping_cart</span>
                 </div>
                 <div className="metric-info">
-                  <span className="metric-value">{metrics.totalOrders || 0}</span>
+                  <span className="metric-value">
+                    {metrics.totalOrders || 0}
+                  </span>
                   <span className="metric-label">Pedidos</span>
                 </div>
               </div>
@@ -213,7 +246,9 @@ function Metrics() {
                   <span className="material-icons">attach_money</span>
                 </div>
                 <div className="metric-info">
-                  <span className="metric-value">{formatCurrency(metrics.totalRevenue || 0)}</span>
+                  <span className="metric-value">
+                    {formatCurrency(metrics.totalRevenue || 0)}
+                  </span>
                   <span className="metric-label">Receita</span>
                 </div>
               </div>
@@ -222,7 +257,9 @@ function Metrics() {
                   <span className="material-icons">visibility</span>
                 </div>
                 <div className="metric-info">
-                  <span className="metric-value">{metrics.totalVisits || 0}</span>
+                  <span className="metric-value">
+                    {metrics.totalVisits || 0}
+                  </span>
                   <span className="metric-label">Visitas</span>
                 </div>
               </div>
@@ -231,7 +268,9 @@ function Metrics() {
                   <span className="material-icons">trending_up</span>
                 </div>
                 <div className="metric-info">
-                  <span className="metric-value">{formatPercent(metrics.conversionRate || 0)}</span>
+                  <span className="metric-value">
+                    {formatPercent(metrics.conversionRate || 0)}
+                  </span>
                   <span className="metric-label">Conversao</span>
                 </div>
               </div>
@@ -250,23 +289,27 @@ function Metrics() {
                     <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                     <XAxis dataKey="date" stroke="#9ca3af" fontSize={12} />
                     <YAxis stroke="#9ca3af" fontSize={12} />
-                    <Tooltip 
-                      contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '8px' }}
-                      labelStyle={{ color: '#fff' }}
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "#1f2937",
+                        border: "none",
+                        borderRadius: "8px",
+                      }}
+                      labelStyle={{ color: "#fff" }}
                     />
-                    <Area 
-                      type="monotone" 
-                      dataKey="amount" 
-                      stroke="#60a5fa" 
-                      fill="#60a5fa" 
+                    <Area
+                      type="monotone"
+                      dataKey="amount"
+                      stroke="#60a5fa"
+                      fill="#60a5fa"
                       fillOpacity={0.3}
                       name="Valor"
                     />
-                    <Area 
-                      type="monotone" 
-                      dataKey="count" 
-                      stroke="#34d399" 
-                      fill="#34d399" 
+                    <Area
+                      type="monotone"
+                      dataKey="count"
+                      stroke="#34d399"
+                      fill="#34d399"
                       fillOpacity={0.3}
                       name="Quantidade"
                     />
@@ -291,16 +334,20 @@ function Metrics() {
                     <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                     <XAxis dataKey="date" stroke="#9ca3af" fontSize={12} />
                     <YAxis stroke="#9ca3af" fontSize={12} />
-                    <Tooltip 
-                      contentStyle={{ backgroundColor: '#1f2937', border: 'none', borderRadius: '8px' }}
-                      labelStyle={{ color: '#fff' }}
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "#1f2937",
+                        border: "none",
+                        borderRadius: "8px",
+                      }}
+                      labelStyle={{ color: "#fff" }}
                     />
-                    <Line 
-                      type="monotone" 
-                      dataKey="visits" 
-                      stroke="#a78bfa" 
+                    <Line
+                      type="monotone"
+                      dataKey="visits"
+                      stroke="#a78bfa"
                       strokeWidth={2}
-                      dot={{ fill: '#a78bfa' }}
+                      dot={{ fill: "#a78bfa" }}
                       name="Visitas"
                     />
                   </LineChart>
@@ -316,7 +363,7 @@ function Metrics() {
         </>
       )}
     </div>
-  )
+  );
 }
 
-export default Metrics
+export default Metrics;

@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import api from "../services/api";
+import { useMLAccounts, useQuality } from "../hooks/useApi";
 import {
   RadialBarChart,
   RadialBar,
@@ -9,83 +9,46 @@ import {
   Bar,
   XAxis,
   YAxis,
-  CartesianGrid,
   Tooltip,
   Cell,
 } from "recharts";
 import "./Quality.css";
 
 function Quality() {
-  const [accounts, setAccounts] = useState([]);
-  const [selectedAccount, setSelectedAccount] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [items, setItems] = useState([]);
-  const [qualityStats, setQualityStats] = useState({
+  // Load accounts and select first one
+  const { data: accounts = [] } = useMLAccounts();
+  const [selectedAccount, setSelectedAccount] = useState(accounts[0]?.id || "");
+
+  // Fetch quality data using React Query
+  const {
+    data: qualityData,
+    isLoading: loading,
+    refetch,
+  } = useQuality(selectedAccount);
+
+  // Update selected account when accounts load
+  useState(() => {
+    if (accounts.length > 0 && !selectedAccount) {
+      setSelectedAccount(accounts[0].id);
+    }
+  }, [accounts]);
+
+  // Local UI states
+  const [filter, setFilter] = useState("all");
+  const [selectedItem, setSelectedItem] = useState(null);
+
+  // Extract data from response
+  const qualityStats = qualityData?.data?.stats || {
     professional: 0,
     satisfactory: 0,
     basic: 0,
     total: 0,
-  });
-  const [error, setError] = useState(null);
-  const [filter, setFilter] = useState("all");
-  const [selectedItem, setSelectedItem] = useState(null);
-
-  useEffect(() => {
-    loadAccounts();
-  }, []);
-
-  useEffect(() => {
-    if (selectedAccount) {
-      loadQualityData();
-    }
-  }, [selectedAccount]);
-
-  const loadAccounts = async () => {
-    try {
-      const response = await api.get("/ml-accounts");
-      const accountsList =
-        response.data.data?.accounts || response.data.accounts || [];
-      setAccounts(accountsList);
-      if (accountsList.length > 0) {
-        setSelectedAccount(accountsList[0].id);
-      }
-    } catch (err) {
-      setError("Erro ao carregar contas");
-      setLoading(false);
-    }
   };
-
-  const loadQualityData = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await api.get(`/quality/${selectedAccount}`);
-
-      if (response.data.success) {
-        const qualityData = response.data.data;
-        setQualityStats(
-          qualityData.stats || {
-            professional: 0,
-            satisfactory: 0,
-            basic: 0,
-            total: 0,
-          },
-        );
-        setItems(qualityData.items || []);
-      } else {
-        throw new Error("Failed to fetch quality data");
-      }
-    } catch (err) {
-      console.error("Error loading quality data:", err);
-      setError(
-        "Erro ao carregar dados de qualidade. Verifique se você tem anúncios sincronizados.",
-      );
-      setQualityStats({ professional: 0, satisfactory: 0, basic: 0, total: 0 });
-      setItems([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const items = qualityData?.data?.items || [];
+  const error =
+    qualityData?.success === false
+      ? "Erro ao carregar dados de qualidade"
+      : null;
 
   const getQualityConfig = (level) => {
     const configs = {
@@ -153,7 +116,7 @@ function Quality() {
               </option>
             ))}
           </select>
-          <button className="btn btn-secondary" onClick={loadQualityData}>
+          <button className="btn btn-secondary" onClick={() => refetch()}>
             <span className="material-icons">refresh</span>
             Atualizar
           </button>
