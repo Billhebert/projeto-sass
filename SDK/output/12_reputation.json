@@ -1,0 +1,11 @@
+{
+  "seller": {
+    "level_id": null,
+    "power_seller_status": null,
+    "transactions": {
+      "total": 0,
+      "completed": 0,
+      "canceled": 0
+    }
+  }
+}

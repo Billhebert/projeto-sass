@@ -1,0 +1,917 @@
+{
+  "sample": {
+    "id": "MLB3786495087",
+    "site_id": "MLB",
+    "title": "Câmera De Segurança Tp-link Colorida 3mp Fhd Vigi C430 2.8mm Cor Branco",
+    "family_name": null,
+    "seller_id": 1033763524,
+    "category_id": "MLB7074",
+    "user_product_id": "MLBU1457330431",
+    "official_store_id": null,
+    "price": 284,
+    "base_price": 284,
+    "original_price": null,
+    "inventory_id": "HQYQ81857",
+    "currency_id": "BRL",
+    "initial_quantity": 11,
+    "available_quantity": 0,
+    "sold_quantity": 11,
+    "sale_terms": [
+      {
+        "id": "WARRANTY_TIME",
+        "name": "Tempo de garantia",
+        "value_id": null,
+        "value_name": "12 meses",
+        "value_struct": {
+          "number": 12,
+          "unit": "meses"
+        },
+        "values": [
+          {
+            "id": null,
+            "name": "12 meses",
+            "struct": {
+              "number": 12,
+              "unit": "meses"
+            }
+          }
+        ],
+        "value_type": "number_unit"
+      },
+      {
+        "id": "WARRANTY_TYPE",
+        "name": "Tipo de garantia",
+        "value_id": "2230279",
+        "value_name": "Garantia de fábrica",
+        "value_struct": null,
+        "values": [
+          {
+            "id": "2230279",
+            "name": "Garantia de fábrica",
+            "struct": null
+          }
+        ],
+        "value_type": "list"
+      }
+    ],
+    "buying_mode": "buy_it_now",
+    "listing_type_id": "gold_pro",
+    "start_time": "2024-07-20T14:57:01.730Z",
+    "stop_time": "2025-10-19T21:55:03.152Z",
+    "end_time": "2044-07-15T04:00:00.000Z",
+    "expiration_time": "2026-04-27T17:55:01.788Z",
+    "condition": "new",
+    "permalink": "https://produto.mercadolivre.com.br/MLB-3786495087-cmera-de-seguranca-tp-link-colorida-3mp-fhd-vigi-c430-28mm-cor-branco-_JM",
+    "thumbnail_id": "659056-MLU77337920706_072024",
+    "thumbnail": "http://http2.mlstatic.com/D_659056-MLU77337920706_072024-I.jpg",
+    "pictures": [
+      {
+        "id": "659056-MLU77337920706_072024",
+        "url": "http://http2.mlstatic.com/D_659056-MLU77337920706_072024-O.jpg",
+        "secure_url": "https://http2.mlstatic.com/D_659056-MLU77337920706_072024-O.jpg",
+        "size": "500x462",
+        "max_size": "1200x1110",
+        "quality": ""
+      }
+    ],
+    "video_id": null,
+    "descriptions": [],
+    "accepts_mercadopago": true,
+    "non_mercado_pago_payment_methods": [],
+    "shipping": {
+      "mode": "me2",
+      "methods": [],
+      "tags": [
+        "self_service_out",
+        "mandatory_free_shipping",
+        "self_service_available"
+      ],
+      "dimensions": null,
+      "local_pick_up": false,
+      "free_shipping": true,
+      "logistic_type": "fulfillment",
+      "store_pick_up": false
+    },
+    "international_delivery_mode": "none",
+    "seller_address": {
+      "comment": "GALPÃO Referencia: HORARIO DE FUNCIONAMENTO DAS 10h AS 16h SEGUNDA A SEXTA.\nDEMAIS HORARIOS / DIAS ENTRAR EM CONTATO VIA WHATSAPP 18998037325",
+      "address_line": "Rua Jacob 175",
+      "zip_code": "07051020",
+      "city": {
+        "id": "BR-SP-41",
+        "name": "Guarulhos"
+      },
+      "state": {
+        "id": "BR-SP",
+        "name": "São Paulo"
+      },
+      "country": {
+        "id": "BR",
+        "name": "Brasil"
+      },
+      "search_location": {
+        "neighborhood": {
+          "id": "TUxCQkpBUnJmajNy",
+          "name": "Jardim Tranqüilidade"
+        },
+        "city": {
+          "id": "TUxCQ1NQLTcyOTU",
+          "name": "Guarulhos"
+        },
+        "state": {
+          "id": "TUxCUFNBT085N2E4",
+          "name": "São Paulo"
+        }
+      },
+      "latitude": -23.465601,
+      "longitude": -46.553164,
+      "id": 1390475493
+    },
+    "seller_contact": null,
+    "location": {},
+    "geolocation": {
+      "latitude": -23.465601,
+      "longitude": -46.553164
+    },
+    "coverage_areas": [],
+    "attributes": [
+      {
+        "id": "ANATEL_HOMOLOGATION_NUMBER",
+        "name": "Homologação Anatel Nº",
+        "value_id": "42839910",
+        "value_name": "36752403177",
+        "values": [
+          {
+            "id": "42839910",
+            "name": "36752403177",
+            "struct": null
+          }
+        ],
+        "value_type": "number"
+      },
+      {
+        "id": "BRAND",
+        "name": "Marca",
+        "value_id": "7885",
+        "value_name": "TP-Link",
+        "values": [
+          {
+            "id": "7885",
+            "name": "TP-Link",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "CAMERA_LENS_DIAMETER",
+        "name": "Diâmetro da lente da câmera",
+        "value_id": "25834104",
+        "value_name": "2.8 mm",
+        "values": [
+          {
+            "id": "25834104",
+            "name": "2.8 mm",
+            "struct": {
+              "number": 2.7999999999999994,
+              "unit": "mm"
+            }
+          }
+        ],
+        "value_type": "number_unit"
+      },
+      {
+        "id": "CAMERA_LOCATIONS",
+        "name": "Localizações da câmera",
+        "value_id": "11296607",
+        "value_name": "Interior",
+        "values": [
+          {
+            "id": "11296607",
+            "name": "Interior",
+            "struct": null
+          }
+        ],
+        "value_type": "list"
+      },
+      {
+        "id": "COLOR",
+        "name": "Cor",
+        "value_id": "52055",
+        "value_name": "Branco",
+        "values": [
+          {
+            "id": "52055",
+            "name": "Branco",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "CONNECTION_TYPES",
+        "name": "Tipos de conexões",
+        "value_id": "16477827",
+        "value_name": "Poe",
+        "values": [
+          {
+            "id": "16477827",
+            "name": "Poe",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "CONNECTIVITY",
+        "name": "Conectividade",
+        "value_id": "16477827",
+        "value_name": "Poe",
+        "values": [
+          {
+            "id": "16477827",
+            "name": "Poe",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "CONTROL_TYPES",
+        "name": "Tipos de controle",
+        "value_id": "11296613",
+        "value_name": "App",
+        "values": [
+          {
+            "id": "11296613",
+            "name": "App",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "EXTERNAL_MATERIAL",
+        "name": "Material externo",
+        "value_id": "47543483",
+        "value_name": "Plstico",
+        "values": [
+          {
+            "id": "47543483",
+            "name": "Plstico",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "GTIN",
+        "name": "Código universal de produto",
+        "value_id": null,
+        "value_name": "4897098689929",
+        "values": [
+          {
+            "id": null,
+            "name": "4897098689929",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "IMAGE_SENSOR_TYPE",
+        "name": "Tipo de sensor de imagem",
+        "value_id": "47543484",
+        "value_name": "CMOS de varredura progressiva de 1/2,8 pol.",
+        "values": [
+          {
+            "id": "47543484",
+            "name": "CMOS de varredura progressiva de 1/2,8 pol.",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "IS_ANTIVANDALIC",
+        "name": "É antivandalismo",
+        "value_id": "242084",
+        "value_name": "Não",
+        "values": [
+          {
+            "id": "242084",
+            "name": "Não",
+            "struct": null
+          }
+        ],
+        "value_type": "boolean"
+      },
+      {
+        "id": "IS_KIT",
+        "name": "É kit",
+        "value_id": "242084",
+        "value_name": "Não",
+        "values": [
+          {
+            "id": "242084",
+            "name": "Não",
+            "struct": null
+          }
+        ],
+        "value_type": "boolean"
+      },
+      {
+        "id": "IS_MOTORIZED",
+        "name": "É motorizada",
+        "value_id": "242084",
+        "value_name": "Não",
+        "values": [
+          {
+            "id": "242084",
+            "name": "Não",
+            "struct": null
+          }
+        ],
+        "value_type": "boolean"
+      },
+      {
+        "id": "IS_WATER_RESISTANT",
+        "name": "É resistente à água",
+        "value_id": "242084",
+        "value_name": "Não",
+        "values": [
+          {
+            "id": "242084",
+            "name": "Não",
+            "struct": null
+          }
+        ],
+        "value_type": "boolean"
+      },
+      {
+        "id": "ITEM_CONDITION",
+        "name": "Condição do item",
+        "value_id": "2230284",
+        "value_name": "Novo",
+        "values": [
+          {
+            "id": "2230284",
+            "name": "Novo",
+            "struct": null
+          }
+        ],
+        "value_type": "list"
+      },
+      {
+        "id": "LINE",
+        "name": "Linha",
+        "value_id": "13442929",
+        "value_name": "VIGI",
+        "values": [
+          {
+            "id": "13442929",
+            "name": "VIGI",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "MAIN_COLOR",
+        "name": "Cor principal",
+        "value_id": "2450308",
+        "value_name": "Branco",
+        "values": [
+          {
+            "id": "2450308",
+            "name": "Branco",
+            "struct": null
+          }
+        ],
+        "value_type": "list"
+      },
+      {
+        "id": "MANUFACTURER",
+        "name": "Fabricante",
+        "value_id": "7885",
+        "value_name": "TP-Link",
+        "values": [
+          {
+            "id": "7885",
+            "name": "TP-Link",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "MAX_FPS_NUMBER",
+        "name": "Quantidade máxima de FPS",
+        "value_id": "7479583",
+        "value_name": "25",
+        "values": [
+          {
+            "id": "7479583",
+            "name": "25",
+            "struct": null
+          }
+        ],
+        "value_type": "number"
+      },
+      {
+        "id": "MODEL",
+        "name": "Modelo",
+        "value_id": "39113590",
+        "value_name": "VIGI C430(2.8MM)",
+        "values": [
+          {
+            "id": "39113590",
+            "name": "VIGI C430(2.8MM)",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "MOUNTING_PLACES",
+        "name": "Lugares de montagem",
+        "value_id": "7720909",
+        "value_name": "Teto",
+        "values": [
+          {
+            "id": "7720909",
+            "name": "Teto",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "NIGHT_SCOPE_DISTANCE",
+        "name": "Distância de alcance noturno",
+        "value_id": "11334970",
+        "value_name": "30 m",
+        "values": [
+          {
+            "id": "11334970",
+            "name": "30 m",
+            "struct": {
+              "number": 30,
+              "unit": "m"
+            }
+          }
+        ],
+        "value_type": "number_unit"
+      },
+      {
+        "id": "PACKAGE_HEIGHT",
+        "name": "Altura da embalagem",
+        "value_id": null,
+        "value_name": "11.8 cm",
+        "values": [
+          {
+            "id": null,
+            "name": "11.8 cm",
+            "struct": {
+              "number": 11.8,
+              "unit": "cm"
+            }
+          }
+        ],
+        "value_type": "number_unit"
+      },
+      {
+        "id": "PACKAGE_LENGTH",
+        "name": "Comprimento da embalagem",
+        "value_id": null,
+        "value_name": "16.7 cm",
+        "values": [
+          {
+            "id": null,
+            "name": "16.7 cm",
+            "struct": {
+              "number": 16.7,
+              "unit": "cm"
+            }
+          }
+        ],
+        "value_type": "number_unit"
+      },
+      {
+        "id": "PACKAGE_WEIGHT",
+        "name": "Peso da embalagem",
+        "value_id": null,
+        "value_name": "370 g",
+        "values": [
+          {
+            "id": null,
+            "name": "370 g",
+            "struct": {
+              "number": 370,
+              "unit": "g"
+            }
+          }
+        ],
+        "value_type": "number_unit"
+      },
+      {
+        "id": "PACKAGE_WIDTH",
+        "name": "Largura da embalagem",
+        "value_id": null,
+        "value_name": "16.5 cm",
+        "values": [
+          {
+            "id": null,
+            "name": "16.5 cm",
+            "struct": {
+              "number": 16.5,
+              "unit": "cm"
+            }
+          }
+        ],
+        "value_type": "number_unit"
+      },
+      {
+        "id": "POWER_SUPPLY_TYPES",
+        "name": "Tipos de alimentação",
+        "value_id": "37941667",
+        "value_name": "Corrente eltrica",
+        "values": [
+          {
+            "id": "37941667",
+            "name": "Corrente eltrica",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "PRODUCT_FEATURES",
+        "name": "Características do produto",
+        "value_id": "8847339",
+        "value_name": "Sem validade",
+        "values": [
+          {
+            "id": "8847339",
+            "name": "Sem validade",
+            "struct": null
+          }
+        ],
+        "value_type": "list"
+      },
+      {
+        "id": "RESOLUTION_QUALITY",
+        "name": "Qualidade de resoluçao",
+        "value_id": "11296602",
+        "value_name": "3MP",
+        "values": [
+          {
+            "id": "11296602",
+            "name": "3MP",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "RESOLUTION_TYPE",
+        "name": "Tipo de resolução",
+        "value_id": "290770",
+        "value_name": "Full HD",
+        "values": [
+          {
+            "id": "290770",
+            "name": "Full HD",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "SCOPE_DISTANCE",
+        "name": "Distância de alcance",
+        "value_id": "52280628",
+        "value_name": "52 m",
+        "values": [
+          {
+            "id": "52280628",
+            "name": "52 m",
+            "struct": {
+              "number": 52,
+              "unit": "m"
+            }
+          }
+        ],
+        "value_type": "number_unit"
+      },
+      {
+        "id": "SELLER_SKU",
+        "name": "SKU",
+        "value_id": null,
+        "value_name": "Câmera Dome Vigi C430(2.8mm) Full-color Tp-link Tpn0391",
+        "values": [
+          {
+            "id": null,
+            "name": "Câmera Dome Vigi C430(2.8mm) Full-color Tp-link Tpn0391",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "SHIPMENT_PACKING",
+        "name": "Embalagem do envío",
+        "value_id": "7435891",
+        "value_name": "Flyer",
+        "values": [
+          {
+            "id": "7435891",
+            "name": "Flyer",
+            "struct": null
+          }
+        ],
+        "value_type": "list"
+      },
+      {
+        "id": "STORAGE_TYPES",
+        "name": "Tipos de armazenamento",
+        "value_id": "52280626",
+        "value_name": "Nuvem - NVR",
+        "values": [
+          {
+            "id": "52280626",
+            "name": "Nuvem - NVR",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "SURVEILLANCE_CAMERA_TYPE",
+        "name": "Tipo de câmera de vigilância",
+        "value_id": "347867",
+        "value_name": "Dome",
+        "values": [
+          {
+            "id": "347867",
+            "name": "Dome",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "UNITS_PER_PACK",
+        "name": "Unidades por kit",
+        "value_id": "7386989",
+        "value_name": "1",
+        "values": [
+          {
+            "id": "7386989",
+            "name": "1",
+            "struct": null
+          }
+        ],
+        "value_type": "number"
+      },
+      {
+        "id": "VIDEO_COMPRESSION_FORMATS",
+        "name": "Formatos de compressão de vídeo",
+        "value_id": "52280627",
+        "value_name": "H265 Plus",
+        "values": [
+          {
+            "id": "52280627",
+            "name": "H265 Plus",
+            "struct": null
+          }
+        ],
+        "value_type": "string"
+      },
+      {
+        "id": "WEIGHT",
+        "name": "Peso",
+        "value_id": "1678",
+        "value_name": "210 g",
+        "values": [
+          {
+            "id": "1678",
+            "name": "210 g",
+            "struct": {
+              "number": 210,
+              "unit": "g"
+            }
+          }
+        ],
+        "value_type": "number_unit"
+      },
+      {
+        "id": "WITH_ALARM",
+        "name": "Com alarme",
+        "value_id": "242085",
+        "value_name": "Sim",
+        "values": [
+          {
+            "id": "242085",
+            "name": "Sim",
+            "struct": null
+          }
+        ],
+        "value_type": "boolean"
+      },
+      {
+        "id": "WITH_COLOR_NIGHT_VISION",
+        "name": "Com visão noturna colorida",
+        "value_id": "242085",
+        "value_name": "Sim",
+        "values": [
+          {
+            "id": "242085",
+            "name": "Sim",
+            "struct": null
+          }
+        ],
+        "value_type": "boolean"
+      },
+      {
+        "id": "WITH_LIVE_VIDEO",
+        "name": "Com vídeo ao vivo",
+        "value_id": "242085",
+        "value_name": "Sim",
+        "values": [
+          {
+            "id": "242085",
+            "name": "Sim",
+            "struct": null
+          }
+        ],
+        "value_type": "boolean"
+      },
+      {
+        "id": "WITH_MICROPHONE",
+        "name": "Com microfone",
+        "value_id": "242085",
+        "value_name": "Sim",
+        "values": [
+          {
+            "id": "242085",
+            "name": "Sim",
+            "struct": null
+          }
+        ],
+        "value_type": "boolean"
+      },
+      {
+        "id": "WITH_MOBILE_ALERT",
+        "name": "Com alerta à móvel",
+        "value_id": "242085",
+        "value_name": "Sim",
+        "values": [
+          {
+            "id": "242085",
+            "name": "Sim",
+            "struct": null
+          }
+        ],
+        "value_type": "boolean"
+      },
+      {
+        "id": "WITH_MOTION_SENSOR",
+        "name": "Com sensor de movimento",
+        "value_id": "242085",
+        "value_name": "Sim",
+        "values": [
+          {
+            "id": "242085",
+            "name": "Sim",
+            "struct": null
+          }
+        ],
+        "value_type": "boolean"
+      },
+      {
+        "id": "WITH_NIGHT_VISION",
+        "name": "Com visão noturna",
+        "value_id": "242085",
+        "value_name": "Sim",
+        "values": [
+          {
+            "id": "242085",
+            "name": "Sim",
+            "struct": null
+          }
+        ],
+        "value_type": "boolean"
+      },
+      {
+        "id": "WITH_NOISE_REDUCTION",
+        "name": "Com redução de ruído",
+        "value_id": "242085",
+        "value_name": "Sim",
+        "values": [
+          {
+            "id": "242085",
+            "name": "Sim",
+            "struct": null
+          }
+        ],
+        "value_type": "boolean"
+      },
+      {
+        "id": "WITH_TWO_WAY_AUDIO",
+        "name": "Com áudio bidirecional",
+        "value_id": "242084",
+        "value_name": "Não",
+        "values": [
+          {
+            "id": "242084",
+            "name": "Não",
+            "struct": null
+          }
+        ],
+        "value_type": "boolean"
+      },
+      {
+        "id": "WITH_USB_PORT",
+        "name": "Com entrada USB",
+        "value_id": "242084",
+        "value_name": "Não",
+        "values": [
+          {
+            "id": "242084",
+            "name": "Não",
+            "struct": null
+          }
+        ],
+        "value_type": "boolean"
+      }
+    ],
+    "warnings": [],
+    "listing_source": "",
+    "variations": [],
+    "status": "closed",
+    "sub_status": [],
+    "tags": [
+      "extended_warranty_eligible",
+      "good_quality_thumbnail",
+      "immediate_payment",
+      "cart_eligible"
+    ],
+    "warranty": "Garantia de fábrica: 12 meses",
+    "catalog_product_id": null,
+    "domain_id": "MLB-SURVEILLANCE_CAMERAS",
+    "seller_custom_field": null,
+    "parent_item_id": null,
+    "differential_pricing": null,
+    "deal_ids": [],
+    "automatic_relist": false,
+    "date_created": "2024-07-20T14:57:01.891Z",
+    "last_updated": "2025-10-19T22:01:57.309Z",
+    "health": null,
+    "catalog_listing": true,
+    "item_relations": [],
+    "channels": [
+      "marketplace",
+      "mshops"
+    ]
+  },
+  "description": {
+    "text": "",
+    "plain_text": "",
+    "last_updated": "2024-07-20T14:57:02.653Z",
+    "date_created": "2024-07-20T14:57:02.653Z",
+    "snapshot": {
+      "url": "http://descriptions.mlstatic.com/D-MLB3786495087.jpg?hash=8520c3b8559cb08aa7e782b8f5334ffe_0x0",
+      "width": 0,
+      "height": 0,
+      "status": ""
+    }
+  },
+  "pictures": {
+    "error": "Request failed with status code 503",
+    "statusCode": 503
+  },
+  "variations": [],
+  "multiget": [
+    {
+      "code": 404,
+      "body": {
+        "id": "MLA599260060",
+        "message": "Item with id MLA599260060 not found",
+        "error": "not_found",
+        "status": 404,
+        "cause": []
+      }
+    },
+    {
+      "code": 404,
+      "body": {
+        "id": "MLA594239600",
+        "message": "Item with id MLA594239600 not found",
+        "error": "not_found",
+        "status": 404,
+        "cause": []
+      }
+    }
+  ]
+}

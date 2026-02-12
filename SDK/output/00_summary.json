@@ -1,0 +1,16 @@
+{
+  "timestamp": "2026-02-10T01:30:10.736Z",
+  "userId": 1033763524,
+  "siteId": "MLB",
+  "statistics": {
+    "totalItems": 215,
+    "totalAddresses": 0,
+    "totalOrders": 0,
+    "totalQuestions": 0,
+    "totalCategories": 32,
+    "totalSites": 19,
+    "totalCountries": 0,
+    "totalCurrencies": 22,
+    "totalTrends": 19
+  }
+}

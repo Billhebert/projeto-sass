@@ -1,0 +1,43 @@
+{
+  "subscriptions": [
+    {
+      "site_id": "MLB",
+      "user_id": 1033763524,
+      "mode": "FLEX",
+      "service_id": 636370,
+      "origin": {
+        "address_line": "Rua Jacob 175",
+        "city": {
+          "id": "BR-SP-41",
+          "name": "Guarulhos"
+        },
+        "id": "1390475493",
+        "zip_code": "07051020"
+      },
+      "status": "out",
+      "configuration": {
+        "set": {
+          "coverage": {
+            "type": "zone",
+            "capabilities": {
+              "cutoff_by_zone": false
+            }
+          },
+          "delivery_ranges": "dynamic",
+          "holidays": true,
+          "transit_times": false
+        },
+        "available": {
+          "coverage": {
+            "type": [
+              "zone"
+            ],
+            "capabilities": {
+              "cutoff_by_zone": true
+            }
+          }
+        }
+      }
+    }
+  ]
+}

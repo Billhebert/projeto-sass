@@ -1,0 +1,16 @@
+{
+  "dependencies": {
+    "axios": "^1.13.5"
+  },
+  "name": "sdk",
+  "version": "1.0.0",
+  "description": "SDK completo em JavaScript/TypeScript para integração com a API do Mercado Livre.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs"
+}

@@ -1,0 +1,1354 @@
+{
+  "list": [
+    {
+      "default_currency_id": "CUP",
+      "id": "MCU",
+      "name": "Cuba"
+    },
+    {
+      "default_currency_id": "BRL",
+      "id": "MLB",
+      "name": "Brasil"
+    },
+    {
+      "default_currency_id": "PYG",
+      "id": "MPY",
+      "name": "Paraguay"
+    },
+    {
+      "default_currency_id": "GTQ",
+      "id": "MGT",
+      "name": "Guatemala"
+    },
+    {
+      "default_currency_id": "VES",
+      "id": "MLV",
+      "name": "Venezuela"
+    },
+    {
+      "default_currency_id": "USD",
+      "id": "MEC",
+      "name": "Ecuador"
+    },
+    {
+      "default_currency_id": "DOP",
+      "id": "MRD",
+      "name": "Dominicana"
+    },
+    {
+      "default_currency_id": "NIO",
+      "id": "MNI",
+      "name": "Nicaragua"
+    },
+    {
+      "default_currency_id": "USD",
+      "id": "MSV",
+      "name": "El Salvador"
+    },
+    {
+      "default_currency_id": "CLP",
+      "id": "MLC",
+      "name": "Chile"
+    },
+    {
+      "default_currency_id": "MXN",
+      "id": "MLM",
+      "name": "Mexico"
+    },
+    {
+      "default_currency_id": "CRC",
+      "id": "MCR",
+      "name": "Costa Rica"
+    },
+    {
+      "default_currency_id": "HNL",
+      "id": "MHN",
+      "name": "Honduras"
+    },
+    {
+      "default_currency_id": "BOB",
+      "id": "MBO",
+      "name": "Bolivia"
+    },
+    {
+      "default_currency_id": "UYU",
+      "id": "MLU",
+      "name": "Uruguay"
+    },
+    {
+      "default_currency_id": "PAB",
+      "id": "MPA",
+      "name": "Panamá"
+    },
+    {
+      "default_currency_id": "ARS",
+      "id": "MLA",
+      "name": "Argentina"
+    },
+    {
+      "default_currency_id": "PEN",
+      "id": "MPE",
+      "name": "Perú"
+    },
+    {
+      "default_currency_id": "COP",
+      "id": "MCO",
+      "name": "Colombia"
+    }
+  ],
+  "brasil": {
+    "id": "MLB",
+    "name": "Brasil",
+    "country_id": "BR",
+    "sale_fees_mode": "not_free",
+    "mercadopago_version": 3,
+    "default_currency_id": "BRL",
+    "immediate_payment": "optional",
+    "payment_method_ids": [
+      "MLBMP",
+      "MLBWC",
+      "MLBMO",
+      "MLBBC",
+      "MLBCC",
+      "MLBDE",
+      "MLBCD",
+      "MLBOU"
+    ],
+    "settings": {
+      "identification_types": [
+        "CPF",
+        "CNPJ",
+        "CRECI"
+      ],
+      "taxpayer_types": [],
+      "identification_types_rules": null
+    },
+    "currencies": [
+      {
+        "id": "BRL",
+        "symbol": "R$"
+      }
+    ],
+    "categories": [
+      {
+        "id": "MLB5672",
+        "name": "Acessórios para Veículos"
+      },
+      {
+        "id": "MLB271599",
+        "name": "Agro"
+      },
+      {
+        "id": "MLB1403",
+        "name": "Alimentos e Bebidas"
+      },
+      {
+        "id": "MLB1071",
+        "name": "Animais"
+      },
+      {
+        "id": "MLB1367",
+        "name": "Antiguidades e Coleções"
+      },
+      {
+        "id": "MLB1368",
+        "name": "Arte, Papelaria e Armarinho"
+      },
+      {
+        "id": "MLB1384",
+        "name": "Bebês"
+      },
+      {
+        "id": "MLB1246",
+        "name": "Beleza e Cuidado Pessoal"
+      },
+      {
+        "id": "MLB1132",
+        "name": "Brinquedos e Hobbies"
+      },
+      {
+        "id": "MLB1430",
+        "name": "Calçados, Roupas e Bolsas"
+      },
+      {
+        "id": "MLB1039",
+        "name": "Câmeras e Acessórios"
+      },
+      {
+        "id": "MLB1743",
+        "name": "Carros, Motos e Outros"
+      },
+      {
+        "id": "MLB1574",
+        "name": "Casa, Móveis e Decoração"
+      },
+      {
+        "id": "MLB1051",
+        "name": "Celulares e Telefones"
+      },
+      {
+        "id": "MLB1500",
+        "name": "Construção"
+      },
+      {
+        "id": "MLB5726",
+        "name": "Eletrodomésticos"
+      },
+      {
+        "id": "MLB1000",
+        "name": "Eletrônicos, Áudio e Vídeo"
+      },
+      {
+        "id": "MLB1276",
+        "name": "Esportes e Fitness"
+      },
+      {
+        "id": "MLB263532",
+        "name": "Ferramentas"
+      },
+      {
+        "id": "MLB12404",
+        "name": "Festas e Lembrancinhas"
+      },
+      {
+        "id": "MLB1144",
+        "name": "Games"
+      },
+      {
+        "id": "MLB1459",
+        "name": "Imóveis"
+      },
+      {
+        "id": "MLB1499",
+        "name": "Indústria e Comércio"
+      },
+      {
+        "id": "MLB1648",
+        "name": "Informática"
+      },
+      {
+        "id": "MLB218519",
+        "name": "Ingressos"
+      },
+      {
+        "id": "MLB1182",
+        "name": "Instrumentos Musicais"
+      },
+      {
+        "id": "MLB3937",
+        "name": "Joias e Relógios"
+      },
+      {
+        "id": "MLB1196",
+        "name": "Livros, Revistas e Comics"
+      },
+      {
+        "id": "MLB1168",
+        "name": "Música, Filmes e Seriados"
+      },
+      {
+        "id": "MLB264586",
+        "name": "Saúde"
+      },
+      {
+        "id": "MLB1540",
+        "name": "Serviços"
+      },
+      {
+        "id": "MLB1953",
+        "name": "Mais Categorias"
+      }
+    ],
+    "channels": [
+      "marketplace",
+      "mshops",
+      "private",
+      "proximity",
+      "point",
+      "mp-merchants",
+      "mp-link"
+    ]
+  },
+  "listingTypes": [
+    {
+      "site_id": "MLB",
+      "id": "gold_pro",
+      "name": "Premium"
+    },
+    {
+      "site_id": "MLB",
+      "id": "gold_premium",
+      "name": "Diamante"
+    },
+    {
+      "site_id": "MLB",
+      "id": "gold_special",
+      "name": "Clássico"
+    },
+    {
+      "site_id": "MLB",
+      "id": "gold",
+      "name": "Ouro"
+    },
+    {
+      "site_id": "MLB",
+      "id": "silver",
+      "name": "Prata"
+    },
+    {
+      "site_id": "MLB",
+      "id": "bronze",
+      "name": "Bronze"
+    },
+    {
+      "site_id": "MLB",
+      "id": "free",
+      "name": "Grátis"
+    }
+  ],
+  "paymentMethods": [
+    {
+      "id": "consumer_credits",
+      "name": "Mercado Crédito",
+      "payment_type_id": "digital_currency",
+      "thumbnail": "http://img.mlstatic.com/org-img/MP3/API/logos/consumer_credits.gif",
+      "secure_thumbnail": "http://img.mlstatic.com/org-img/MP3/API/logos/consumer_credits.gif"
+    },
+    {
+      "id": "hipercard",
+      "name": "Hipercard",
+      "payment_type_id": "credit_card",
+      "thumbnail": "https://http2.mlstatic.com/storage/logos-api-admin/fcdc39d0-57ad-11e8-8359-5d73691de80c-xl.svg",
+      "secure_thumbnail": "https://http2.mlstatic.com/storage/logos-api-admin/fcdc39d0-57ad-11e8-8359-5d73691de80c-xl.svg"
+    },
+    {
+      "id": "amex",
+      "name": "American Express",
+      "payment_type_id": "credit_card",
+      "thumbnail": "https://http2.mlstatic.com/storage/logos-api-admin/b4785730-c13f-11ee-b4b3-bb9a23b70639-xl.svg",
+      "secure_thumbnail": "https://http2.mlstatic.com/storage/logos-api-admin/b4785730-c13f-11ee-b4b3-bb9a23b70639-xl.svg"
+    },
+    {
+      "id": "elo",
+      "name": "Elo",
+      "payment_type_id": "credit_card",
+      "thumbnail": "http://img.mlstatic.com/org-img/MP3/API/logos/elo.gif",
+      "secure_thumbnail": "https://www.mercadopago.com/org-img/MP3/API/logos/elo.gif"
+    },
+    {
+      "id": "visa",
+      "name": "Visa",
+      "payment_type_id": "credit_card",
+      "thumbnail": "https://http2.mlstatic.com/storage/logos-api-admin/d589be70-eb86-11e9-b9a8-097ac027487d-xl.png",
+      "secure_thumbnail": "https://http2.mlstatic.com/storage/logos-api-admin/d589be70-eb86-11e9-b9a8-097ac027487d-xl.png"
+    },
+    {
+      "id": "bolbradesco",
+      "name": "Boleto",
+      "payment_type_id": "ticket",
+      "thumbnail": "http://img.mlstatic.com/org-img/MP3/API/logos/2006.gif",
+      "secure_thumbnail": "https://www.mercadopago.com/org-img/MP3/API/logos/2006.gif"
+    },
+    {
+      "id": "account_money",
+      "name": "Saldo no Mercado Pago",
+      "payment_type_id": "account_money",
+      "thumbnail": "http://img.mlstatic.com/org-img/MP3/API/logos/2007.gif",
+      "secure_thumbnail": "https://www.mercadopago.com/org-img/MP3/API/logos/2007.gif"
+    },
+    {
+      "id": "master",
+      "name": "Mastercard",
+      "payment_type_id": "credit_card",
+      "thumbnail": "https://http2.mlstatic.com/storage/logos-api-admin/0daa1670-5c81-11ec-ae75-df2bef173be2-xl.png",
+      "secure_thumbnail": "https://http2.mlstatic.com/storage/logos-api-admin/0daa1670-5c81-11ec-ae75-df2bef173be2-xl.png"
+    },
+    {
+      "id": "pix",
+      "name": "Pix",
+      "payment_type_id": "bank_transfer",
+      "thumbnail": "https://www.mercadopago.com/org-img/MP3/API/logos/pix.gif",
+      "secure_thumbnail": "https://www.mercadopago.com/org-img/MP3/API/logos/pix.gif"
+    }
+  ],
+  "shippingMethods": [
+    {
+      "id": 182,
+      "name": "Expresso",
+      "type": "express",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [
+        "country"
+      ],
+      "shipping_modes": [
+        "me1",
+        "me2"
+      ],
+      "company_id": 100008,
+      "company_name": "Correios",
+      "min_time": 0,
+      "max_time": 72,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 100009,
+      "name": "Normal",
+      "type": "standard",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [
+        "country"
+      ],
+      "shipping_modes": [
+        "me1",
+        "me2"
+      ],
+      "company_id": 100008,
+      "company_name": "Correios",
+      "min_time": 72,
+      "max_time": null,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 500645,
+      "name": "Expresso",
+      "type": "express",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [
+        "country"
+      ],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": 2138813350,
+      "company_name": null,
+      "min_time": 0,
+      "max_time": 72,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 501548,
+      "name": "Envio internacional",
+      "type": "standard",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [
+        "country"
+      ],
+      "shipping_modes": [
+        "me1"
+      ],
+      "company_id": 17501040,
+      "company_name": "CBT Brasil",
+      "min_time": null,
+      "max_time": null,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 502446,
+      "name": "Envio internacional",
+      "type": "standard",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me1"
+      ],
+      "company_id": 17501040,
+      "company_name": "CBT Brasil",
+      "min_time": null,
+      "max_time": null,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 505145,
+      "name": "Super Expresso",
+      "type": "next_day",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [
+        "no"
+      ],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": 17502640,
+      "company_name": "Loggi",
+      "min_time": null,
+      "max_time": null,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 505345,
+      "name": "Normal ao endereço",
+      "type": "standard",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": 10,
+      "company_name": "Mercado Envios",
+      "min_time": 72,
+      "max_time": null,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 505845,
+      "name": "Retirada Normal na agência",
+      "type": "standard",
+      "deliver_to": "agency",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": 100008,
+      "company_name": "Correios",
+      "min_time": null,
+      "max_time": null,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 505945,
+      "name": "Retirada Expressa na agência",
+      "type": "express",
+      "deliver_to": "agency",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": 100008,
+      "company_name": "Correios",
+      "min_time": null,
+      "max_time": null,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 507145,
+      "name": "Super Expresso",
+      "type": "super_express",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": null,
+      "company_name": null,
+      "min_time": 0,
+      "max_time": 48,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 507245,
+      "name": "Super Expresso",
+      "type": "super_express",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": null,
+      "company_name": null,
+      "min_time": 0,
+      "max_time": 24,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 507345,
+      "name": "Super Expresso",
+      "type": "super_express",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": null,
+      "company_name": null,
+      "min_time": 24,
+      "max_time": 48,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 507945,
+      "name": "Prioritario",
+      "type": "next_day",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": 10,
+      "company_name": "Mercado Envios",
+      "min_time": 0,
+      "max_time": 24,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 507946,
+      "name": "Prioritario",
+      "type": "two_days",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": 10,
+      "company_name": "Mercado Envios",
+      "min_time": 0,
+      "max_time": 48,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 510145,
+      "name": "Devolução padrão",
+      "type": "standard",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [
+        "no"
+      ],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": 100008,
+      "company_name": "Correios",
+      "min_time": 24,
+      "max_time": 96,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 511945,
+      "name": "Prioritario",
+      "type": "next_day",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": 10,
+      "company_name": "Mercado Envios",
+      "min_time": 24,
+      "max_time": 24,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 511946,
+      "name": "Prioritario",
+      "type": "two_days",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": 10,
+      "company_name": "Mercado Envios",
+      "min_time": 48,
+      "max_time": 48,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 511947,
+      "name": "Prioritario",
+      "type": "three_days",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": 10,
+      "company_name": "Mercado Envios",
+      "min_time": 72,
+      "max_time": 72,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 511948,
+      "name": "Expresso",
+      "type": "sedex",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [
+        "country"
+      ],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": 10,
+      "company_name": "Mercado Envios",
+      "min_time": 2400,
+      "max_time": 2400,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 511949,
+      "name": "Retirada Prioritaria na agência",
+      "type": "three_days",
+      "deliver_to": "agency",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": 10,
+      "company_name": "Mercado Envios",
+      "min_time": 72,
+      "max_time": 72,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 511950,
+      "name": "Retirada Prioritaria na agência",
+      "type": "four_days",
+      "deliver_to": "agency",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": 10,
+      "company_name": "Mercado Envios",
+      "min_time": 96,
+      "max_time": 96,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 511951,
+      "name": "Retirada Normal na agência",
+      "type": "standard",
+      "deliver_to": "agency",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": 10,
+      "company_name": "Mercado Envios",
+      "min_time": 72,
+      "max_time": 2400,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 511952,
+      "name": "Retirada Expressa na agência",
+      "type": "sedex_agency",
+      "deliver_to": "agency",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": 10,
+      "company_name": "Mercado Envios",
+      "min_time": 2400,
+      "max_time": 2400,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 512045,
+      "name": "Prioritario",
+      "type": "four_days",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": 10,
+      "company_name": "Mercado Envios",
+      "min_time": 96,
+      "max_time": 96,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 512046,
+      "name": "Normal",
+      "type": "standard",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": 10,
+      "company_name": "Mercado Envios",
+      "min_time": 96,
+      "max_time": 2400,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 512047,
+      "name": "Retirada Prioritaria na agência",
+      "type": "two_days",
+      "deliver_to": "agency",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": 10,
+      "company_name": "Mercado Envios",
+      "min_time": 48,
+      "max_time": 48,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 512048,
+      "name": "Retirada Expressa na agência",
+      "type": "express",
+      "deliver_to": "agency",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": 10,
+      "company_name": "Mercado Envios",
+      "min_time": 0,
+      "max_time": 48,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 512145,
+      "name": "Expresso",
+      "type": "express",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [
+        "country"
+      ],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": 10,
+      "company_name": "Mercado Envios",
+      "min_time": 48,
+      "max_time": 72,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 512146,
+      "name": "Retirada Prioritaria na agência",
+      "type": "next_day",
+      "deliver_to": "agency",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": 10,
+      "company_name": "Mercado Envios",
+      "min_time": 24,
+      "max_time": 24,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 512746,
+      "name": "Prioritario ao endereço",
+      "type": "same_day",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": null,
+      "company_name": null,
+      "min_time": 1,
+      "max_time": 1,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 512946,
+      "name": "Prioritario",
+      "type": "five_days",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": null,
+      "company_name": null,
+      "min_time": 5,
+      "max_time": 5,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 512947,
+      "name": "Prioritario",
+      "type": "six_days",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": null,
+      "company_name": null,
+      "min_time": 6,
+      "max_time": 6,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 512950,
+      "name": "Proximity Express",
+      "type": "proximity_express",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": null,
+      "company_name": null,
+      "min_time": 1,
+      "max_time": 1,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 513745,
+      "name": "Retiradas padrão",
+      "type": "standard",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": 100008,
+      "company_name": "Correios",
+      "min_time": 1,
+      "max_time": 100,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 515021,
+      "name": "Padrão",
+      "type": "scheduled",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me1"
+      ],
+      "company_id": null,
+      "company_name": null,
+      "min_time": null,
+      "max_time": null,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 515031,
+      "name": "Prioritario",
+      "type": "next_day",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me1"
+      ],
+      "company_id": null,
+      "company_name": null,
+      "min_time": 1,
+      "max_time": 1,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 515032,
+      "name": "Prioritario",
+      "type": "three_days",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me1"
+      ],
+      "company_id": null,
+      "company_name": null,
+      "min_time": 3,
+      "max_time": 3,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 515041,
+      "name": "Prioritario",
+      "type": "two_days",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me1"
+      ],
+      "company_id": null,
+      "company_name": null,
+      "min_time": 2,
+      "max_time": 2,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 515067,
+      "name": "Prioritario",
+      "type": "same_day",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me1"
+      ],
+      "company_id": null,
+      "company_name": null,
+      "min_time": 0,
+      "max_time": 24,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 515211,
+      "name": "Normal",
+      "type": "flexible",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [
+        "country"
+      ],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": 100008,
+      "company_name": "Correios",
+      "min_time": 0,
+      "max_time": null,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 515242,
+      "name": "Normal",
+      "type": "standard",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": null,
+      "company_name": null,
+      "min_time": null,
+      "max_time": null,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 515364,
+      "name": "Padrão ao endereço",
+      "type": "meli_delivery_day",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": null,
+      "company_name": null,
+      "min_time": null,
+      "max_time": null,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 515422,
+      "name": "Padrão ao endereço",
+      "type": "slow_meli",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": null,
+      "company_name": null,
+      "min_time": null,
+      "max_time": null,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 515462,
+      "name": "Normal ao endereço",
+      "type": "slow",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": 10,
+      "company_name": "Mercado Envios",
+      "min_time": 2,
+      "max_time": 100,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 519582,
+      "name": "Prioritario",
+      "type": "turbo",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": null,
+      "company_name": null,
+      "min_time": null,
+      "max_time": null,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 525582,
+      "name": "Normal ao endereço",
+      "type": "slow_free",
+      "deliver_to": "address",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": [],
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": null,
+      "company_name": null,
+      "min_time": null,
+      "max_time": null,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 535582,
+      "name": "Retirada Normal na agência",
+      "type": "slow",
+      "deliver_to": "agency",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": null,
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": null,
+      "company_name": null,
+      "min_time": 2,
+      "max_time": 100,
+      "currency_id": "BRL"
+    },
+    {
+      "id": 541582,
+      "name": "Retirada Normal na agência",
+      "type": "slow_meli",
+      "deliver_to": "agency",
+      "status": "active",
+      "site_id": "MLB",
+      "free_options": null,
+      "shipping_modes": [
+        "me2"
+      ],
+      "company_id": null,
+      "company_name": null,
+      "min_time": null,
+      "max_time": null,
+      "currency_id": "BRL"
+    }
+  ],
+  "listingPrices": [
+    {
+      "currency_id": "BRL",
+      "free_relist": false,
+      "listing_exposure": "highest",
+      "listing_fee_amount": 0,
+      "listing_fee_details": {
+        "fixed_fee": 0,
+        "gross_amount": 0
+      },
+      "listing_type_id": "gold_pro",
+      "listing_type_name": "Premium",
+      "requires_picture": true,
+      "sale_fee_amount": 16,
+      "sale_fee_details": {
+        "fixed_fee": 0,
+        "gross_amount": 16,
+        "percentage_fee": 16
+      },
+      "stop_time": "2046-02-04T00:00:00.000-04:00"
+    },
+    {
+      "currency_id": "BRL",
+      "free_relist": false,
+      "listing_exposure": "highest",
+      "listing_fee_amount": 0,
+      "listing_fee_details": {
+        "fixed_fee": 0,
+        "gross_amount": 0
+      },
+      "listing_type_id": "gold_premium",
+      "listing_type_name": "Diamante",
+      "requires_picture": true,
+      "sale_fee_amount": 0,
+      "sale_fee_details": {
+        "fixed_fee": 0,
+        "gross_amount": 0,
+        "percentage_fee": 0
+      },
+      "stop_time": "2026-04-10T00:00:00.000-04:00"
+    },
+    {
+      "currency_id": "BRL",
+      "free_relist": false,
+      "listing_exposure": "highest",
+      "listing_fee_amount": 0,
+      "listing_fee_details": {
+        "fixed_fee": 0,
+        "gross_amount": 0
+      },
+      "listing_type_id": "gold_special",
+      "listing_type_name": "Clássico",
+      "requires_picture": true,
+      "sale_fee_amount": 11,
+      "sale_fee_details": {
+        "fixed_fee": 0,
+        "gross_amount": 11,
+        "percentage_fee": 11
+      },
+      "stop_time": "2046-02-04T00:00:00.000-04:00"
+    },
+    {
+      "currency_id": "BRL",
+      "free_relist": false,
+      "listing_exposure": "high",
+      "listing_fee_amount": 0,
+      "listing_fee_details": {
+        "fixed_fee": 0,
+        "gross_amount": 0
+      },
+      "listing_type_id": "gold",
+      "listing_type_name": "Ouro",
+      "requires_picture": true,
+      "sale_fee_amount": 0,
+      "sale_fee_details": {
+        "fixed_fee": 0,
+        "gross_amount": 0,
+        "percentage_fee": 0
+      },
+      "stop_time": "2026-04-10T00:00:00.000-04:00"
+    },
+    {
+      "currency_id": "BRL",
+      "free_relist": false,
+      "listing_exposure": "mid",
+      "listing_fee_amount": 0,
+      "listing_fee_details": {
+        "fixed_fee": 0,
+        "gross_amount": 0
+      },
+      "listing_type_id": "silver",
+      "listing_type_name": "Prata",
+      "requires_picture": false,
+      "sale_fee_amount": 0,
+      "sale_fee_details": {
+        "fixed_fee": 0,
+        "gross_amount": 0,
+        "percentage_fee": 0
+      },
+      "stop_time": "2026-04-10T00:00:00.000-04:00"
+    },
+    {
+      "currency_id": "BRL",
+      "free_relist": false,
+      "listing_exposure": "low",
+      "listing_fee_amount": 0,
+      "listing_fee_details": {
+        "fixed_fee": 0,
+        "gross_amount": 0
+      },
+      "listing_type_id": "bronze",
+      "listing_type_name": "Bronze",
+      "requires_picture": false,
+      "sale_fee_amount": 0,
+      "sale_fee_details": {
+        "fixed_fee": 0,
+        "gross_amount": 0,
+        "percentage_fee": 0
+      },
+      "stop_time": "2026-04-10T00:00:00.000-04:00"
+    },
+    {
+      "currency_id": "BRL",
+      "free_relist": false,
+      "listing_exposure": "lowest",
+      "listing_fee_amount": 0,
+      "listing_fee_details": {
+        "fixed_fee": 0,
+        "gross_amount": 0
+      },
+      "listing_type_id": "free",
+      "listing_type_name": "Grátis",
+      "requires_picture": true,
+      "sale_fee_amount": 0,
+      "sale_fee_details": {
+        "fixed_fee": 0,
+        "gross_amount": 0,
+        "percentage_fee": 0
+      },
+      "stop_time": "2026-04-10T00:00:00.000-04:00"
+    }
+  ]
+}

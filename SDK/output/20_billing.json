@@ -1,0 +1,6 @@
+{
+  "periods": {
+    "error": "Missing required parameter <group>.",
+    "statusCode": 422
+  }
+}

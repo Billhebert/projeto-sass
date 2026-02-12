@@ -1,0 +1,1805 @@
+{
+  "search": {
+    "query": "",
+    "results": [
+      {
+        "payments": [
+          {
+            "reason": "Massageador Tapete Pulso Elétrico Perna Pés Ems Almofada Pé Cor Preto",
+            "status_code": null,
+            "total_paid_amount": 38.66,
+            "operation_type": "regular_payment",
+            "transaction_amount": 18.36,
+            "transaction_amount_refunded": 38.66,
+            "date_approved": "2025-02-09T08:01:30.000-04:00",
+            "collector": {
+              "id": 1033763524
+            },
+            "coupon_id": null,
+            "installments": 1,
+            "authorization_code": "884915",
+            "taxes_amount": 0,
+            "id": 101788585036,
+            "date_last_modified": "2025-02-24T08:34:01.000-04:00",
+            "coupon_amount": 0,
+            "available_actions": [
+              ""
+            ],
+            "shipping_cost": 20.3,
+            "installment_amount": 38.66,
+            "date_created": "2025-02-09T08:01:28.000-04:00",
+            "activation_uri": null,
+            "overpaid_amount": 0,
+            "card_id": 9441263983,
+            "status_detail": "refunded",
+            "issuer_id": "12518",
+            "payment_method_id": "master",
+            "payment_type": "credit_card",
+            "deferred_period": null,
+            "atm_transfer_reference": {
+              "transaction_id": null,
+              "company_id": null
+            },
+            "site_id": "MLB",
+            "payer_id": 304521103,
+            "order_id": 2000010700629374,
+            "currency_id": "BRL",
+            "status": "refunded",
+            "transaction_order_id": null
+          }
+        ],
+        "fulfilled": false,
+        "taxes": {
+          "amount": null,
+          "currency_id": null,
+          "id": null
+        },
+        "order_request": {
+          "change": null,
+          "return": null
+        },
+        "expiration_date": "2025-03-09T08:01:30.000-04:00",
+        "feedback": {
+          "buyer": null,
+          "seller": null
+        },
+        "shipping": {
+          "id": 44463659147
+        },
+        "date_closed": "2025-02-09T08:01:30.000-04:00",
+        "id": 2000010700629374,
+        "manufacturing_ending_date": null,
+        "order_items": [
+          {
+            "item": {
+              "id": "MLB3823405603",
+              "title": "Massageador Tapete Pulso Elétrico Perna Pés Ems Almofada Pé Cor Preto",
+              "category_id": "MLB169599",
+              "variation_id": null,
+              "seller_custom_field": null,
+              "global_price": null,
+              "net_weight": null,
+              "variation_attributes": [],
+              "warranty": "Garantia do vendedor: 30 dias",
+              "condition": "new",
+              "seller_sku": "tapete-massageador-eletrico"
+            },
+            "quantity": 1,
+            "unit_price": 18.36,
+            "full_unit_price": 18.36,
+            "currency_id": "BRL",
+            "manufacturing_days": null,
+            "picked_quantity": null,
+            "requested_quantity": {
+              "measure": "unit",
+              "value": 1
+            },
+            "sale_fee": 8.45,
+            "listing_type_id": "gold_special",
+            "base_exchange_rate": null,
+            "base_currency_id": null,
+            "bundle": null,
+            "element_id": 1
+          }
+        ],
+        "date_last_updated": "2025-02-24T12:37:51+00:00",
+        "last_updated": "2025-02-24T08:34:02.000-04:00",
+        "comment": null,
+        "pack_id": null,
+        "coupon": {
+          "amount": 0,
+          "id": null
+        },
+        "shipping_cost": null,
+        "date_created": "2025-02-09T08:01:27.000-04:00",
+        "date_created_ttl": null,
+        "pickup_id": null,
+        "status_detail": null,
+        "tags": [
+          "catalog",
+          "delivered",
+          "not_paid"
+        ],
+        "buyer": {
+          "id": 304521103,
+          "nickname": "ADREANADRICA"
+        },
+        "seller": {
+          "id": 1033763524,
+          "nickname": "PORTUGA OFICIAL"
+        },
+        "total_amount": 18.36,
+        "paid_amount": 0,
+        "mediations": [
+          {
+            "id": 5344758645
+          }
+        ],
+        "currency_id": "BRL",
+        "status": "cancelled",
+        "cancel_detail": {
+          "group": "mediations",
+          "code": "mediations",
+          "description": "Mediations cancel the order",
+          "requested_by": "meli",
+          "date": "2025-02-24T08:31:59.000-04:00",
+          "application_id": "1843996409054571"
+        },
+        "context": {
+          "application": null,
+          "product_id": null,
+          "channel": "marketplace",
+          "site": "MLB",
+          "flows": [
+            "catalog"
+          ]
+        }
+      },
+      {
+        "payments": [
+          {
+            "reason": "Secador De Cabelos Philco Beauty Shine, 2000w, 2 Vel - 110v",
+            "status_code": null,
+            "total_paid_amount": 165,
+            "operation_type": "regular_payment",
+            "transaction_amount": 165,
+            "transaction_amount_refunded": 0,
+            "date_approved": "2025-02-09T08:31:30.000-04:00",
+            "collector": {
+              "id": 1033763524
+            },
+            "coupon_id": null,
+            "installments": 1,
+            "authorization_code": null,
+            "taxes_amount": 0,
+            "id": 101409273783,
+            "date_last_modified": "2025-02-15T09:46:21.000-04:00",
+            "coupon_amount": 0,
+            "available_actions": [
+              "refund"
+            ],
+            "shipping_cost": 0,
+            "installment_amount": null,
+            "date_created": "2025-02-09T08:30:47.000-04:00",
+            "activation_uri": null,
+            "overpaid_amount": 0,
+            "card_id": null,
+            "status_detail": "accredited",
+            "issuer_id": "12501",
+            "payment_method_id": "pix",
+            "payment_type": "bank_transfer",
+            "deferred_period": null,
+            "atm_transfer_reference": {
+              "transaction_id": null,
+              "company_id": "1"
+            },
+            "site_id": "MLB",
+            "payer_id": 1031672995,
+            "order_id": 2000010700733868,
+            "currency_id": "BRL",
+            "status": "approved",
+            "transaction_order_id": null
+          }
+        ],
+        "fulfilled": true,
+        "taxes": {
+          "amount": null,
+          "currency_id": null,
+          "id": null
+        },
+        "order_request": {
+          "change": null,
+          "return": null
+        },
+        "expiration_date": "2025-03-09T08:31:30.000-04:00",
+        "feedback": {
+          "buyer": null,
+          "seller": null
+        },
+        "shipping": {
+          "id": 44463705683
+        },
+        "date_closed": "2025-02-09T08:31:30.000-04:00",
+        "id": 2000010700733868,
+        "manufacturing_ending_date": null,
+        "order_items": [
+          {
+            "item": {
+              "id": "MLB3789626769",
+              "title": "Secador De Cabelos Philco Beauty Shine, 2000w, 2 Vel - 110v",
+              "category_id": "MLB5412",
+              "variation_id": null,
+              "seller_custom_field": null,
+              "global_price": null,
+              "net_weight": null,
+              "variation_attributes": [],
+              "warranty": "Garantia de fábrica: 12 meses",
+              "condition": "new",
+              "seller_sku": "Secador De Cabelos Philco Beauty Shine, 2000w, 2 Vel - 110v"
+            },
+            "quantity": 1,
+            "unit_price": 165,
+            "full_unit_price": 165,
+            "currency_id": "BRL",
+            "manufacturing_days": null,
+            "picked_quantity": null,
+            "requested_quantity": {
+              "measure": "unit",
+              "value": 1
+            },
+            "sale_fee": 28.05,
+            "listing_type_id": "gold_pro",
+            "base_exchange_rate": null,
+            "base_currency_id": null,
+            "bundle": null,
+            "element_id": 1,
+            "stock": {
+              "node_id": "BRSC02",
+              "store_id": null
+            }
+          }
+        ],
+        "date_last_updated": "2025-02-15T13:46:24+00:00",
+        "last_updated": "2025-02-15T09:46:21.000-04:00",
+        "comment": null,
+        "pack_id": null,
+        "coupon": {
+          "amount": 0,
+          "id": null
+        },
+        "shipping_cost": null,
+        "date_created": "2025-02-09T08:30:46.000-04:00",
+        "date_created_ttl": null,
+        "pickup_id": null,
+        "status_detail": null,
+        "tags": [
+          "catalog",
+          "paid",
+          "delivered"
+        ],
+        "buyer": {
+          "id": 1031672995,
+          "nickname": "FERNANDESADELSON20211203004248"
+        },
+        "seller": {
+          "id": 1033763524,
+          "nickname": "PORTUGA OFICIAL"
+        },
+        "total_amount": 165,
+        "paid_amount": 165,
+        "currency_id": "BRL",
+        "status": "paid",
+        "context": {
+          "application": null,
+          "product_id": null,
+          "channel": "marketplace",
+          "site": "MLB",
+          "flows": [
+            "catalog"
+          ]
+        }
+      },
+      {
+        "payments": [
+          {
+            "reason": "Kit De Gravação 5em1 Controle Bt/tripe/microfone/led/suport Cor Preto",
+            "status_code": null,
+            "total_paid_amount": 53.92,
+            "operation_type": "regular_payment",
+            "transaction_amount": 41.2,
+            "transaction_amount_refunded": 0,
+            "date_approved": null,
+            "collector": {
+              "id": 1033763524
+            },
+            "coupon_id": null,
+            "installments": 1,
+            "authorization_code": null,
+            "taxes_amount": 0,
+            "id": 101422914861,
+            "date_last_modified": "2025-02-09T11:36:02.000-04:00",
+            "coupon_amount": 0,
+            "available_actions": [
+              ""
+            ],
+            "shipping_cost": 12.72,
+            "installment_amount": 53.92,
+            "date_created": "2025-02-09T11:36:01.000-04:00",
+            "activation_uri": null,
+            "overpaid_amount": 0,
+            "card_id": 9553301807,
+            "status_detail": "cc_rejected_bad_filled_card_number",
+            "issuer_id": "24",
+            "payment_method_id": "master",
+            "payment_type": "credit_card",
+            "deferred_period": null,
+            "atm_transfer_reference": {
+              "transaction_id": null,
+              "company_id": null
+            },
+            "site_id": "MLB",
+            "payer_id": 243735828,
+            "order_id": 2000010701900768,
+            "currency_id": "BRL",
+            "status": "rejected",
+            "transaction_order_id": null
+          },
+          {
+            "reason": "Kit De Gravação 5em1 Controle Bt/tripe/microfone/led/suport Cor Preto",
+            "status_code": null,
+            "total_paid_amount": 53.92,
+            "operation_type": "regular_payment",
+            "transaction_amount": 41.2,
+            "transaction_amount_refunded": 0,
+            "date_approved": null,
+            "collector": {
+              "id": 1033763524
+            },
+            "coupon_id": null,
+            "installments": 1,
+            "authorization_code": "000000",
+            "taxes_amount": 0,
+            "id": 101803832480,
+            "date_last_modified": "2025-02-09T11:36:36.000-04:00",
+            "coupon_amount": 0,
+            "available_actions": [
+              ""
+            ],
+            "shipping_cost": 12.72,
+            "installment_amount": 53.92,
+            "date_created": "2025-02-09T11:36:33.000-04:00",
+            "activation_uri": null,
+            "overpaid_amount": 0,
+            "card_id": 9506430822,
+            "status_detail": "cc_rejected_insufficient_amount",
+            "issuer_id": "25",
+            "payment_method_id": "visa",
+            "payment_type": "credit_card",
+            "deferred_period": null,
+            "atm_transfer_reference": {
+              "transaction_id": "124409084",
+              "company_id": null
+            },
+            "site_id": "MLB",
+            "payer_id": 243735828,
+            "order_id": 2000010701900768,
+            "currency_id": "BRL",
+            "status": "rejected",
+            "transaction_order_id": null
+          },
+          {
+            "reason": "Kit De Gravação 5em1 Controle Bt/tripe/microfone/led/suport Cor Preto",
+            "status_code": null,
+            "total_paid_amount": 53.92,
+            "operation_type": "regular_payment",
+            "transaction_amount": 41.2,
+            "transaction_amount_refunded": 0,
+            "date_approved": null,
+            "collector": {
+              "id": 1033763524
+            },
+            "coupon_id": null,
+            "installments": 1,
+            "authorization_code": null,
+            "taxes_amount": 0,
+            "id": 101423094939,
+            "date_last_modified": "2025-02-09T11:37:09.000-04:00",
+            "coupon_amount": 0,
+            "available_actions": [
+              ""
+            ],
+            "shipping_cost": 12.72,
+            "installment_amount": 53.92,
+            "date_created": "2025-02-09T11:37:07.000-04:00",
+            "activation_uri": null,
+            "overpaid_amount": 0,
+            "card_id": 9553301807,
+            "status_detail": "cc_rejected_call_for_authorize",
+            "issuer_id": "24",
+            "payment_method_id": "master",
+            "payment_type": "credit_card",
+            "deferred_period": null,
+            "atm_transfer_reference": {
+              "transaction_id": "750993897",
+              "company_id": null
+            },
+            "site_id": "MLB",
+            "payer_id": 243735828,
+            "order_id": 2000010701900768,
+            "currency_id": "BRL",
+            "status": "rejected",
+            "transaction_order_id": null
+          },
+          {
+            "reason": "Kit De Gravação 5em1 Controle Bt/tripe/microfone/led/suport Cor Preto",
+            "status_code": null,
+            "total_paid_amount": 53.92,
+            "operation_type": "regular_payment",
+            "transaction_amount": 41.2,
+            "transaction_amount_refunded": 0,
+            "date_approved": "2025-02-09T11:37:44.000-04:00",
+            "collector": {
+              "id": 1033763524
+            },
+            "coupon_id": null,
+            "installments": 1,
+            "authorization_code": "501204",
+            "taxes_amount": 0,
+            "id": 101803928424,
+            "date_last_modified": "2025-02-15T09:46:21.000-04:00",
+            "coupon_amount": 0,
+            "available_actions": [
+              "refund"
+            ],
+            "shipping_cost": 12.72,
+            "installment_amount": 53.92,
+            "date_created": "2025-02-09T11:37:43.000-04:00",
+            "activation_uri": null,
+            "overpaid_amount": 0,
+            "card_id": 9141489371,
+            "status_detail": "accredited",
+            "issuer_id": "24",
+            "payment_method_id": "master",
+            "payment_type": "credit_card",
+            "deferred_period": null,
+            "atm_transfer_reference": {
+              "transaction_id": "126908050",
+              "company_id": null
+            },
+            "site_id": "MLB",
+            "payer_id": 243735828,
+            "order_id": 2000010701900768,
+            "currency_id": "BRL",
+            "status": "approved",
+            "transaction_order_id": null
+          }
+        ],
+        "fulfilled": true,
+        "taxes": {
+          "amount": null,
+          "currency_id": null,
+          "id": null
+        },
+        "order_request": {
+          "change": null,
+          "return": null
+        },
+        "expiration_date": "2025-03-09T11:37:45.000-04:00",
+        "feedback": {
+          "buyer": null,
+          "seller": null
+        },
+        "shipping": {
+          "id": 44464187153
+        },
+        "date_closed": "2025-02-09T11:37:45.000-04:00",
+        "id": 2000010701900768,
+        "manufacturing_ending_date": null,
+        "order_items": [
+          {
+            "item": {
+              "id": "MLB5161503116",
+              "title": "Kit De Gravação 5em1 Controle Bt/tripe/microfone/led/suport Cor Preto",
+              "category_id": "MLB103464",
+              "variation_id": null,
+              "seller_custom_field": null,
+              "global_price": null,
+              "net_weight": null,
+              "variation_attributes": [],
+              "warranty": "Garantia de fábrica: 30 dias",
+              "condition": "new",
+              "seller_sku": "kit-gravação-5em1-celular"
+            },
+            "quantity": 1,
+            "unit_price": 41.2,
+            "full_unit_price": 41.2,
+            "currency_id": "BRL",
+            "manufacturing_days": null,
+            "picked_quantity": null,
+            "requested_quantity": {
+              "measure": "unit",
+              "value": 1
+            },
+            "sale_fee": 13.92,
+            "listing_type_id": "gold_pro",
+            "base_exchange_rate": null,
+            "base_currency_id": null,
+            "bundle": null,
+            "element_id": 1,
+            "stock": {
+              "node_id": "BRP10337635241",
+              "store_id": null
+            }
+          }
+        ],
+        "date_last_updated": "2025-02-15T13:46:24+00:00",
+        "last_updated": "2025-02-15T09:46:23.000-04:00",
+        "comment": null,
+        "pack_id": null,
+        "coupon": {
+          "amount": 0,
+          "id": null
+        },
+        "shipping_cost": null,
+        "date_created": "2025-02-09T11:36:00.000-04:00",
+        "date_created_ttl": null,
+        "pickup_id": null,
+        "status_detail": null,
+        "tags": [
+          "catalog",
+          "paid",
+          "delivered"
+        ],
+        "buyer": {
+          "id": 243735828,
+          "nickname": "CELIASILVAGOES"
+        },
+        "seller": {
+          "id": 1033763524,
+          "nickname": "PORTUGA OFICIAL"
+        },
+        "total_amount": 41.2,
+        "paid_amount": 53.92,
+        "currency_id": "BRL",
+        "status": "paid",
+        "context": {
+          "application": null,
+          "product_id": null,
+          "channel": "marketplace",
+          "site": "MLB",
+          "flows": [
+            "catalog"
+          ]
+        }
+      },
+      {
+        "payments": [
+          {
+            "reason": "Umidificador De Ar Fresh Br Bivolt - Suggar - Um45bibr Cor Branco 110 Volts 220 Volts",
+            "status_code": null,
+            "total_paid_amount": 156.62,
+            "operation_type": "regular_payment",
+            "transaction_amount": 156.62,
+            "transaction_amount_refunded": 0,
+            "date_approved": "2025-02-09T11:56:57.000-04:00",
+            "collector": {
+              "id": 1033763524
+            },
+            "coupon_id": null,
+            "installments": 1,
+            "authorization_code": null,
+            "taxes_amount": 0,
+            "id": 101424611917,
+            "date_last_modified": "2025-02-15T09:46:20.000-04:00",
+            "coupon_amount": 0,
+            "available_actions": [
+              "refund"
+            ],
+            "shipping_cost": 0,
+            "installment_amount": null,
+            "date_created": "2025-02-09T11:56:57.000-04:00",
+            "activation_uri": null,
+            "overpaid_amount": 0,
+            "card_id": null,
+            "status_detail": "accredited",
+            "issuer_id": "2007",
+            "payment_method_id": "account_money",
+            "payment_type": "account_money",
+            "deferred_period": null,
+            "atm_transfer_reference": {
+              "transaction_id": null,
+              "company_id": null
+            },
+            "site_id": "MLB",
+            "payer_id": 12656086,
+            "order_id": 2000010702060878,
+            "currency_id": "BRL",
+            "status": "approved",
+            "transaction_order_id": null
+          }
+        ],
+        "fulfilled": true,
+        "taxes": {
+          "amount": null,
+          "currency_id": null,
+          "id": null
+        },
+        "order_request": {
+          "change": null,
+          "return": null
+        },
+        "expiration_date": "2025-03-09T11:56:57.000-04:00",
+        "feedback": {
+          "buyer": null,
+          "seller": null
+        },
+        "shipping": {
+          "id": 44464457744
+        },
+        "date_closed": "2025-02-09T11:56:57.000-04:00",
+        "id": 2000010702060878,
+        "manufacturing_ending_date": null,
+        "order_items": [
+          {
+            "item": {
+              "id": "MLB5102260696",
+              "title": "Umidificador De Ar Fresh Br Bivolt - Suggar - Um45bibr Cor Branco 110 Volts 220 Volts",
+              "category_id": "MLB268503",
+              "variation_id": null,
+              "seller_custom_field": null,
+              "global_price": null,
+              "net_weight": null,
+              "variation_attributes": [],
+              "warranty": "Garantia de fábrica: 12 meses",
+              "condition": "new",
+              "seller_sku": "Umidificador-Arfresh-Suggar-Um45bibr"
+            },
+            "quantity": 1,
+            "unit_price": 156.62,
+            "full_unit_price": 191,
+            "currency_id": "BRL",
+            "manufacturing_days": null,
+            "picked_quantity": null,
+            "requested_quantity": {
+              "measure": "unit",
+              "value": 1
+            },
+            "sale_fee": 20.9,
+            "listing_type_id": "gold_pro",
+            "base_exchange_rate": null,
+            "base_currency_id": null,
+            "bundle": null,
+            "element_id": 1,
+            "stock": {
+              "node_id": "BRRS01",
+              "store_id": null
+            }
+          }
+        ],
+        "date_last_updated": "2025-02-15T13:46:24+00:00",
+        "last_updated": "2025-02-15T09:46:23.000-04:00",
+        "comment": null,
+        "pack_id": null,
+        "coupon": {
+          "amount": 0,
+          "id": null
+        },
+        "shipping_cost": null,
+        "date_created": "2025-02-09T11:56:56.000-04:00",
+        "date_created_ttl": null,
+        "pickup_id": null,
+        "status_detail": null,
+        "tags": [
+          "order_has_discount",
+          "catalog",
+          "paid",
+          "delivered"
+        ],
+        "buyer": {
+          "id": 12656086,
+          "nickname": "KRISTOPHERKAIKE"
+        },
+        "seller": {
+          "id": 1033763524,
+          "nickname": "PORTUGA OFICIAL"
+        },
+        "total_amount": 156.62,
+        "paid_amount": 156.62,
+        "currency_id": "BRL",
+        "status": "paid",
+        "context": {
+          "application": null,
+          "product_id": null,
+          "channel": "marketplace",
+          "site": "MLB",
+          "flows": [
+            "catalog"
+          ]
+        }
+      },
+      {
+        "payments": [
+          {
+            "reason": "Tapete Massageador Elétrico Para Os Pés Cor Preto",
+            "status_code": null,
+            "total_paid_amount": 17.32,
+            "operation_type": "regular_payment",
+            "transaction_amount": 17.32,
+            "transaction_amount_refunded": 0,
+            "date_approved": "2025-02-09T12:19:42.000-04:00",
+            "collector": {
+              "id": 1033763524
+            },
+            "coupon_id": null,
+            "installments": 1,
+            "authorization_code": null,
+            "taxes_amount": 0,
+            "id": 101426649385,
+            "date_last_modified": "2025-02-15T09:46:21.000-04:00",
+            "coupon_amount": 0,
+            "available_actions": [
+              "refund"
+            ],
+            "shipping_cost": 0,
+            "installment_amount": null,
+            "date_created": "2025-02-09T12:19:42.000-04:00",
+            "activation_uri": null,
+            "overpaid_amount": 0,
+            "card_id": null,
+            "status_detail": "accredited",
+            "issuer_id": "2007",
+            "payment_method_id": "account_money",
+            "payment_type": "account_money",
+            "deferred_period": null,
+            "atm_transfer_reference": {
+              "transaction_id": null,
+              "company_id": null
+            },
+            "site_id": "MLB",
+            "payer_id": 410682097,
+            "order_id": 2000010702237036,
+            "currency_id": "BRL",
+            "status": "approved",
+            "transaction_order_id": null
+          }
+        ],
+        "fulfilled": true,
+        "taxes": {
+          "amount": null,
+          "currency_id": null,
+          "id": null
+        },
+        "order_request": {
+          "change": null,
+          "return": null
+        },
+        "expiration_date": "2025-03-09T12:19:43.000-04:00",
+        "feedback": {
+          "buyer": null,
+          "seller": null
+        },
+        "shipping": {
+          "id": 44464325397
+        },
+        "date_closed": "2025-02-09T12:19:43.000-04:00",
+        "id": 2000010702237036,
+        "manufacturing_ending_date": null,
+        "order_items": [
+          {
+            "item": {
+              "id": "MLB3957594993",
+              "title": "Tapete Massageador Elétrico Para Os Pés Cor Preto",
+              "category_id": "MLB180327",
+              "variation_id": null,
+              "seller_custom_field": null,
+              "global_price": null,
+              "net_weight": null,
+              "variation_attributes": [],
+              "warranty": "Garantia do vendedor: 7 dias",
+              "condition": "new",
+              "seller_sku": null
+            },
+            "quantity": 1,
+            "unit_price": 17.32,
+            "full_unit_price": 17.32,
+            "currency_id": "BRL",
+            "manufacturing_days": null,
+            "picked_quantity": null,
+            "requested_quantity": {
+              "measure": "unit",
+              "value": 1
+            },
+            "sale_fee": 8.33,
+            "listing_type_id": "gold_special",
+            "base_exchange_rate": null,
+            "base_currency_id": null,
+            "bundle": null,
+            "element_id": 1
+          }
+        ],
+        "date_last_updated": "2025-02-15T13:46:25+00:00",
+        "last_updated": "2025-02-15T09:46:24.000-04:00",
+        "comment": null,
+        "pack_id": 2000007166566651,
+        "coupon": {
+          "amount": 0,
+          "id": null
+        },
+        "shipping_cost": null,
+        "date_created": "2025-02-09T12:19:04.000-04:00",
+        "date_created_ttl": null,
+        "pickup_id": null,
+        "status_detail": null,
+        "tags": [
+          "pack_order",
+          "catalog",
+          "paid",
+          "delivered"
+        ],
+        "buyer": {
+          "id": 410682097,
+          "nickname": "OSEIASHENRY"
+        },
+        "seller": {
+          "id": 1033763524,
+          "nickname": "PORTUGA OFICIAL"
+        },
+        "total_amount": 17.32,
+        "paid_amount": 17.32,
+        "currency_id": "BRL",
+        "status": "paid",
+        "context": {
+          "application": null,
+          "product_id": null,
+          "channel": "marketplace",
+          "site": "MLB",
+          "flows": [
+            "catalog"
+          ]
+        }
+      }
+    ],
+    "sort": {
+      "id": "date_asc",
+      "name": "Date ascending"
+    },
+    "available_sorts": [
+      {
+        "id": "date_desc",
+        "name": "Date descending"
+      }
+    ],
+    "filters": [],
+    "paging": {
+      "total": 707,
+      "offset": 0,
+      "limit": 5
+    },
+    "display": "partial"
+  },
+  "paid": {
+    "query": "",
+    "results": [
+      {
+        "payments": [
+          {
+            "reason": "Secador De Cabelos Philco Beauty Shine, 2000w, 2 Vel - 110v",
+            "status_code": null,
+            "total_paid_amount": 165,
+            "operation_type": "regular_payment",
+            "transaction_amount": 165,
+            "transaction_amount_refunded": 0,
+            "date_approved": "2025-02-09T08:31:30.000-04:00",
+            "collector": {
+              "id": 1033763524
+            },
+            "coupon_id": null,
+            "installments": 1,
+            "authorization_code": null,
+            "taxes_amount": 0,
+            "id": 101409273783,
+            "date_last_modified": "2025-02-15T09:46:21.000-04:00",
+            "coupon_amount": 0,
+            "available_actions": [
+              "refund"
+            ],
+            "shipping_cost": 0,
+            "installment_amount": null,
+            "date_created": "2025-02-09T08:30:47.000-04:00",
+            "activation_uri": null,
+            "overpaid_amount": 0,
+            "card_id": null,
+            "status_detail": "accredited",
+            "issuer_id": "12501",
+            "payment_method_id": "pix",
+            "payment_type": "bank_transfer",
+            "deferred_period": null,
+            "atm_transfer_reference": {
+              "transaction_id": null,
+              "company_id": "1"
+            },
+            "site_id": "MLB",
+            "payer_id": 1031672995,
+            "order_id": 2000010700733868,
+            "currency_id": "BRL",
+            "status": "approved",
+            "transaction_order_id": null
+          }
+        ],
+        "fulfilled": true,
+        "taxes": {
+          "amount": null,
+          "currency_id": null,
+          "id": null
+        },
+        "order_request": {
+          "change": null,
+          "return": null
+        },
+        "expiration_date": "2025-03-09T08:31:30.000-04:00",
+        "feedback": {
+          "buyer": null,
+          "seller": null
+        },
+        "shipping": {
+          "id": 44463705683
+        },
+        "date_closed": "2025-02-09T08:31:30.000-04:00",
+        "id": 2000010700733868,
+        "manufacturing_ending_date": null,
+        "order_items": [
+          {
+            "item": {
+              "id": "MLB3789626769",
+              "title": "Secador De Cabelos Philco Beauty Shine, 2000w, 2 Vel - 110v",
+              "category_id": "MLB5412",
+              "variation_id": null,
+              "seller_custom_field": null,
+              "global_price": null,
+              "net_weight": null,
+              "variation_attributes": [],
+              "warranty": "Garantia de fábrica: 12 meses",
+              "condition": "new",
+              "seller_sku": "Secador De Cabelos Philco Beauty Shine, 2000w, 2 Vel - 110v"
+            },
+            "quantity": 1,
+            "unit_price": 165,
+            "full_unit_price": 165,
+            "currency_id": "BRL",
+            "manufacturing_days": null,
+            "picked_quantity": null,
+            "requested_quantity": {
+              "measure": "unit",
+              "value": 1
+            },
+            "sale_fee": 28.05,
+            "listing_type_id": "gold_pro",
+            "base_exchange_rate": null,
+            "base_currency_id": null,
+            "bundle": null,
+            "element_id": 1,
+            "stock": {
+              "node_id": "BRSC02",
+              "store_id": null
+            }
+          }
+        ],
+        "date_last_updated": "2025-02-15T13:46:24+00:00",
+        "last_updated": "2025-02-15T09:46:21.000-04:00",
+        "comment": null,
+        "pack_id": null,
+        "coupon": {
+          "amount": 0,
+          "id": null
+        },
+        "shipping_cost": null,
+        "date_created": "2025-02-09T08:30:46.000-04:00",
+        "date_created_ttl": null,
+        "pickup_id": null,
+        "status_detail": null,
+        "tags": [
+          "catalog",
+          "paid",
+          "delivered"
+        ],
+        "buyer": {
+          "id": 1031672995,
+          "nickname": "FERNANDESADELSON20211203004248"
+        },
+        "seller": {
+          "id": 1033763524,
+          "nickname": "PORTUGA OFICIAL"
+        },
+        "total_amount": 165,
+        "paid_amount": 165,
+        "currency_id": "BRL",
+        "status": "paid",
+        "context": {
+          "application": null,
+          "product_id": null,
+          "channel": "marketplace",
+          "site": "MLB",
+          "flows": [
+            "catalog"
+          ]
+        }
+      },
+      {
+        "payments": [
+          {
+            "reason": "Kit De Gravação 5em1 Controle Bt/tripe/microfone/led/suport Cor Preto",
+            "status_code": null,
+            "total_paid_amount": 53.92,
+            "operation_type": "regular_payment",
+            "transaction_amount": 41.2,
+            "transaction_amount_refunded": 0,
+            "date_approved": null,
+            "collector": {
+              "id": 1033763524
+            },
+            "coupon_id": null,
+            "installments": 1,
+            "authorization_code": null,
+            "taxes_amount": 0,
+            "id": 101422914861,
+            "date_last_modified": "2025-02-09T11:36:02.000-04:00",
+            "coupon_amount": 0,
+            "available_actions": [
+              ""
+            ],
+            "shipping_cost": 12.72,
+            "installment_amount": 53.92,
+            "date_created": "2025-02-09T11:36:01.000-04:00",
+            "activation_uri": null,
+            "overpaid_amount": 0,
+            "card_id": 9553301807,
+            "status_detail": "cc_rejected_bad_filled_card_number",
+            "issuer_id": "24",
+            "payment_method_id": "master",
+            "payment_type": "credit_card",
+            "deferred_period": null,
+            "atm_transfer_reference": {
+              "transaction_id": null,
+              "company_id": null
+            },
+            "site_id": "MLB",
+            "payer_id": 243735828,
+            "order_id": 2000010701900768,
+            "currency_id": "BRL",
+            "status": "rejected",
+            "transaction_order_id": null
+          },
+          {
+            "reason": "Kit De Gravação 5em1 Controle Bt/tripe/microfone/led/suport Cor Preto",
+            "status_code": null,
+            "total_paid_amount": 53.92,
+            "operation_type": "regular_payment",
+            "transaction_amount": 41.2,
+            "transaction_amount_refunded": 0,
+            "date_approved": null,
+            "collector": {
+              "id": 1033763524
+            },
+            "coupon_id": null,
+            "installments": 1,
+            "authorization_code": "000000",
+            "taxes_amount": 0,
+            "id": 101803832480,
+            "date_last_modified": "2025-02-09T11:36:36.000-04:00",
+            "coupon_amount": 0,
+            "available_actions": [
+              ""
+            ],
+            "shipping_cost": 12.72,
+            "installment_amount": 53.92,
+            "date_created": "2025-02-09T11:36:33.000-04:00",
+            "activation_uri": null,
+            "overpaid_amount": 0,
+            "card_id": 9506430822,
+            "status_detail": "cc_rejected_insufficient_amount",
+            "issuer_id": "25",
+            "payment_method_id": "visa",
+            "payment_type": "credit_card",
+            "deferred_period": null,
+            "atm_transfer_reference": {
+              "transaction_id": "124409084",
+              "company_id": null
+            },
+            "site_id": "MLB",
+            "payer_id": 243735828,
+            "order_id": 2000010701900768,
+            "currency_id": "BRL",
+            "status": "rejected",
+            "transaction_order_id": null
+          },
+          {
+            "reason": "Kit De Gravação 5em1 Controle Bt/tripe/microfone/led/suport Cor Preto",
+            "status_code": null,
+            "total_paid_amount": 53.92,
+            "operation_type": "regular_payment",
+            "transaction_amount": 41.2,
+            "transaction_amount_refunded": 0,
+            "date_approved": null,
+            "collector": {
+              "id": 1033763524
+            },
+            "coupon_id": null,
+            "installments": 1,
+            "authorization_code": null,
+            "taxes_amount": 0,
+            "id": 101423094939,
+            "date_last_modified": "2025-02-09T11:37:09.000-04:00",
+            "coupon_amount": 0,
+            "available_actions": [
+              ""
+            ],
+            "shipping_cost": 12.72,
+            "installment_amount": 53.92,
+            "date_created": "2025-02-09T11:37:07.000-04:00",
+            "activation_uri": null,
+            "overpaid_amount": 0,
+            "card_id": 9553301807,
+            "status_detail": "cc_rejected_call_for_authorize",
+            "issuer_id": "24",
+            "payment_method_id": "master",
+            "payment_type": "credit_card",
+            "deferred_period": null,
+            "atm_transfer_reference": {
+              "transaction_id": "750993897",
+              "company_id": null
+            },
+            "site_id": "MLB",
+            "payer_id": 243735828,
+            "order_id": 2000010701900768,
+            "currency_id": "BRL",
+            "status": "rejected",
+            "transaction_order_id": null
+          },
+          {
+            "reason": "Kit De Gravação 5em1 Controle Bt/tripe/microfone/led/suport Cor Preto",
+            "status_code": null,
+            "total_paid_amount": 53.92,
+            "operation_type": "regular_payment",
+            "transaction_amount": 41.2,
+            "transaction_amount_refunded": 0,
+            "date_approved": "2025-02-09T11:37:44.000-04:00",
+            "collector": {
+              "id": 1033763524
+            },
+            "coupon_id": null,
+            "installments": 1,
+            "authorization_code": "501204",
+            "taxes_amount": 0,
+            "id": 101803928424,
+            "date_last_modified": "2025-02-15T09:46:21.000-04:00",
+            "coupon_amount": 0,
+            "available_actions": [
+              "refund"
+            ],
+            "shipping_cost": 12.72,
+            "installment_amount": 53.92,
+            "date_created": "2025-02-09T11:37:43.000-04:00",
+            "activation_uri": null,
+            "overpaid_amount": 0,
+            "card_id": 9141489371,
+            "status_detail": "accredited",
+            "issuer_id": "24",
+            "payment_method_id": "master",
+            "payment_type": "credit_card",
+            "deferred_period": null,
+            "atm_transfer_reference": {
+              "transaction_id": "126908050",
+              "company_id": null
+            },
+            "site_id": "MLB",
+            "payer_id": 243735828,
+            "order_id": 2000010701900768,
+            "currency_id": "BRL",
+            "status": "approved",
+            "transaction_order_id": null
+          }
+        ],
+        "fulfilled": true,
+        "taxes": {
+          "amount": null,
+          "currency_id": null,
+          "id": null
+        },
+        "order_request": {
+          "change": null,
+          "return": null
+        },
+        "expiration_date": "2025-03-09T11:37:45.000-04:00",
+        "feedback": {
+          "buyer": null,
+          "seller": null
+        },
+        "shipping": {
+          "id": 44464187153
+        },
+        "date_closed": "2025-02-09T11:37:45.000-04:00",
+        "id": 2000010701900768,
+        "manufacturing_ending_date": null,
+        "order_items": [
+          {
+            "item": {
+              "id": "MLB5161503116",
+              "title": "Kit De Gravação 5em1 Controle Bt/tripe/microfone/led/suport Cor Preto",
+              "category_id": "MLB103464",
+              "variation_id": null,
+              "seller_custom_field": null,
+              "global_price": null,
+              "net_weight": null,
+              "variation_attributes": [],
+              "warranty": "Garantia de fábrica: 30 dias",
+              "condition": "new",
+              "seller_sku": "kit-gravação-5em1-celular"
+            },
+            "quantity": 1,
+            "unit_price": 41.2,
+            "full_unit_price": 41.2,
+            "currency_id": "BRL",
+            "manufacturing_days": null,
+            "picked_quantity": null,
+            "requested_quantity": {
+              "measure": "unit",
+              "value": 1
+            },
+            "sale_fee": 13.92,
+            "listing_type_id": "gold_pro",
+            "base_exchange_rate": null,
+            "base_currency_id": null,
+            "bundle": null,
+            "element_id": 1,
+            "stock": {
+              "node_id": "BRP10337635241",
+              "store_id": null
+            }
+          }
+        ],
+        "date_last_updated": "2025-02-15T13:46:24+00:00",
+        "last_updated": "2025-02-15T09:46:23.000-04:00",
+        "comment": null,
+        "pack_id": null,
+        "coupon": {
+          "amount": 0,
+          "id": null
+        },
+        "shipping_cost": null,
+        "date_created": "2025-02-09T11:36:00.000-04:00",
+        "date_created_ttl": null,
+        "pickup_id": null,
+        "status_detail": null,
+        "tags": [
+          "catalog",
+          "paid",
+          "delivered"
+        ],
+        "buyer": {
+          "id": 243735828,
+          "nickname": "CELIASILVAGOES"
+        },
+        "seller": {
+          "id": 1033763524,
+          "nickname": "PORTUGA OFICIAL"
+        },
+        "total_amount": 41.2,
+        "paid_amount": 53.92,
+        "currency_id": "BRL",
+        "status": "paid",
+        "context": {
+          "application": null,
+          "product_id": null,
+          "channel": "marketplace",
+          "site": "MLB",
+          "flows": [
+            "catalog"
+          ]
+        }
+      },
+      {
+        "payments": [
+          {
+            "reason": "Umidificador De Ar Fresh Br Bivolt - Suggar - Um45bibr Cor Branco 110 Volts 220 Volts",
+            "status_code": null,
+            "total_paid_amount": 156.62,
+            "operation_type": "regular_payment",
+            "transaction_amount": 156.62,
+            "transaction_amount_refunded": 0,
+            "date_approved": "2025-02-09T11:56:57.000-04:00",
+            "collector": {
+              "id": 1033763524
+            },
+            "coupon_id": null,
+            "installments": 1,
+            "authorization_code": null,
+            "taxes_amount": 0,
+            "id": 101424611917,
+            "date_last_modified": "2025-02-15T09:46:20.000-04:00",
+            "coupon_amount": 0,
+            "available_actions": [
+              "refund"
+            ],
+            "shipping_cost": 0,
+            "installment_amount": null,
+            "date_created": "2025-02-09T11:56:57.000-04:00",
+            "activation_uri": null,
+            "overpaid_amount": 0,
+            "card_id": null,
+            "status_detail": "accredited",
+            "issuer_id": "2007",
+            "payment_method_id": "account_money",
+            "payment_type": "account_money",
+            "deferred_period": null,
+            "atm_transfer_reference": {
+              "transaction_id": null,
+              "company_id": null
+            },
+            "site_id": "MLB",
+            "payer_id": 12656086,
+            "order_id": 2000010702060878,
+            "currency_id": "BRL",
+            "status": "approved",
+            "transaction_order_id": null
+          }
+        ],
+        "fulfilled": true,
+        "taxes": {
+          "amount": null,
+          "currency_id": null,
+          "id": null
+        },
+        "order_request": {
+          "change": null,
+          "return": null
+        },
+        "expiration_date": "2025-03-09T11:56:57.000-04:00",
+        "feedback": {
+          "buyer": null,
+          "seller": null
+        },
+        "shipping": {
+          "id": 44464457744
+        },
+        "date_closed": "2025-02-09T11:56:57.000-04:00",
+        "id": 2000010702060878,
+        "manufacturing_ending_date": null,
+        "order_items": [
+          {
+            "item": {
+              "id": "MLB5102260696",
+              "title": "Umidificador De Ar Fresh Br Bivolt - Suggar - Um45bibr Cor Branco 110 Volts 220 Volts",
+              "category_id": "MLB268503",
+              "variation_id": null,
+              "seller_custom_field": null,
+              "global_price": null,
+              "net_weight": null,
+              "variation_attributes": [],
+              "warranty": "Garantia de fábrica: 12 meses",
+              "condition": "new",
+              "seller_sku": "Umidificador-Arfresh-Suggar-Um45bibr"
+            },
+            "quantity": 1,
+            "unit_price": 156.62,
+            "full_unit_price": 191,
+            "currency_id": "BRL",
+            "manufacturing_days": null,
+            "picked_quantity": null,
+            "requested_quantity": {
+              "measure": "unit",
+              "value": 1
+            },
+            "sale_fee": 20.9,
+            "listing_type_id": "gold_pro",
+            "base_exchange_rate": null,
+            "base_currency_id": null,
+            "bundle": null,
+            "element_id": 1,
+            "stock": {
+              "node_id": "BRRS01",
+              "store_id": null
+            }
+          }
+        ],
+        "date_last_updated": "2025-02-15T13:46:24+00:00",
+        "last_updated": "2025-02-15T09:46:23.000-04:00",
+        "comment": null,
+        "pack_id": null,
+        "coupon": {
+          "amount": 0,
+          "id": null
+        },
+        "shipping_cost": null,
+        "date_created": "2025-02-09T11:56:56.000-04:00",
+        "date_created_ttl": null,
+        "pickup_id": null,
+        "status_detail": null,
+        "tags": [
+          "order_has_discount",
+          "catalog",
+          "paid",
+          "delivered"
+        ],
+        "buyer": {
+          "id": 12656086,
+          "nickname": "KRISTOPHERKAIKE"
+        },
+        "seller": {
+          "id": 1033763524,
+          "nickname": "PORTUGA OFICIAL"
+        },
+        "total_amount": 156.62,
+        "paid_amount": 156.62,
+        "currency_id": "BRL",
+        "status": "paid",
+        "context": {
+          "application": null,
+          "product_id": null,
+          "channel": "marketplace",
+          "site": "MLB",
+          "flows": [
+            "catalog"
+          ]
+        }
+      },
+      {
+        "payments": [
+          {
+            "reason": "Tapete Massageador Elétrico Para Os Pés Cor Preto",
+            "status_code": null,
+            "total_paid_amount": 17.32,
+            "operation_type": "regular_payment",
+            "transaction_amount": 17.32,
+            "transaction_amount_refunded": 0,
+            "date_approved": "2025-02-09T12:19:42.000-04:00",
+            "collector": {
+              "id": 1033763524
+            },
+            "coupon_id": null,
+            "installments": 1,
+            "authorization_code": null,
+            "taxes_amount": 0,
+            "id": 101426649385,
+            "date_last_modified": "2025-02-15T09:46:21.000-04:00",
+            "coupon_amount": 0,
+            "available_actions": [
+              "refund"
+            ],
+            "shipping_cost": 0,
+            "installment_amount": null,
+            "date_created": "2025-02-09T12:19:42.000-04:00",
+            "activation_uri": null,
+            "overpaid_amount": 0,
+            "card_id": null,
+            "status_detail": "accredited",
+            "issuer_id": "2007",
+            "payment_method_id": "account_money",
+            "payment_type": "account_money",
+            "deferred_period": null,
+            "atm_transfer_reference": {
+              "transaction_id": null,
+              "company_id": null
+            },
+            "site_id": "MLB",
+            "payer_id": 410682097,
+            "order_id": 2000010702237036,
+            "currency_id": "BRL",
+            "status": "approved",
+            "transaction_order_id": null
+          }
+        ],
+        "fulfilled": true,
+        "taxes": {
+          "amount": null,
+          "currency_id": null,
+          "id": null
+        },
+        "order_request": {
+          "change": null,
+          "return": null
+        },
+        "expiration_date": "2025-03-09T12:19:43.000-04:00",
+        "feedback": {
+          "buyer": null,
+          "seller": null
+        },
+        "shipping": {
+          "id": 44464325397
+        },
+        "date_closed": "2025-02-09T12:19:43.000-04:00",
+        "id": 2000010702237036,
+        "manufacturing_ending_date": null,
+        "order_items": [
+          {
+            "item": {
+              "id": "MLB3957594993",
+              "title": "Tapete Massageador Elétrico Para Os Pés Cor Preto",
+              "category_id": "MLB180327",
+              "variation_id": null,
+              "seller_custom_field": null,
+              "global_price": null,
+              "net_weight": null,
+              "variation_attributes": [],
+              "warranty": "Garantia do vendedor: 7 dias",
+              "condition": "new",
+              "seller_sku": null
+            },
+            "quantity": 1,
+            "unit_price": 17.32,
+            "full_unit_price": 17.32,
+            "currency_id": "BRL",
+            "manufacturing_days": null,
+            "picked_quantity": null,
+            "requested_quantity": {
+              "measure": "unit",
+              "value": 1
+            },
+            "sale_fee": 8.33,
+            "listing_type_id": "gold_special",
+            "base_exchange_rate": null,
+            "base_currency_id": null,
+            "bundle": null,
+            "element_id": 1
+          }
+        ],
+        "date_last_updated": "2025-02-15T13:46:25+00:00",
+        "last_updated": "2025-02-15T09:46:24.000-04:00",
+        "comment": null,
+        "pack_id": 2000007166566651,
+        "coupon": {
+          "amount": 0,
+          "id": null
+        },
+        "shipping_cost": null,
+        "date_created": "2025-02-09T12:19:04.000-04:00",
+        "date_created_ttl": null,
+        "pickup_id": null,
+        "status_detail": null,
+        "tags": [
+          "pack_order",
+          "catalog",
+          "paid",
+          "delivered"
+        ],
+        "buyer": {
+          "id": 410682097,
+          "nickname": "OSEIASHENRY"
+        },
+        "seller": {
+          "id": 1033763524,
+          "nickname": "PORTUGA OFICIAL"
+        },
+        "total_amount": 17.32,
+        "paid_amount": 17.32,
+        "currency_id": "BRL",
+        "status": "paid",
+        "context": {
+          "application": null,
+          "product_id": null,
+          "channel": "marketplace",
+          "site": "MLB",
+          "flows": [
+            "catalog"
+          ]
+        }
+      },
+      {
+        "payments": [
+          {
+            "reason": "Kit 2un Carregador De Sacola Mercado Alça Gancho Forte 25kg",
+            "status_code": null,
+            "total_paid_amount": 14.02,
+            "operation_type": "regular_payment",
+            "transaction_amount": 14.02,
+            "transaction_amount_refunded": 0,
+            "date_approved": "2025-02-09T14:03:20.000-04:00",
+            "collector": {
+              "id": 1033763524
+            },
+            "coupon_id": null,
+            "installments": 1,
+            "authorization_code": null,
+            "taxes_amount": 0,
+            "id": 101815038338,
+            "date_last_modified": "2025-02-15T09:46:21.000-04:00",
+            "coupon_amount": 0,
+            "available_actions": [
+              "refund"
+            ],
+            "shipping_cost": 0,
+            "installment_amount": null,
+            "date_created": "2025-02-09T14:03:17.000-04:00",
+            "activation_uri": null,
+            "overpaid_amount": 0,
+            "card_id": null,
+            "status_detail": "accredited",
+            "issuer_id": "2007",
+            "payment_method_id": "account_money",
+            "payment_type": "account_money",
+            "deferred_period": null,
+            "atm_transfer_reference": {
+              "transaction_id": null,
+              "company_id": null
+            },
+            "site_id": "MLB",
+            "payer_id": 140381046,
+            "order_id": 2000010703065270,
+            "currency_id": "BRL",
+            "status": "approved",
+            "transaction_order_id": null
+          },
+          {
+            "reason": "Kit 2un Carregador De Sacola Mercado Alça Gancho Forte 25kg",
+            "status_code": null,
+            "total_paid_amount": 54.43,
+            "operation_type": "regular_payment",
+            "transaction_amount": 35.73,
+            "transaction_amount_refunded": 0,
+            "date_approved": "2025-02-09T14:03:20.000-04:00",
+            "collector": {
+              "id": 1033763524
+            },
+            "coupon_id": null,
+            "installments": 4,
+            "authorization_code": "138474",
+            "taxes_amount": 0,
+            "id": 101814919770,
+            "date_last_modified": "2025-02-15T09:46:21.000-04:00",
+            "coupon_amount": 0,
+            "available_actions": [
+              "refund"
+            ],
+            "shipping_cost": 18.7,
+            "installment_amount": 13.61,
+            "date_created": "2025-02-09T14:03:16.000-04:00",
+            "activation_uri": null,
+            "overpaid_amount": 0,
+            "card_id": 9478226897,
+            "status_detail": "accredited",
+            "issuer_id": "12518",
+            "payment_method_id": "master",
+            "payment_type": "credit_card",
+            "deferred_period": null,
+            "atm_transfer_reference": {
+              "transaction_id": null,
+              "company_id": null
+            },
+            "site_id": "MLB",
+            "payer_id": 140381046,
+            "order_id": 2000010703065270,
+            "currency_id": "BRL",
+            "status": "approved",
+            "transaction_order_id": null
+          }
+        ],
+        "fulfilled": true,
+        "taxes": {
+          "amount": null,
+          "currency_id": null,
+          "id": null
+        },
+        "order_request": {
+          "change": null,
+          "return": null
+        },
+        "expiration_date": "2025-03-09T14:03:21.000-04:00",
+        "feedback": {
+          "buyer": null,
+          "seller": null
+        },
+        "shipping": {
+          "id": 44464870636
+        },
+        "date_closed": "2025-02-09T14:03:21.000-04:00",
+        "id": 2000010703065270,
+        "manufacturing_ending_date": null,
+        "order_items": [
+          {
+            "item": {
+              "id": "MLB3961670059",
+              "title": "Kit 2un Carregador De Sacola Mercado Alça Gancho Forte 25kg",
+              "category_id": "MLB277576",
+              "variation_id": 186812312531,
+              "seller_custom_field": null,
+              "global_price": null,
+              "net_weight": null,
+              "variation_attributes": [
+                {
+                  "name": "Cor",
+                  "id": "COLOR",
+                  "value_id": "283165",
+                  "value_name": "Cinza"
+                }
+              ],
+              "warranty": "Garantia de fábrica: 90 dias",
+              "condition": "new",
+              "seller_sku": "carregador-sacola-portuga-1un"
+            },
+            "quantity": 1,
+            "unit_price": 49.75,
+            "full_unit_price": 78.97,
+            "currency_id": "BRL",
+            "manufacturing_days": null,
+            "picked_quantity": null,
+            "requested_quantity": {
+              "measure": "unit",
+              "value": 1
+            },
+            "sale_fee": 14.71,
+            "listing_type_id": "gold_pro",
+            "base_exchange_rate": null,
+            "base_currency_id": null,
+            "bundle": null,
+            "element_id": 1
+          }
+        ],
+        "date_last_updated": "2025-02-15T13:46:24+00:00",
+        "last_updated": "2025-02-15T09:46:24.000-04:00",
+        "comment": null,
+        "pack_id": null,
+        "coupon": {
+          "amount": 0,
+          "id": null
+        },
+        "shipping_cost": null,
+        "date_created": "2025-02-09T14:03:16.000-04:00",
+        "date_created_ttl": null,
+        "pickup_id": null,
+        "status_detail": null,
+        "tags": [
+          "order_has_discount",
+          "paid",
+          "delivered"
+        ],
+        "buyer": {
+          "id": 140381046,
+          "nickname": "BERNARDESFABIO31"
+        },
+        "seller": {
+          "id": 1033763524,
+          "nickname": "PORTUGA OFICIAL"
+        },
+        "total_amount": 49.75,
+        "paid_amount": 68.45,
+        "currency_id": "BRL",
+        "status": "paid",
+        "context": {
+          "application": null,
+          "product_id": null,
+          "channel": "marketplace",
+          "site": "MLB",
+          "flows": []
+        }
+      }
+    ],
+    "sort": {
+      "id": "date_asc",
+      "name": "Date ascending"
+    },
+    "available_sorts": [
+      {
+        "id": "date_desc",
+        "name": "Date descending"
+      }
+    ],
+    "filters": [
+      {
+        "id": "order.status",
+        "name": "Order Status",
+        "type": "text",
+        "values": [
+          {
+            "id": "paid",
+            "name": "Order Paid"
+          }
+        ]
+      }
+    ],
+    "paging": {
+      "total": 540,
+      "offset": 0,
+      "limit": 5
+    },
+    "display": "partial"
+  }
+}
