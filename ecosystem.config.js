@@ -1,0 +1,43 @@
+module.exports = {
+  apps: [
+    {
+      name: 'vendata-web',
+      cwd: '/root/projeto/projeto-sass/apps/web',
+      script: 'node_modules/.bin/next',
+      args: 'start',
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '1G',
+      env: {
+        NODE_ENV: 'production',
+        PORT: 3000,
+        NEXT_PUBLIC_API_URL: 'https://api.vendata.com.br',
+        NEXT_PUBLIC_APP_URL: 'https://vendata.com.br',
+      },
+    },
+    {
+      name: 'vendata-api',
+      cwd: '/root/projeto/projeto-sass/apps/api',
+      script: 'dist/main.js',
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '1G',
+      env: {
+        NODE_ENV: 'production',
+        API_PORT: 4000,
+        API_HOST: '0.0.0.0',
+        DATABASE_URL: 'postgresql://vendata:vendata_secure_pwd_2024@localhost:5432/vendata?schema=public',
+        JWT_SECRET: '0DajxyKsG6RYTu4VpBKN3M6nq5HMln2espEP4ILvfaumMYqjBebS9t5AcS7yso43',
+        JWT_REFRESH_SECRET: 'zthCuGDH3nNWFX2ZgwS1HlvTjGwgdc+Z5Rs1UCn83rQ6Ui7A1rLOqhv87PwTz7m1',
+        JWT_EXPIRATION: '15m',
+        JWT_REFRESH_EXPIRATION: '7d',
+        ML_CLIENT_ID: '1706187223829083',
+        ML_CLIENT_SECRET: 'vjEgzPD85Ehwe6aefX3TGij4xGdRV0jG',
+        ML_REDIRECT_URI: 'https://vendata.com.br/auth/callback',
+        CORS_ORIGIN: 'https://vendata.com.br',
+      },
+    },
+  ],
+};

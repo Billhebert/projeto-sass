@@ -1,0 +1,283 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// ORGANIZATIONS (Multi-tenancy)
+// ============================================
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  plan      String   @default("free") // free, starter, pro, enterprise
+  logo      String?
+  
+  // Mercado Livre connection
+  mlConnected Boolean @default(false)
+  
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  members   User[]
+  
+  @@map("organizations")
+}
+
+// ============================================
+// USERS
+// ============================================
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  avatar    String?
+  role      String   @default("user") // user, admin, super_admin
+  
+  // Account Status
+  isActive    Boolean   @default(false) // Usuarios criados desativados por padrao
+  activeUntil DateTime? // NULL = sem expiracao, com data = expira nessa data
+  
+  // Organization (Multi-tenancy)
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  apiKeys   ApiKey[]
+  mlAccounts MercadoLivreAccount[]
+  
+  @@index([email])
+  @@index([organizationId])
+  @@index([isActive])
+  @@map("users")
+}
+
+// ============================================
+// MERCADO LIVRE ACCOUNTS (Multiple per user)
+// ============================================
+
+model MercadoLivreAccount {
+  id              String   @id @default(uuid())
+  
+  // Mercado Livre data
+  mlUserId        String   // ML user ID (stored as string for flexibility)
+  mlNickname      String
+  mlEmail         String?
+  mlSiteId        String   @default("MLB") // MLB = Brazil
+  
+  // OAuth tokens
+  accessToken     String
+  refreshToken    String
+  tokenExpiresAt  DateTime
+  
+  // Account status
+  isActive        Boolean  @default(true)
+  isPrimary       Boolean  @default(false) // Primary account for the user
+  
+  // User relation
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@unique([userId, mlUserId]) // One ML account per user (no duplicates)
+  @@index([userId])
+  @@index([mlUserId])
+  @@map("mercadolivre_accounts")
+}
+
+// ============================================
+// API KEYS (For public API)
+// ============================================
+
+model ApiKey {
+  id        String   @id @default(uuid())
+  name      String
+  key       String   @unique
+  prefix    String   // First 8 chars for display (ml_saas_xxxxxxxx...)
+  
+  // Permissions
+  scopes    String[] @default([])
+  
+  // Rate limiting
+  rateLimit Int      @default(100)
+  
+  // Status
+  isActive  Boolean  @default(true)
+  lastUsedAt DateTime?
+  expiresAt DateTime?
+  
+  // User
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([key])
+  @@index([userId])
+  @@map("api_keys")
+}
+
+// ============================================
+// WEBHOOKS
+// ============================================
+
+model Webhook {
+  id        String   @id @default(uuid())
+  url       String
+  events    String[] // order.created, item.updated, question.received, etc.
+  secret    String
+  isActive  Boolean  @default(true)
+  
+  // Organization
+  organizationId String
+  
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Logs
+  logs      WebhookLog[]
+  
+  @@index([organizationId])
+  @@map("webhooks")
+}
+
+model WebhookLog {
+  id        String   @id @default(uuid())
+  event     String
+  payload   Json
+  status    Int
+  response  String?
+  
+  // Webhook
+  webhookId String
+  webhook   Webhook  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  
+  // Timestamps
+  createdAt DateTime @default(now())
+  
+  @@index([webhookId])
+  @@index([createdAt])
+  @@map("webhook_logs")
+}
+
+// ============================================
+// CACHED DATA (Optional - for performance)
+// ============================================
+
+model CachedItem {
+  id           String   @id @default(uuid())
+  mlItemId     String   @unique
+  title        String
+  price        Float
+  currency     String
+  thumbnail    String?
+  status       String
+  quantity     Int
+  soldQuantity Int
+  
+  // Organization
+  organizationId String
+  
+  // Timestamps
+  cachedAt     DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  @@index([organizationId])
+  @@index([mlItemId])
+  @@map("cached_items")
+}
+
+model CachedOrder {
+  id           String   @id @default(uuid())
+  mlOrderId    String   @unique
+  status       String
+  totalAmount  Float
+  currency     String
+  buyerNickname String
+  
+  // Organization
+  organizationId String
+  
+  // Timestamps
+  orderDate    DateTime
+  cachedAt     DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  @@index([organizationId])
+  @@index([mlOrderId])
+  @@index([orderDate])
+  @@map("cached_orders")
+}
+
+// ============================================
+// NOTIFICATIONS
+// ============================================
+
+model Notification {
+  id        String   @id @default(uuid())
+  type      String   // info, warning, success, error
+  title     String
+  message   String
+  read      Boolean  @default(false)
+  data      Json?
+  
+  // User
+  userId    String
+  
+  // Timestamps
+  createdAt DateTime @default(now())
+  
+  @@index([userId])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+// ============================================
+// AUDIT LOG
+// ============================================
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  action    String   // login, logout, update_item, etc.
+  entity    String?  // item, order, user, etc.
+  entityId  String?
+  metadata  Json?
+  ipAddress String?
+  userAgent String?
+  
+  // User
+  userId    String
+  
+  // Organization
+  organizationId String?
+  
+  // Timestamps
+  createdAt DateTime @default(now())
+  
+  @@index([userId])
+  @@index([organizationId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

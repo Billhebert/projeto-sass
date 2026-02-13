@@ -1,0 +1,255 @@
+'use client';
+
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { api } from '@/lib/api';
+import { formatCurrency, formatDateTime } from '@/lib/utils';
+import { useToast } from '@/hooks/use-toast';
+import { Tag, Percent, Search, Play, Pause, Plus, TrendingUp } from 'lucide-react';
+
+const statusColors: Record<string, string> = {
+  active: 'bg-ml-green text-white',
+  paused: 'bg-ml-yellow text-black',
+  scheduled: 'bg-ml-blue text-white',
+  finished: 'bg-gray-500 text-white',
+};
+
+const statusLabels: Record<string, string> = {
+  active: 'Ativa',
+  paused: 'Pausada',
+  scheduled: 'Agendada',
+  finished: 'Finalizada',
+};
+
+export default function PromotionsPage() {
+  const [search, setSearch] = useState('');
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // Get user promotions
+  const { data: promotionsData, isLoading } = useQuery({
+    queryKey: ['user-promotions'],
+    queryFn: async () => {
+      const response = await api.get('/api/v1/mercadolivre/promotions');
+      return response.data;
+    },
+  });
+
+  const activateMutation = useMutation({
+    mutationFn: async (promoId: string) => {
+      const response = await api.post(`/api/v1/mercadolivre/promotions/${promoId}/activate`);
+      return response.data;
+    },
+    onSuccess: () => {
+      toast({ title: 'Promoção ativada com sucesso!' });
+      queryClient.invalidateQueries({ queryKey: ['user-promotions'] });
+    },
+    onError: () => {
+      toast({ title: 'Erro ao ativar promoção', variant: 'destructive' });
+    },
+  });
+
+  const pauseMutation = useMutation({
+    mutationFn: async (promoId: string) => {
+      const response = await api.post(`/api/v1/mercadolivre/promotions/${promoId}/pause`);
+      return response.data;
+    },
+    onSuccess: () => {
+      toast({ title: 'Promoção pausada com sucesso!' });
+      queryClient.invalidateQueries({ queryKey: ['user-promotions'] });
+    },
+    onError: () => {
+      toast({ title: 'Erro ao pausar promoção', variant: 'destructive' });
+    },
+  });
+
+  const handleToggleStatus = (promo: any) => {
+    if (promo.status === 'active') {
+      pauseMutation.mutate(promo.id);
+    } else {
+      activateMutation.mutate(promo.id);
+    }
+  };
+
+  const promotions = promotionsData?.results || promotionsData || [];
+
+  const filteredPromotions = Array.isArray(promotions)
+    ? promotions.filter((promo: any) =>
+        promo.name?.toLowerCase().includes(search.toLowerCase()) ||
+        promo.type?.toLowerCase().includes(search.toLowerCase())
+      )
+    : [];
+
+  // Stats
+  const stats = {
+    total: filteredPromotions.length,
+    active: filteredPromotions.filter((p: any) => p.status === 'active').length,
+    paused: filteredPromotions.filter((p: any) => p.status === 'paused').length,
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Promocoes</h1>
+          <p className="text-muted-foreground">
+            Gerencie suas promocoes e ofertas
+          </p>
+        </div>
+        <Button className="bg-ml-blue hover:bg-ml-blue/90">
+          <Plus className="h-4 w-4 mr-2" />
+          Nova Promocao
+        </Button>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total de Promocoes</CardTitle>
+            <Tag className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.total}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Ativas</CardTitle>
+            <Play className="h-4 w-4 text-green-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.active}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Pausadas</CardTitle>
+            <Pause className="h-4 w-4 text-yellow-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stats.paused}</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Search */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Buscar promocoes..."
+              className="pl-9"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Promotions List */}
+      <Card>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="p-6 space-y-4">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="flex items-center gap-4 animate-pulse">
+                  <div className="h-12 w-12 rounded-lg bg-muted" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-4 w-40 bg-muted rounded" />
+                    <div className="h-3 w-24 bg-muted rounded" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : filteredPromotions.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12">
+              <Percent className="h-12 w-12 text-muted-foreground mb-4" />
+              <p className="text-lg font-medium">Nenhuma promocao encontrada</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Crie promocoes para aumentar suas vendas
+              </p>
+              <Button className="mt-4 bg-ml-blue hover:bg-ml-blue/90">
+                <Plus className="h-4 w-4 mr-2" />
+                Criar Promocao
+              </Button>
+            </div>
+          ) : (
+            <div className="divide-y">
+              {filteredPromotions.map((promo: any, index: number) => (
+                <div key={promo.id || index} className="p-4 hover:bg-muted/50">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="h-12 w-12 rounded-lg bg-ml-yellow/10 flex items-center justify-center">
+                        <Percent className="h-6 w-6 text-ml-yellow" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium">{promo.name || 'Promocao'}</p>
+                          <Badge className={statusColors[promo.status] || 'bg-muted'}>
+                            {statusLabels[promo.status] || promo.status}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          {promo.type || 'Desconto'} - {promo.discount_percentage || promo.discount}% off
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => handleToggleStatus(promo)}
+                        disabled={activateMutation.isPending || pauseMutation.isPending}
+                      >
+                        {promo.status === 'active' ? (
+                          <>
+                            <Pause className="h-4 w-4 mr-1" />
+                            Pausar
+                          </>
+                        ) : (
+                          <>
+                            <Play className="h-4 w-4 mr-1" />
+                            Ativar
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Tips Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <TrendingUp className="h-5 w-5 text-ml-blue" />
+            Dicas de Promocoes
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ul className="text-sm text-muted-foreground space-y-2">
+            <li>• Ofereca descontos entre 10-30% para melhores resultados</li>
+            <li>• Promocoes com tempo limitado geram mais urgencia</li>
+            <li>• Combine promocoes com frete gratis para aumentar conversao</li>
+            <li>• Acompanhe as metricas para otimizar suas campanhas</li>
+          </ul>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
