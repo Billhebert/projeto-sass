@@ -15,7 +15,7 @@ export function TopProducts({ dateRange = '30' }: TopProductsProps) {
     if (days === 'all') return null;
     const date = new Date();
     date.setDate(date.getDate() - parseInt(days));
-    return date.toISOString();
+    return date.toISOString().split('T')[0]; // YYYY-MM-DD format
   };
 
   const { data, isLoading } = useQuery({
@@ -26,8 +26,10 @@ export function TopProducts({ dateRange = '30' }: TopProductsProps) {
       const dateFrom = getDateFrom(dateRange);
       if (dateFrom) {
         params.date_from = dateFrom;
-        params.date_to = new Date().toISOString();
+        params.date_to = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
       }
+      
+      console.log('[Frontend TopProducts] Request params:', params);
       
       const response = await api.get('/api/v1/dashboard/top-products', { params });
       return response.data;

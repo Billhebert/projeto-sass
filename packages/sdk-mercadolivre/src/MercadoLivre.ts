@@ -317,7 +317,9 @@ export class MercadoLivre {
    * Faz uma requisição GET
    */
   async get<T = any>(url: string, options?: RequestOptions): Promise<T> {
+    console.log(`[SDK GET] URL: ${url}`);
     const response = await this.client.get<T>(url, options);
+    console.log(`[SDK GET] Response status: ${response.status}, data keys: ${Object.keys(response.data || {}).join(', ')}`);
     return response.data;
   }
 

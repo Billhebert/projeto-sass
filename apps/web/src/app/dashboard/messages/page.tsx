@@ -38,7 +38,7 @@ export default function MessagesPage() {
     if (days === 'all') return null;
     const date = new Date();
     date.setDate(date.getDate() - parseInt(days));
-    return date.toISOString();
+    return date.toISOString().split('T')[0]; // YYYY-MM-DD format
   };
 
   // Get messages from orders (pack messages) com paginação do servidor
@@ -50,7 +50,7 @@ export default function MessagesPage() {
       const dateFrom = getDateFrom(dateRange);
       if (dateFrom) {
         params.date_from = dateFrom;
-        params.date_to = new Date().toISOString();
+        params.date_to = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
         // Com filtro de data: usar paginação normal
         params.limit = itemsPerPage;
         params.offset = (page - 1) * itemsPerPage;
@@ -61,6 +61,8 @@ export default function MessagesPage() {
       if (statusFilter && statusFilter !== 'all') {
         params.status = statusFilter;
       }
+      
+      console.log('[Frontend Messages] Request params:', params);
       
       const response = await api.get('/api/v1/orders', { params });
       return response.data;

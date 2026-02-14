@@ -57,6 +57,7 @@ export class Orders {
     
     // Adicionar todos os parâmetros de options
     if (options) {
+      console.log('[SDK Orders.getBySeller] options:', JSON.stringify(options));
       Object.entries(options).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
           params.append(key, String(value));
@@ -64,7 +65,9 @@ export class Orders {
       });
     }
 
-    return this.mercadoLivre.get<OrderSearchResult>(`/orders/search?${params.toString()}`);
+    const queryString = params.toString();
+    console.log('[SDK Orders.getBySeller] Full URL:', `/orders/search?${queryString}`);
+    return this.mercadoLivre.get<OrderSearchResult>(`/orders/search?${queryString}`);
   }
 
   /**

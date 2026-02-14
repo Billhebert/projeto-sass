@@ -2302,10 +2302,11 @@ export class MercadoLivreService {
       // A API do ML só aceita max 50 por requisição
       const requestedLimit = parseInt(params.limit) || 50;
       const requestedOffset = parseInt(params.offset) || 0;
-      const dateFrom = params.date_from;
-      const dateTo = params.date_to || new Date().toISOString();
+      // ML API requer formato ISO 8601 completo com hora
+      const dateFrom = params.date_from ? `${params.date_from}T00:00:00.000-00:00` : undefined;
+      const dateTo = params.date_to ? `${params.date_to}T23:59:59.999-00:00` : undefined;
       
-      console.log(`[getAllAccountsOrders] Paginated query: limit=${requestedLimit}, offset=${requestedOffset}`);
+      console.log(`[getAllAccountsOrders] Paginated query: limit=${requestedLimit}, offset=${requestedOffset}, dateFrom=${dateFrom}, dateTo=${dateTo}`);
       
       let totalFromAllAccounts = 0;
       
@@ -2355,8 +2356,12 @@ export class MercadoLivreService {
           
           // Pega o total desta conta
           const countParams: any = { limit: 1, offset: 0 };
-          countParams['order.date_created.from'] = dateFrom;
-          countParams['order.date_created.to'] = dateTo;
+          if (dateFrom) {
+            countParams['order.date_created.from'] = dateFrom;
+          }
+          if (dateTo) {
+            countParams['order.date_created.to'] = dateTo;
+          }
           if (params.status) {
             countParams['order.status'] = params.status;
           }
@@ -2434,11 +2439,15 @@ export class MercadoLivreService {
     
     if (hasDateFrom) {
       // Buscar todos os dados com paginação completa usando chunks de data
-      const dateFrom = params.date_from;
-      const dateTo = params.date_to || new Date().toISOString();
+      // ML API requer formato ISO 8601 completo com hora
+      const dateFromParam = params.date_from || '2020-01-01';
+      const dateToParam = params.date_to || new Date().toISOString().split('T')[0];
+      const dateFrom = `${dateFromParam}T00:00:00.000-00:00`;
+      const dateTo = `${dateToParam}T23:59:59.999-00:00`;
       const dateChunks = this.splitDateRange(dateFrom, dateTo);
       
-      console.log(`[getAllAccountsOrders] Fetching with date chunks: ${dateChunks.length} chunks`);
+      console.log(`[getAllAccountsOrders] hasDateFrom=true, dateFrom=${dateFrom}, dateTo=${dateTo}, chunks=${dateChunks.length}`);
+      console.log(`[getAllAccountsOrders] Date chunks:`, JSON.stringify(dateChunks.slice(0, 3)));
       
       for (const acc of accounts) {
         try {
@@ -2457,6 +2466,8 @@ export class MercadoLivreService {
                   limit,
                   offset,
                 };
+                
+                console.log(`[getAllAccountsOrders] Calling getBySeller with params:`, JSON.stringify(chunkParams));
                 
                 const orders = await sdk.orders.getBySeller(acc.mlUserId, chunkParams);
                 
@@ -2494,8 +2505,9 @@ export class MercadoLivreService {
       // Paginação rápida
       const limit = parseInt(params.limit) || 50;
       const offset = parseInt(params.offset) || 0;
-      const queryDateFrom = params.date_from;
-      const queryDateTo = params.date_to || new Date().toISOString();
+      // ML API requer formato ISO 8601 completo com hora
+      const queryDateFrom = params.date_from ? `${params.date_from}T00:00:00.000-00:00` : undefined;
+      const queryDateTo = params.date_to ? `${params.date_to}T23:59:59.999-00:00` : undefined;
       
       const queryParams: any = { limit, offset };
       if (queryDateFrom) {
@@ -2503,7 +2515,7 @@ export class MercadoLivreService {
         queryParams['order.date_created.to'] = queryDateTo;
       }
       
-      console.log(`[getAllAccountsOrders] Paginated: limit=${limit}, offset=${offset}`);
+      console.log(`[getAllAccountsOrders] Paginated: limit=${limit}, offset=${offset}, dateFrom=${queryDateFrom}, dateTo=${queryDateTo}`);
       
       let lastPaging: any = { total: 0, limit, offset };
       
@@ -2536,8 +2548,8 @@ export class MercadoLivreService {
     // Sem date_from e sem limit - busca completa de TODOS os pedidos
     const MAX_RESULTS = 100000; // Aumentado para 100k para permitir praticamente todos os dados
     const searchDateFrom = params.date_from;
-    const searchDateTo = params.date_to || new Date().toISOString();
-    const from = searchDateFrom || '2020-01-01T00:00:00.000Z';
+    const searchDateTo = params.date_to || new Date().toISOString().split('T')[0];
+    const from = searchDateFrom || '2020-01-01';
     const chunks = this.splitDateRange(from, searchDateTo);
 
     console.log(`[getAllAccountsOrders] Full fetch from ${from} to ${searchDateTo} in ${chunks.length} chunks`);
@@ -2608,13 +2620,13 @@ export class MercadoLivreService {
       
       if (chunkEnd > end) {
         chunks.push({
-          from: current.toISOString(),
-          to: end.toISOString(),
+          from: current.toISOString().replace('.000', ''),
+          to: end.toISOString().replace('.000', ''),
         });
       } else {
         chunks.push({
-          from: current.toISOString(),
-          to: chunkEnd.toISOString(),
+          from: current.toISOString().replace('.000', ''),
+          to: chunkEnd.toISOString().replace('.000', ''),
         });
       }
       

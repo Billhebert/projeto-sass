@@ -35,11 +35,15 @@ export class DashboardService {
 
       console.log('[Dashboard getStats] startDate:', startDate.toISOString(), 'endDate:', endDate.toISOString());
 
+      // Convert dates to YYYY-MM-DD format - let mercadolivre service handle the conversion
+      const dateFromStr = startDate.toISOString().split('T')[0];
+      const dateToStr = endDate.toISOString().split('T')[0];
+
       // Pass date_from and date_to to get all data with pagination
       const [ordersData, questionsData] = await Promise.all([
         this.mlService.getAllAccountsOrders(userId, {
-          date_from: startDate.toISOString(),
-          date_to: endDate.toISOString(),
+          date_from: dateFromStr,
+          date_to: dateToStr,
         }),
         this.mlService.getAllAccountsQuestions(userId, {
           status: 'UNANSWERED',
@@ -59,9 +63,12 @@ export class DashboardService {
       const previousStartDate = new Date(startDate.getTime() - periodDuration);
       const previousEndDate = new Date(startDate);
 
+      const previousDateFromStr = previousStartDate.toISOString().split('T')[0];
+      const previousDateToStr = previousEndDate.toISOString().split('T')[0];
+
       const previousOrdersData = await this.mlService.getAllAccountsOrders(userId, {
-        date_from: previousStartDate.toISOString(),
-        date_to: previousEndDate.toISOString(),
+        date_from: previousDateFromStr,
+        date_to: previousDateToStr,
       });
 
       const previousOrders = previousOrdersData.results || [];
@@ -255,9 +262,12 @@ export class DashboardService {
 
       console.log('[Dashboard getSalesChart] startDate:', startDate.toISOString(), 'endDate:', endDate.toISOString());
 
+      const dateFromStr = startDate.toISOString().split('T')[0];
+      const dateToStr = endDate.toISOString().split('T')[0];
+
       const ordersData = await this.mlService.getAllAccountsOrders(userId, {
-        date_from: startDate.toISOString(),
-        date_to: endDate.toISOString(),
+        date_from: dateFromStr,
+        date_to: dateToStr,
       });
 
       console.log('[Dashboard getSalesChart] ordersData:', ordersData?.results?.length, 'paging:', ordersData?.paging);

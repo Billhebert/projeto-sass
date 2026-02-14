@@ -77,7 +77,7 @@ export default function ShipmentsPage() {
     if (days === 'all') return null;
     const date = new Date();
     date.setDate(date.getDate() - parseInt(days));
-    return date.toISOString();
+    return date.toISOString().split('T')[0]; // YYYY-MM-DD format
   };
 
   // Get orders with shipping info - paginated
@@ -92,8 +92,10 @@ export default function ShipmentsPage() {
       const dateFrom = getDateFrom(dateRange);
       if (dateFrom) {
         params.date_from = dateFrom;
-        params.date_to = new Date().toISOString();
+        params.date_to = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
       }
+      
+      console.log('[Frontend Shipments] Request params:', params);
       
       const response = await api.get('/api/v1/orders', { params });
       return response.data;

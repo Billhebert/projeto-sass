@@ -36,7 +36,7 @@ export default function FeedbackPage() {
     if (days === 'all') return null;
     const date = new Date();
     date.setDate(date.getDate() - parseInt(days));
-    return date.toISOString();
+    return date.toISOString().split('T')[0]; // YYYY-MM-DD format
   };
 
   // Get orders to extract feedback
@@ -48,8 +48,10 @@ export default function FeedbackPage() {
       const dateFrom = getDateFrom(dateRange);
       if (dateFrom) {
         params.date_from = dateFrom;
-        params.date_to = new Date().toISOString();
+        params.date_to = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
       }
+      
+      console.log('[Frontend Feedback] Request params:', params);
       
       const response = await api.get('/api/v1/orders', { params });
       return response.data;
