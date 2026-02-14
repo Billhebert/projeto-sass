@@ -2306,7 +2306,7 @@ export class MercadoLivreService {
       const dateFrom = params.date_from ? `${params.date_from}T00:00:00.000-00:00` : undefined;
       const dateTo = params.date_to ? `${params.date_to}T23:59:59.999-00:00` : undefined;
       
-      console.log(`[getAllAccountsOrders] Paginated query: limit=${requestedLimit}, offset=${requestedOffset}, dateFrom=${dateFrom}, dateTo=${dateTo}`);
+      console.log(`[getAllAccountsOrders] Paginated query: limit=${requestedLimit}, offset=${requestedOffset}, dateFrom=${dateFrom}, dateTo=${dateTo}, sort=${params.sort}`);
       
       let totalFromAllAccounts = 0;
       
@@ -2322,6 +2322,9 @@ export class MercadoLivreService {
           };
           countParams['order.date_created.from'] = dateFrom;
           countParams['order.date_created.to'] = dateTo;
+          if (params.sort) {
+            countParams.sort = params.sort;
+          }
           
           if (params.status) {
             countParams['order.status'] = params.status;
@@ -2362,6 +2365,9 @@ export class MercadoLivreService {
           if (dateTo) {
             countParams['order.date_created.to'] = dateTo;
           }
+          if (params.sort) {
+            countParams.sort = params.sort;
+          }
           if (params.status) {
             countParams['order.status'] = params.status;
           }
@@ -2395,6 +2401,9 @@ export class MercadoLivreService {
             };
             queryParams['order.date_created.from'] = dateFrom;
             queryParams['order.date_created.to'] = dateTo;
+            if (params.sort) {
+              queryParams.sort = params.sort;
+            }
             
             if (params.status) {
               queryParams['order.status'] = params.status;
@@ -2514,8 +2523,11 @@ export class MercadoLivreService {
         queryParams['order.date_created.from'] = queryDateFrom;
         queryParams['order.date_created.to'] = queryDateTo;
       }
+      if (params.sort) {
+        queryParams.sort = params.sort;
+      }
       
-      console.log(`[getAllAccountsOrders] Paginated: limit=${limit}, offset=${offset}, dateFrom=${queryDateFrom}, dateTo=${queryDateTo}`);
+      console.log(`[getAllAccountsOrders] Paginated: limit=${limit}, offset=${offset}, dateFrom=${queryDateFrom}, dateTo=${queryDateTo}, sort=${params.sort}`);
       
       let lastPaging: any = { total: 0, limit, offset };
       

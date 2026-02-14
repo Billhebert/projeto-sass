@@ -298,20 +298,57 @@ export class DashboardService {
 
   async getRecentOrders(userId: string, dateFrom?: string, dateTo?: string) {
     try {
+      console.log('[getRecentOrders] dateFrom:', dateFrom, 'dateTo:', dateTo);
+      
       const accounts = await this.mlService.getUserAccounts(userId);
+      console.log('[getRecentOrders] accounts:', accounts.length);
       
       if (accounts.length === 0) {
         return { orders: [] };
       }
 
-      // Recent orders should always show the most recent orders, not filtered by date
+      // Recent orders - use date filters if provided, otherwise use last 30 days
       const params: any = {
-        limit: 10,
+        limit: 500, // Get more orders to ensure we have recent ones
+        sort: 'date_desc',
       };
 
-      const ordersData = await this.mlService.getAllAccountsOrders(userId, params);
+      // Apply date filters if provided
+      if (dateFrom) {
+        params.date_from = dateFrom;
+        params.date_to = dateTo || new Date().toISOString().split('T')[0];
+      }
 
-      const orders = (ordersData.results || [])
+      console.log('[getRecentOrders] Calling getAllAccountsOrders with params:', params);
+      
+      const ordersData = await this.mlService.getAllAccountsOrders(userId, params);
+      
+      console.log('[getRecentOrders] Got ordersData:', ordersData?.results?.length);
+
+      // Sort by date descending (most recent first) and take top 5
+      const allOrders = ordersData.results || [];
+      
+      // Log dates before sorting
+      if (allOrders.length > 0) {
+        const firstDate = new Date(allOrders[0].date_created).toISOString();
+        const lastDate = new Date(allOrders[allOrders.length - 1].date_created).toISOString();
+        console.log('[getRecentOrders] Before sort - First date:', firstDate, 'Last date:', lastDate);
+      }
+      
+      const sortedOrders = allOrders.sort((a: any, b: any) => {
+        const dateA = new Date(a.date_created).getTime();
+        const dateB = new Date(b.date_created).getTime();
+        return dateB - dateA; // Descending order - most recent first
+      });
+      
+      // Log dates after sorting
+      if (sortedOrders.length > 0) {
+        const firstDate = new Date(sortedOrders[0].date_created).toISOString();
+        const lastDate = new Date(sortedOrders[sortedOrders.length - 1].date_created).toISOString();
+        console.log('[getRecentOrders] After sort - First date:', firstDate, 'Last date:', lastDate);
+      }
+
+      const orders = sortedOrders
         .slice(0, 5)
         .map((order: any) => ({
           id: order.id,
@@ -323,6 +360,7 @@ export class DashboardService {
           accountNickname: order._accountNickname,
         }));
 
+      console.log('[getRecentOrders] Returning orders:', orders.length);
       return { orders };
     } catch (error) {
       console.error('Error getting recent orders:', error);
