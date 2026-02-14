@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Card,
@@ -8,6 +9,13 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { api } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import {
@@ -36,26 +44,60 @@ import {
 } from 'recharts';
 
 export default function AnalyticsPage() {
+  const [dateRange, setDateRange] = useState('30'); // all, 30, 90, 180, 365, 730 dias
+
+  // Calcular data inicial baseada no período selecionado
+  const getDateFrom = (days: string) => {
+    if (days === 'all') return null;
+    const date = new Date();
+    date.setDate(date.getDate() - parseInt(days));
+    return date.toISOString();
+  };
+
   const { data: statsData, isLoading: isLoadingStats } = useQuery({
-    queryKey: ['dashboard-stats'],
+    queryKey: ['dashboard-stats', dateRange],
     queryFn: async () => {
-      const response = await api.get('/api/v1/dashboard/stats');
+      const params: any = {};
+      
+      const dateFrom = getDateFrom(dateRange);
+      if (dateFrom) {
+        params.date_from = dateFrom;
+        params.date_to = new Date().toISOString();
+      }
+      
+      const response = await api.get('/api/v1/dashboard/stats', { params });
       return response.data;
     },
   });
 
   const { data: salesData, isLoading: isLoadingSales } = useQuery({
-    queryKey: ['sales-chart'],
+    queryKey: ['sales-chart', dateRange],
     queryFn: async () => {
-      const response = await api.get('/api/v1/dashboard/sales-chart');
+      const params: any = {};
+      
+      const dateFrom = getDateFrom(dateRange);
+      if (dateFrom) {
+        params.date_from = dateFrom;
+        params.date_to = new Date().toISOString();
+      }
+      
+      const response = await api.get('/api/v1/dashboard/sales-chart', { params });
       return response.data;
     },
   });
 
   const { data: productsData, isLoading: isLoadingProducts } = useQuery({
-    queryKey: ['top-products'],
+    queryKey: ['top-products', dateRange],
     queryFn: async () => {
-      const response = await api.get('/api/v1/dashboard/top-products');
+      const params: any = {};
+      
+      const dateFrom = getDateFrom(dateRange);
+      if (dateFrom) {
+        params.date_from = dateFrom;
+        params.date_to = new Date().toISOString();
+      }
+      
+      const response = await api.get('/api/v1/dashboard/top-products', { params });
       return response.data;
     },
   });
@@ -67,6 +109,10 @@ export default function AnalyticsPage() {
     reputation: 0,
     salesGrowth: 0,
     ordersGrowth: 0,
+    totalDiscountedProducts: 0,
+    averageDiscount: 0,
+    totalDiscountValue: 0,
+    discountPercentage: 0,
   };
 
   const salesChart = salesData?.data || [];
@@ -91,6 +137,21 @@ export default function AnalyticsPage() {
           <p className="text-muted-foreground">
             Analise detalhada do desempenho das suas vendas
           </p>
+        </div>
+        <div className="w-[200px]">
+          <Select value={dateRange} onValueChange={setDateRange}>
+            <SelectTrigger>
+              <SelectValue placeholder="Período" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os dados</SelectItem>
+              <SelectItem value="30">Últimos 30 dias</SelectItem>
+              <SelectItem value="90">Últimos 90 dias</SelectItem>
+              <SelectItem value="180">Últimos 6 meses</SelectItem>
+              <SelectItem value="365">Último ano</SelectItem>
+              <SelectItem value="730">Últimos 2 anos</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -436,6 +497,108 @@ export default function AnalyticsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Discount Analysis Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <PieChart className="h-5 w-5" />
+            Análise de Descontos
+          </CardTitle>
+          <CardDescription>
+            Estatísticas sobre produtos em promoção
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-6 md:grid-cols-2">
+            {/* Discount Distribution */}
+            <div>
+              <h3 className="text-sm font-medium mb-4">Distribuição de Produtos</h3>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="h-3 w-3 rounded-full bg-ml-green" />
+                    <span className="text-sm">Com Desconto</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold">
+                      {isLoading ? (
+                        <div className="h-5 w-12 bg-muted rounded animate-pulse inline-block" />
+                      ) : (
+                        stats.totalDiscountedProducts || 0
+                      )}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      ({stats.discountPercentage || 0}%)
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="h-3 w-3 rounded-full bg-muted" />
+                    <span className="text-sm">Sem Desconto</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold">
+                      {isLoading ? (
+                        <div className="h-5 w-12 bg-muted rounded animate-pulse inline-block" />
+                      ) : (
+                        (stats.activeProducts || 0) - (stats.totalDiscountedProducts || 0)
+                      )}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      ({100 - (stats.discountPercentage || 0)}%)
+                    </span>
+                  </div>
+                </div>
+                <div className="mt-4 h-2 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full bg-ml-green transition-all"
+                    style={{ width: `${stats.discountPercentage || 0}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Discount Stats */}
+            <div>
+              <h3 className="text-sm font-medium mb-4">Estatísticas de Desconto</h3>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                  <span className="text-sm text-muted-foreground">Desconto Médio</span>
+                  <span className="text-lg font-bold">
+                    {isLoading ? (
+                      <div className="h-6 w-16 bg-muted rounded animate-pulse inline-block" />
+                    ) : (
+                      `${stats.averageDiscount || 0}%`
+                    )}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                  <span className="text-sm text-muted-foreground">Valor Total em Descontos</span>
+                  <span className="text-lg font-bold">
+                    {isLoading ? (
+                      <div className="h-6 w-24 bg-muted rounded animate-pulse inline-block" />
+                    ) : (
+                      formatCurrency(stats.totalDiscountValue || 0)
+                    )}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                  <span className="text-sm text-muted-foreground">Produtos em Promoção</span>
+                  <span className="text-lg font-bold">
+                    {isLoading ? (
+                      <div className="h-6 w-12 bg-muted rounded animate-pulse inline-block" />
+                    ) : (
+                      stats.totalDiscountedProducts || 0
+                    )}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

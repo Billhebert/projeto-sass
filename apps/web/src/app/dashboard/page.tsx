@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Card,
@@ -8,6 +9,13 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { api } from '@/lib/api';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import {
@@ -19,16 +27,37 @@ import {
   Star,
   TrendingUp,
   MessageSquare,
+  Tag,
+  Percent,
 } from 'lucide-react';
 import { SalesChart } from '@/components/dashboard/sales-chart';
 import { RecentOrders } from '@/components/dashboard/recent-orders';
 import { TopProducts } from '@/components/dashboard/top-products';
+import { PromotedProducts } from '@/components/dashboard/promoted-products';
 
 export default function DashboardPage() {
+  const [dateRange, setDateRange] = useState('30'); // all, 30, 90, 180, 365, 730 dias
+
+  // Calcular data inicial baseada no período selecionado
+  const getDateFrom = (days: string) => {
+    if (days === 'all') return null;
+    const date = new Date();
+    date.setDate(date.getDate() - parseInt(days));
+    return date.toISOString();
+  };
+
   const { data: stats, isLoading } = useQuery({
-    queryKey: ['dashboard-stats'],
+    queryKey: ['dashboard-stats', dateRange],
     queryFn: async () => {
-      const response = await api.get('/api/v1/dashboard/stats');
+      const params: any = {};
+      
+      const dateFrom = getDateFrom(dateRange);
+      if (dateFrom) {
+        params.date_from = dateFrom;
+        params.date_to = new Date().toISOString();
+      }
+      
+      const response = await api.get('/api/v1/dashboard/stats', { params });
       return response.data;
     },
   });
@@ -41,15 +70,36 @@ export default function DashboardPage() {
     pendingQuestions: 0,
     salesGrowth: 0,
     ordersGrowth: 0,
+    totalDiscountedProducts: 0,
+    averageDiscount: 0,
+    totalDiscountValue: 0,
+    discountPercentage: 0,
   };
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Dashboard</h1>
-        <p className="text-muted-foreground">
-          Visao geral das suas vendas no Mercado Livre
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Dashboard</h1>
+          <p className="text-muted-foreground">
+            Visao geral das suas vendas no Mercado Livre
+          </p>
+        </div>
+        <div className="w-[200px]">
+          <Select value={dateRange} onValueChange={setDateRange}>
+            <SelectTrigger>
+              <SelectValue placeholder="Período" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os dados</SelectItem>
+              <SelectItem value="30">Últimos 30 dias</SelectItem>
+              <SelectItem value="90">Últimos 90 dias</SelectItem>
+              <SelectItem value="180">Últimos 6 meses</SelectItem>
+              <SelectItem value="365">Último ano</SelectItem>
+              <SelectItem value="730">Últimos 2 anos</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* Metrics Cards */}
@@ -86,6 +136,38 @@ export default function DashboardPage() {
         />
       </div>
 
+      {/* Discount Metrics Cards */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <MetricCard
+          title="Produtos em Promoção"
+          value={formatNumber(metrics.totalDiscountedProducts)}
+          description={`${metrics.discountPercentage}% do total`}
+          icon={<Tag className="h-4 w-4" />}
+          isLoading={isLoading}
+        />
+        <MetricCard
+          title="Desconto Médio"
+          value={`${metrics.averageDiscount}%`}
+          description="Média de desconto"
+          icon={<Percent className="h-4 w-4" />}
+          isLoading={isLoading}
+        />
+        <MetricCard
+          title="Valor Total em Desconto"
+          value={formatCurrency(metrics.totalDiscountValue)}
+          description="Economias oferecidas"
+          icon={<TrendingUp className="h-4 w-4" />}
+          isLoading={isLoading}
+        />
+        <MetricCard
+          title="Sem Promoção"
+          value={formatNumber(metrics.activeProducts - metrics.totalDiscountedProducts)}
+          description="Produtos sem desconto"
+          icon={<Package className="h-4 w-4" />}
+          isLoading={isLoading}
+        />
+      </div>
+
       {/* Alerts */}
       {metrics.pendingQuestions > 0 && (
         <Card className="border-ml-yellow bg-ml-yellow/10">
@@ -109,24 +191,35 @@ export default function DashboardPage() {
           <CardHeader>
             <CardTitle>Vendas</CardTitle>
             <CardDescription>
-              Performance de vendas nos ultimos 30 dias
+              Performance de vendas no período selecionado
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <SalesChart />
+            <SalesChart dateRange={dateRange} />
           </CardContent>
         </Card>
 
         <Card className="lg:col-span-3">
           <CardHeader>
             <CardTitle>Produtos Mais Vendidos</CardTitle>
-            <CardDescription>Top 5 produtos do mes</CardDescription>
+            <CardDescription>Top 5 produtos do período</CardDescription>
           </CardHeader>
           <CardContent>
-            <TopProducts />
+            <TopProducts dateRange={dateRange} />
           </CardContent>
         </Card>
       </div>
+
+      {/* Promoted Products Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Produtos em Promoção</CardTitle>
+          <CardDescription>Produtos com maiores descontos ativos</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <PromotedProducts limit={10} />
+        </CardContent>
+      </Card>
 
       {/* Recent Orders */}
       <Card>
@@ -135,7 +228,7 @@ export default function DashboardPage() {
           <CardDescription>Ultimos pedidos recebidos</CardDescription>
         </CardHeader>
         <CardContent>
-          <RecentOrders />
+          <RecentOrders dateRange={dateRange} />
         </CardContent>
       </Card>
     </div>

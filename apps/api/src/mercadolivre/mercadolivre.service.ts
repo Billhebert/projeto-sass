@@ -482,8 +482,41 @@ export class MercadoLivreService {
     const sdk = await this.getSdk(userId, accountId);
     const account = await this.getAccountForSdk(userId, accountId);
     if (!account) throw new BadRequestException('Nenhuma conta do Mercado Livre conectada');
-    if (params.limit && params.limit > 50) params.limit = 50;
-    return sdk.orders.getBySeller(account.mlUserId, params);
+    
+    const MAX_RESULTS = 10000; // Limite da API do Mercado Livre
+    
+    // Verificar se há limite específico solicitado
+    const requestedLimit = params.limit;
+    
+    if (requestedLimit && requestedLimit <= 50) {
+      // Buscar apenas uma página
+      return sdk.orders.getBySeller(account.mlUserId, params);
+    } else {
+      // Buscar todos os pedidos com paginação automática
+      const allResults: any[] = [];
+      let offset = params.offset || 0;
+      const limit = 50;
+      let hasMore = true;
+      
+      while (hasMore && allResults.length < MAX_RESULTS) {
+        const response = await sdk.orders.getBySeller(account.mlUserId, { ...params, limit, offset });
+        const results = response.results || [];
+        allResults.push(...results);
+        
+        offset += limit;
+        hasMore = results.length === limit;
+        
+        // Se há limite solicitado, parar quando atingir
+        if (requestedLimit && allResults.length >= requestedLimit) {
+          hasMore = false;
+        }
+      }
+      
+      return { 
+        results: requestedLimit ? allResults.slice(0, requestedLimit) : allResults, 
+        paging: { total: allResults.length, limit: allResults.length, offset: params.offset || 0 } 
+      };
+    }
   }
 
   async searchOrders(userId: string, params: any = {}, accountId?: string) {
@@ -940,7 +973,71 @@ export class MercadoLivreService {
     const sdk = await this.getSdk(userId, accountId);
     const account = await this.getAccountForSdk(userId, accountId);
     if (!account) throw new BadRequestException('Nenhuma conta do Mercado Livre conectada');
-    return sdk.promotions.getUserPromotions(account.mlUserId);
+    
+    console.log(`[getUserPromotions] Fetching all promotions for user ${userId}, account ${account.mlNickname}`);
+    
+    // Buscar todas as promoções com paginação
+    const allPromotions: any[] = [];
+    let hasMore = true;
+    let offset = 0;
+    const limit = 50; // Máximo permitido pela API do ML
+    let totalExpected = 0;
+    
+    let pageCount = 0;
+    while (hasMore && offset < 10000) { // Limite de segurança
+      try {
+        pageCount++;
+        console.log(`[getUserPromotions] Fetching page ${pageCount} with offset=${offset}, limit=${limit}`);
+        
+        const response: any = await sdk.promotions.getUserPromotions(account.mlUserId, { limit, offset }, 'v2');
+        
+        // Log da resposta completa na primeira página
+        if (pageCount === 1) {
+          console.log(`[getUserPromotions] First page full response:`, JSON.stringify(response, null, 2));
+        }
+        
+        if (response.results && response.results.length > 0) {
+          allPromotions.push(...response.results);
+          console.log(`[getUserPromotions] Page ${pageCount}: Fetched ${response.results.length} promotions (total: ${allPromotions.length})`);
+          
+          if (response.paging) {
+            totalExpected = response.paging.total;
+            console.log(`[getUserPromotions] Page ${pageCount} paging: total=${response.paging.total}, offset=${response.paging.offset}, limit=${response.paging.limit}`);
+            
+            // Verifica se há mais páginas
+            hasMore = allPromotions.length < response.paging.total;
+            console.log(`[getUserPromotions] Has more pages: ${hasMore} (${allPromotions.length} < ${response.paging.total})`);
+          } else {
+            hasMore = response.results.length === limit;
+            console.log(`[getUserPromotions] No paging info, hasMore based on result length: ${hasMore}`);
+          }
+          
+          offset += limit;
+        } else {
+          console.log(`[getUserPromotions] No results in page ${pageCount}, stopping`);
+          hasMore = false;
+        }
+      } catch (error) {
+        console.error(`[getUserPromotions] Error fetching promotions:`, error);
+        hasMore = false;
+      }
+    }
+    
+    console.log(`[getUserPromotions] Total promotions fetched: ${allPromotions.length} (expected: ${totalExpected})`);
+    
+    return {
+      results: allPromotions,
+      paging: {
+        total: allPromotions.length,
+        limit: allPromotions.length,
+        offset: 0
+      }
+    };
+  }
+
+  async getItemSalePrice(userId: string, itemId: string, accountId?: string) {
+    const sdk = await this.getSdk(userId, accountId);
+    return sdk.items.getSalePrice(itemId);
   }
 
   async getItemPromotions(userId: string, itemId: string, accountId?: string) {
@@ -1007,13 +1104,67 @@ export class MercadoLivreService {
     return sdk.advertising.listAdvertisers(productId || 'PADS');
   }
 
-  async getCampaigns(userId: string, advertiserId: string, accountId?: string) {
+  async getCampaigns(
+    userId: string, 
+    advertiserId: string, 
+    accountId?: string,
+    dateFrom?: string,
+    dateTo?: string
+  ) {
     const sdk = await this.getSdk(userId, accountId);
-    // Usando o método searchCampaigns para Product Ads
-    return sdk.advertising.searchCampaigns('MLB', advertiserId, {
-      limit: 50,
-      offset: 0
-    });
+    
+    // Default to last 30 days if no dates provided
+    const today = new Date();
+    const thirtyDaysAgo = new Date(today);
+    thirtyDaysAgo.setDate(today.getDate() - 30);
+    
+    const effectiveDateFrom = dateFrom || thirtyDaysAgo.toISOString().split('T')[0];
+    const effectiveDateTo = dateTo || today.toISOString().split('T')[0];
+    
+    console.log(`[getCampaigns] Fetching campaigns with metrics from ${effectiveDateFrom} to ${effectiveDateTo}`);
+    
+    // Buscar todas as campanhas com paginação automática e métricas
+    const allResults: any[] = [];
+    let offset = 0;
+    const limit = 50;
+    let hasMore = true;
+    
+    // Metrics to request from ML API
+    const metrics = ['clicks', 'prints', 'cost', 'cpc', 'ctr', 'acos', 'roas', 'conversion_rate', 'sales_quantity', 'sales_amount'];
+    
+    while (hasMore) {
+      const response = await sdk.advertising.searchCampaigns('MLB', advertiserId, { 
+        limit, 
+        offset,
+        dateFrom: effectiveDateFrom,
+        dateTo: effectiveDateTo,
+        metrics
+      });
+      
+      console.log(`[getCampaigns] Page ${offset/limit + 1} response:`, JSON.stringify(response, null, 2));
+      
+      const results = response.results || response.campaigns || [];
+      console.log(`[getCampaigns] Page ${offset/limit + 1} results count: ${results.length}`);
+      if (results.length > 0) {
+        console.log(`[getCampaigns] First campaign:`, JSON.stringify(results[0], null, 2));
+      }
+      
+      allResults.push(...results);
+      
+      offset += limit;
+      hasMore = results.length === limit;
+    }
+    
+    console.log(`[getCampaigns] Fetched ${allResults.length} campaigns with metrics`);
+    
+    // Log sample of metrics from first campaign if available
+    const campaignsWithMetrics = allResults.filter((c: any) => c.metrics);
+    console.log(`[getCampaigns] Campaigns with metrics: ${campaignsWithMetrics.length}/${allResults.length}`);
+    if (campaignsWithMetrics.length > 0) {
+      console.log(`[getCampaigns] Sample metrics:`, JSON.stringify(campaignsWithMetrics[0].metrics, null, 2));
+    }
+    
+    return { results: allResults, campaigns: allResults };
   }
 
   async getCampaignMetrics(userId: string, advertiserId: string, campaignId: string, dateFrom: string, dateTo: string, accountId?: string) {
@@ -2135,29 +2286,342 @@ export class MercadoLivreService {
   // ============================================
 
   async getAllAccountsOrders(userId: string, params: any = {}) {
+    console.log('[getAllAccountsOrders] params:', JSON.stringify(params));
+    
     const accounts = await this.getUserAccounts(userId);
+    console.log('[getAllAccountsOrders] accounts:', accounts.length);
+    
     const allOrders: any[] = [];
+    
+    // Verificar se tem date_from E limit - se tiver ambos, buscar só o necessário com filtro de data
+    const hasDateFrom = params.date_from !== undefined;
+    const hasLimit = params.limit !== undefined;
+    
+    if (hasDateFrom && hasLimit) {
+      // Busca rápida com filtro de data (para paginação)
+      // A API do ML só aceita max 50 por requisição
+      const requestedLimit = parseInt(params.limit) || 50;
+      const requestedOffset = parseInt(params.offset) || 0;
+      const dateFrom = params.date_from;
+      const dateTo = params.date_to || new Date().toISOString();
+      
+      console.log(`[getAllAccountsOrders] Paginated query: limit=${requestedLimit}, offset=${requestedOffset}`);
+      
+      let totalFromAllAccounts = 0;
+      
+      // PRIMEIRO: Buscar o total de cada conta para calcular a paginação correta
+      for (const acc of accounts) {
+        try {
+          const sdk = await this.getSdk(userId, acc.id);
+          
+          // Busca só 1 item para pegar o total
+          const countParams: any = { 
+            limit: 1, 
+            offset: 0 
+          };
+          countParams['order.date_created.from'] = dateFrom;
+          countParams['order.date_created.to'] = dateTo;
+          
+          if (params.status) {
+            countParams['order.status'] = params.status;
+          }
+          
+          const countResult = await sdk.orders.getBySeller(acc.mlUserId, countParams);
+          if (countResult.paging) {
+            totalFromAllAccounts += countResult.paging.total;
+          }
+        } catch (error) {
+          console.error(`Error getting count for account ${acc.mlNickname}:`, error);
+        }
+      }
+      
+      console.log(`[getAllAccountsOrders] Total orders in date range: ${totalFromAllAccounts}`);
+      
+      // SEGUNDO: Buscar apenas os itens da página atual
+      // A API do ML só aceita max 50, então calculamos quantas chamadas precisamos
+      const ML_MAX_LIMIT = 50;
+      let itemsToSkip = requestedOffset;
+      let itemsToCollect = requestedLimit;
+      let currentAccountIndex = 0;
+      let collectedCount = 0;
+      
+      // Precisamos descobrir qual conta começa o offset solicitado
+      // e quantos itens pegar de cada conta
+      let ordersFromCurrentPage: any[] = [];
+      
+      for (const acc of accounts) {
+        try {
+          const sdk = await this.getSdk(userId, acc.id);
+          
+          // Pega o total desta conta
+          const countParams: any = { limit: 1, offset: 0 };
+          countParams['order.date_created.from'] = dateFrom;
+          countParams['order.date_created.to'] = dateTo;
+          if (params.status) {
+            countParams['order.status'] = params.status;
+          }
+          
+          const countResult = await sdk.orders.getBySeller(acc.mlUserId, countParams);
+          const accountTotal = countResult.paging?.total || 0;
+          
+          if (accountTotal === 0) continue;
+          
+          // Verifica se esta conta tem itens que precisamos
+          if (itemsToSkip >= accountTotal) {
+            // Pula esta conta inteira
+            itemsToSkip -= accountTotal;
+            continue;
+          }
+          
+          // Esta conta tem itens que precisamos
+          const accountOffset = itemsToSkip;
+          const accountLimit = Math.min(itemsToCollect, accountTotal - itemsToSkip);
+          
+          // Busca os itens desta conta
+          let fetchedFromAccount = 0;
+          let currentBatchOffset = accountOffset;
+          
+          while (fetchedFromAccount < accountLimit) {
+            const batchSize = Math.min(ML_MAX_LIMIT, accountLimit - fetchedFromAccount);
+            
+            const queryParams: any = { 
+              limit: batchSize, 
+              offset: currentBatchOffset 
+            };
+            queryParams['order.date_created.from'] = dateFrom;
+            queryParams['order.date_created.to'] = dateTo;
+            
+            if (params.status) {
+              queryParams['order.status'] = params.status;
+            }
+            
+            const orders = await sdk.orders.getBySeller(acc.mlUserId, queryParams);
+            
+            if (orders.results && orders.results.length > 0) {
+              orders.results.forEach((order: any) => {
+                order._accountId = acc.id;
+                order._accountNickname = acc.mlNickname;
+              });
+              ordersFromCurrentPage.push(...orders.results);
+              fetchedFromAccount += orders.results.length;
+              currentBatchOffset += orders.results.length;
+            } else {
+              break;
+            }
+          }
+          
+          itemsToCollect -= fetchedFromAccount;
+          itemsToSkip = 0; // Depois da primeira conta, não pulamos mais
+          
+          if (itemsToCollect <= 0) break; // Já temos tudo que precisamos
+          
+        } catch (error) {
+          console.error(`Error fetching orders for account ${acc.mlNickname}:`, error);
+        }
+      }
+      
+      console.log(`[getAllAccountsOrders] Fetched ${ordersFromCurrentPage.length} orders for current page`);
+      
+      return { 
+        results: ordersFromCurrentPage,
+        paging: {
+          total: totalFromAllAccounts,
+          limit: requestedLimit,
+          offset: requestedOffset
+        }
+      };
+    }
+    
+    if (hasDateFrom) {
+      // Buscar todos os dados com paginação completa usando chunks de data
+      const dateFrom = params.date_from;
+      const dateTo = params.date_to || new Date().toISOString();
+      const dateChunks = this.splitDateRange(dateFrom, dateTo);
+      
+      console.log(`[getAllAccountsOrders] Fetching with date chunks: ${dateChunks.length} chunks`);
+      
+      for (const acc of accounts) {
+        try {
+          const sdk = await this.getSdk(userId, acc.id);
+          
+          for (const chunk of dateChunks) {
+            let offset = 0;
+            const limit = 50;
+            let hasMore = true;
+            
+            while (hasMore) {
+              try {
+                const chunkParams = {
+                  'order.date_created.from': chunk.from,
+                  'order.date_created.to': chunk.to,
+                  limit,
+                  offset,
+                };
+                
+                const orders = await sdk.orders.getBySeller(acc.mlUserId, chunkParams);
+                
+                if (orders.results && orders.results.length > 0) {
+                  orders.results.forEach((order: any) => {
+                    order._accountId = acc.id;
+                    order._accountNickname = acc.mlNickname;
+                  });
+                  allOrders.push(...orders.results);
+                  
+                  offset += limit;
+                  hasMore = orders.results.length === limit;
+                } else {
+                  hasMore = false;
+                }
+              } catch (error) {
+                console.error(`Error fetching orders chunk for account ${acc.mlNickname}:`, error);
+                hasMore = false;
+              }
+            }
+          }
+        } catch (error) {
+          console.error(`Error fetching orders for account ${acc.mlNickname}:`, error);
+        }
+      }
+      
+      return { 
+        results: allOrders,
+        paging: { total: allOrders.length, limit: allOrders.length, offset: 0 }
+      };
+    }
+    
+    // Sem date_from - usar o comportamento original (com ou sem limit)
+    if (hasLimit) {
+      // Paginação rápida
+      const limit = parseInt(params.limit) || 50;
+      const offset = parseInt(params.offset) || 0;
+      const queryDateFrom = params.date_from;
+      const queryDateTo = params.date_to || new Date().toISOString();
+      
+      const queryParams: any = { limit, offset };
+      if (queryDateFrom) {
+        queryParams['order.date_created.from'] = queryDateFrom;
+        queryParams['order.date_created.to'] = queryDateTo;
+      }
+      
+      console.log(`[getAllAccountsOrders] Paginated: limit=${limit}, offset=${offset}`);
+      
+      let lastPaging: any = { total: 0, limit, offset };
+      
+      for (const acc of accounts) {
+        try {
+          const sdk = await this.getSdk(userId, acc.id);
+          const orders = await sdk.orders.getBySeller(acc.mlUserId, queryParams);
+          
+          if (orders.results) {
+            orders.results.forEach((order: any) => {
+              order._accountId = acc.id;
+              order._accountNickname = acc.mlNickname;
+            });
+            allOrders.push(...orders.results);
+          }
+          if (orders.paging) {
+            lastPaging = orders.paging;
+          }
+        } catch (error) {
+          console.error(`Error fetching orders for account ${acc.mlNickname}:`, error);
+        }
+      }
+      
+      return { 
+        results: allOrders,
+        paging: lastPaging
+      };
+    }
 
-    if (params.limit && params.limit > 50) params.limit = 50;
+    // Sem date_from e sem limit - busca completa de TODOS os pedidos
+    const MAX_RESULTS = 100000; // Aumentado para 100k para permitir praticamente todos os dados
+    const searchDateFrom = params.date_from;
+    const searchDateTo = params.date_to || new Date().toISOString();
+    const from = searchDateFrom || '2020-01-01T00:00:00.000Z';
+    const chunks = this.splitDateRange(from, searchDateTo);
+
+    console.log(`[getAllAccountsOrders] Full fetch from ${from} to ${searchDateTo} in ${chunks.length} chunks`);
 
     for (const acc of accounts) {
       try {
         const sdk = await this.getSdk(userId, acc.id);
-        const orders = await sdk.orders.getBySeller(acc.mlUserId, params);
         
-        if (orders.results) {
-          orders.results.forEach((order: any) => {
-            order._accountId = acc.id;
-            order._accountNickname = acc.mlNickname;
-          });
-          allOrders.push(...orders.results);
+        for (const chunk of chunks) {
+          if (allOrders.length >= MAX_RESULTS) {
+            console.log(`[getAllAccountsOrders] Reached MAX_RESULTS limit (${MAX_RESULTS})`);
+            break;
+          }
+          
+          let offset = 0;
+          const limit = 50;
+          let hasMore = true;
+          
+          while (hasMore && allOrders.length < MAX_RESULTS) {
+            try {
+              const chunkParams = {
+                ...params,
+                'order.date_created.from': chunk.from,
+                'order.date_created.to': chunk.to,
+                limit,
+                offset,
+              };
+              
+              const orders = await sdk.orders.getBySeller(acc.mlUserId, chunkParams);
+              
+              if (orders.results && orders.results.length > 0) {
+                orders.results.forEach((order: any) => {
+                  order._accountId = acc.id;
+                  order._accountNickname = acc.mlNickname;
+                });
+                allOrders.push(...orders.results);
+                
+                offset += limit;
+                hasMore = orders.results.length === limit;
+              } else {
+                hasMore = false;
+              }
+            } catch (error) {
+              console.error(`Error fetching orders chunk for account ${acc.mlNickname}:`, error);
+              hasMore = false;
+            }
+          }
         }
       } catch (error) {
         console.error(`Error fetching orders for account ${acc.mlNickname}:`, error);
       }
     }
 
+    console.log(`[getAllAccountsOrders] Total orders fetched: ${allOrders.length}`);
     return { results: allOrders };
+  }
+
+  private splitDateRange(from: string, to: string): { from: string; to: string }[] {
+    const chunks: { from: string; to: string }[] = [];
+    const start = new Date(from);
+    const end = new Date(to);
+    
+    let current = new Date(start);
+    
+    while (current < end) {
+      const chunkEnd = new Date(current);
+      chunkEnd.setMonth(chunkEnd.getMonth() + 1);
+      
+      if (chunkEnd > end) {
+        chunks.push({
+          from: current.toISOString(),
+          to: end.toISOString(),
+        });
+      } else {
+        chunks.push({
+          from: current.toISOString(),
+          to: chunkEnd.toISOString(),
+        });
+      }
+      
+      current = chunkEnd;
+    }
+    
+    return chunks;
   }
 
   async getAllAccountsItems(userId: string, params: any = {}) {
@@ -2167,26 +2631,115 @@ export class MercadoLivreService {
     for (const acc of accounts) {
       try {
         const sdk = await this.getSdk(userId, acc.id);
-        const items = await sdk.users.getItems(acc.mlUserId, params);
         
-        if (items.results) {
-          for (const itemId of items.results.slice(0, 50)) {
+        console.log(`\n========================================`);
+        console.log(`Buscando itens para conta: ${acc.mlNickname}`);
+        console.log(`ML User ID: ${acc.mlUserId}`);
+        console.log(`Account ID interno: ${acc.id}`);
+        console.log(`========================================\n`);
+        
+        // Buscar TODOS os itens com paginação automática
+        let offset = 0;
+        const limit = 50; // Máximo permitido pelo ML
+        let hasMore = true;
+        let totalItemsForAccount = 0;
+        const itemIdsForAccount: string[] = [];
+        
+        while (hasMore) {
+          try {
+            console.log(`Buscando página offset=${offset}, limit=${limit}...`);
+            
+            const searchResponse = await sdk.users.searchItems(acc.mlUserId, {
+              status: 'active',
+              offset: offset,
+              limit: limit,
+            });
+            
+            const pageItemIds = searchResponse.results || [];
+            const paging = searchResponse.paging;
+            
+            console.log(`✓ Página retornou ${pageItemIds.length} itens`);
+            console.log(`  Total disponível: ${paging?.total || 0}`);
+            
+            itemIdsForAccount.push(...pageItemIds);
+            totalItemsForAccount += pageItemIds.length;
+            
+            // Verificar se há mais páginas
+            if (paging && paging.total > (offset + limit)) {
+              offset += limit;
+              hasMore = true;
+            } else {
+              hasMore = false;
+            }
+            
+          } catch (pageError: any) {
+            console.error(`✗ Erro ao buscar página offset=${offset}:`, pageError.message || pageError);
+            hasMore = false; // Parar paginação em caso de erro
+          }
+        }
+        
+        console.log(`\n✓ Total de IDs coletados para ${acc.mlNickname}: ${totalItemsForAccount}`);
+        
+        if (itemIdsForAccount.length > 0) {
+          console.log(`Buscando detalhes dos ${itemIdsForAccount.length} itens em lotes de 20...`);
+          
+          // Buscar detalhes em lotes de 20 (limite do multiget do ML)
+          // Incluindo sale_price para detectar promoções
+          for (let i = 0; i < itemIdsForAccount.length; i += 20) {
+            const batch = itemIdsForAccount.slice(i, i + 20);
+            
             try {
-              const item = await sdk.items.get(itemId);
-              const itemWithAccount = item as any;
-              itemWithAccount._accountId = acc.id;
-              itemWithAccount._accountNickname = acc.mlNickname;
-              allItems.push(itemWithAccount);
-            } catch (e) {
-              console.error(`Error fetching item ${itemId}:`, e);
+              const itemsDetails = await sdk.items.getByIds(batch, [
+                'id', 'site_id', 'title', 'seller_id', 'category_id', 'price', 
+                'base_price', 'original_price', 'currency_id', 'initial_quantity',
+                'available_quantity', 'sold_quantity', 'listing_type_id', 'status',
+                'date_created', 'last_updated', 'condition', 'permalink', 'thumbnail',
+                'thumbnail_id', 'pictures', 'video_id', 'descriptions', 'accepts_mercadopago',
+                'non_mercado_pago_payment_methods', 'shipping', 'international_delivery_mode',
+                'seller_address', 'seller_contact', 'location', 'geolocation', 'coverage_areas',
+                'attributes', 'variations', 'warnings', 'listing_date', 'domain_id',
+                'parent_item_id', 'differential_pricing', 'deal_ids', 'automatic_relist',
+                'date_last_updated_original', 'health', 'catalog_product_id', 'seller_custom_field',
+                'parent_id', 'dimensional_weight', 'order_backend', 'sale_price',
+                'attributes_inputted', 'variations_enabled', 'kit_description', 'product_trace_id',
+                'product_id', 'sub_status', 'added_immediately', 'show_email', 'show_phone',
+                'last_updated_original', 'mandatory_relist', 'price_config', 'minimum_price',
+                'maximum_price', 'status_original', 'currency_original', 'tags'
+              ]);
+              
+              if (Array.isArray(itemsDetails)) {
+                itemsDetails.forEach((item: any) => {
+                  if (item.body) {
+                    const itemWithAccount = item.body as any;
+                    itemWithAccount._accountId = acc.id;
+                    itemWithAccount._accountNickname = acc.mlNickname;
+                    allItems.push(itemWithAccount);
+                  }
+                });
+              }
+              
+              console.log(`  ✓ Lote ${Math.floor(i / 20) + 1}/${Math.ceil(itemIdsForAccount.length / 20)}: ${itemsDetails.length} itens processados`);
+            } catch (e: any) {
+              console.error(`  ✗ Erro ao buscar detalhes do lote ${Math.floor(i / 20) + 1}:`, e.message || e);
             }
           }
         }
-      } catch (error) {
-        console.error(`Error fetching items for account ${acc.mlNickname}:`, error);
+        
+        console.log(`✓ Total de itens com detalhes para ${acc.mlNickname}: ${allItems.filter(item => item._accountId === acc.id).length}\n`);
+        
+      } catch (error: any) {
+        console.error(`\n✗ ERRO FATAL ao buscar itens da conta ${acc.mlNickname}:`);
+        console.error(`  Mensagem: ${error.message || error}`);
+        console.error(`  Status: ${error.status || error.statusCode || 'unknown'}`);
+        console.error(`  Detalhes:`, error.response?.data || error);
+        console.error(`\n`);
       }
     }
 
+    console.log(`\n========================================`);
+    console.log(`✓ TOTAL GERAL: ${allItems.length} itens encontrados`);
+    console.log(`========================================\n`);
+    
     return { results: allItems };
   }
 
@@ -2197,14 +2750,32 @@ export class MercadoLivreService {
     for (const acc of accounts) {
       try {
         const sdk = await this.getSdk(userId, acc.id);
-        const questions = await sdk.questions.getBySeller(acc.mlUserId, params);
         
-        if (questions.questions) {
-          questions.questions.forEach((q: any) => {
-            q._accountId = acc.id;
-            q._accountNickname = acc.mlNickname;
-          });
-          allQuestions.push(...questions.questions);
+        // Fetch all questions with pagination
+        let offset = 0;
+        const limit = 200;
+        let hasMore = true;
+        
+        while (hasMore) {
+          const queryParams = { ...params, limit, offset };
+          const questions = await sdk.questions.getBySeller(acc.mlUserId, queryParams);
+          
+          if (questions.questions && questions.questions.length > 0) {
+            questions.questions.forEach((q: any) => {
+              q._accountId = acc.id;
+              q._accountNickname = acc.mlNickname;
+            });
+            allQuestions.push(...questions.questions);
+            
+            // Check if there are more questions
+            if (questions.questions.length < limit) {
+              hasMore = false;
+            } else {
+              offset += limit;
+            }
+          } else {
+            hasMore = false;
+          }
         }
       } catch (error) {
         console.error(`Error fetching questions for account ${acc.mlNickname}:`, error);
@@ -2236,5 +2807,107 @@ export class MercadoLivreService {
     }
 
     return { results: allMessages };
+  }
+
+  async getAllAccountsShipments(userId: string, params: any = {}) {
+    const accounts = await this.getUserAccounts(userId);
+    const allShipments: any[] = [];
+
+    for (const acc of accounts) {
+      try {
+        const sdk = await this.getSdk(userId, acc.id);
+        
+        // Buscar shipments usando a API de shipments
+        let offset = params.offset || 0;
+        const limit = Math.min(params.limit || 50, 50);
+        let hasMore = true;
+        
+        while (hasMore) {
+          try {
+            const searchParams: any = {
+              ...params,
+              offset,
+              limit,
+            };
+            
+            // Adicionar order_id se especificado
+            if (params.order_id) {
+              searchParams.order_id = params.order_id;
+            }
+            
+            const shipmentsResponse: any = await sdk.shipments.search(searchParams);
+            
+            if (shipmentsResponse.results && shipmentsResponse.results.length > 0) {
+              shipmentsResponse.results.forEach((shipment: any) => {
+                shipment._accountId = acc.id;
+                shipment._accountNickname = acc.mlNickname;
+              });
+              allShipments.push(...shipmentsResponse.results);
+              
+              offset += limit;
+              hasMore = shipmentsResponse.results.length === limit;
+            } else {
+              hasMore = false;
+            }
+          } catch (error) {
+            console.error(`Error fetching shipments page for account ${acc.mlNickname}:`, error);
+            hasMore = false;
+          }
+        }
+      } catch (error) {
+        console.error(`Error fetching shipments for account ${acc.mlNickname}:`, error);
+      }
+    }
+
+    return { results: allShipments };
+  }
+
+  async getAllAccountsOrdersWithShipmentsFull(userId: string, params: any = {}) {
+    const accounts = await this.getUserAccounts(userId);
+    const allData: any[] = [];
+
+    for (const acc of accounts) {
+      try {
+        const sdk = await this.getSdk(userId, acc.id);
+        
+        // Primeiro, buscar todos os pedidos
+        let offset = 0;
+        const limit = 50;
+        let hasMore = true;
+        
+        while (hasMore) {
+          const orders = await sdk.orders.getBySeller(acc.mlUserId, { ...params, limit, offset });
+          
+          if (orders.results && orders.results.length > 0) {
+            // Para cada pedido, buscar os detalhes do shipment
+            for (const order of orders.results as any[]) {
+              (order as any)._accountId = acc.id;
+              (order as any)._accountNickname = acc.mlNickname;
+              
+              // Se o pedido tem shipping, buscar detalhes
+              if (order.shipping && order.shipping.id) {
+                try {
+                  const shipmentDetails = await sdk.shipments.get(order.shipping.id);
+                  (order as any).shipmentDetails = shipmentDetails;
+                } catch (shipmentError) {
+                  console.error(`Error fetching shipment ${order.shipping.id}:`, shipmentError);
+                }
+              }
+            }
+            
+            allData.push(...orders.results);
+            
+            offset += limit;
+            hasMore = orders.results.length === limit;
+          } else {
+            hasMore = false;
+          }
+        }
+      } catch (error) {
+        console.error(`Error fetching orders with shipments for account ${acc.mlNickname}:`, error);
+      }
+    }
+
+    return { results: allData };
   }
 }

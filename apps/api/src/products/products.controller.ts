@@ -61,4 +61,34 @@ export class ProductsController {
   async activate(@Request() req: any, @Param('id') id: string) {
     return this.productsService.activate(req.user.sub, id);
   }
+
+  @Get(':id/visits')
+  @ApiOperation({ summary: 'Obter estatísticas de visitas do produto' })
+  @ApiQuery({ name: 'dateFrom', required: false, description: 'Data inicial (YYYY-MM-DD)' })
+  @ApiQuery({ name: 'dateTo', required: false, description: 'Data final (YYYY-MM-DD)' })
+  async getVisits(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+  ) {
+    return this.productsService.getVisits(req.user.sub, id, dateFrom, dateTo);
+  }
+
+  @Get(':id/questions')
+  @ApiOperation({ summary: 'Obter perguntas do produto' })
+  async getQuestions(@Request() req: any, @Param('id') id: string) {
+    return this.productsService.getQuestions(req.user.sub, id);
+  }
+
+  @Get(':id/competitors')
+  @ApiOperation({ summary: 'Análise de concorrência - produtos similares' })
+  @ApiQuery({ name: 'limit', required: false, description: 'Quantidade de resultados (padrão: 10)' })
+  async getCompetitors(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Query('limit') limit?: number,
+  ) {
+    return this.productsService.getCompetitors(req.user.sub, id, limit);
+  }
 }

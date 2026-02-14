@@ -8,6 +8,9 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata: Metadata = {
   title: 'Vendata - Gestao para Vendedores do Mercado Livre',
   description: 'Plataforma completa para gerenciar suas vendas no Mercado Livre',
+  icons: {
+    icon: '/img/vendata.jpeg',
+  },
 };
 
 export default function RootLayout({

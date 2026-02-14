@@ -199,6 +199,26 @@ export class MercadoLivreController {
   }
 
   // ============================================
+  // SHIPMENTS
+  // ============================================
+
+  @Get('shipments')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Listar shipments com status completo' })
+  @ApiQuery({ name: 'offset', required: false })
+  @ApiQuery({ name: 'limit', required: false })
+  @ApiQuery({ name: 'status', required: false, description: 'Status do shipment' })
+  async getShipments(
+    @Request() req: any,
+    @Query('offset') offset?: number,
+    @Query('limit') limit?: number,
+    @Query('status') status?: string,
+  ) {
+    return this.mlService.getAllAccountsShipments(req.user.sub, { offset, limit, status });
+  }
+
+  // ============================================
   // QUESTIONS
   // ============================================
 
@@ -537,12 +557,17 @@ export class MercadoLivreController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Listar campanhas de um anunciante' })
   @ApiQuery({ name: 'accountId', required: false })
+  @ApiQuery({ name: 'dateFrom', required: false, description: 'Data inicial (YYYY-MM-DD)' })
+  @ApiQuery({ name: 'dateTo', required: false, description: 'Data final (YYYY-MM-DD)' })
   async getCampaigns(
     @Request() req: any,
     @Param('advertiserId') advertiserId: string,
     @Query('accountId') accountId?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
   ) {
-    return this.mlService.getCampaigns(req.user.sub, advertiserId, accountId);
+    console.log(`[Controller] getCampaigns - advertiserId: ${advertiserId}, dateFrom: ${dateFrom}, dateTo: ${dateTo}`);
+    return this.mlService.getCampaigns(req.user.sub, advertiserId, accountId, dateFrom, dateTo);
   }
 
   @Get('advertising/:advertiserId/campaigns/:campaignId/metrics')

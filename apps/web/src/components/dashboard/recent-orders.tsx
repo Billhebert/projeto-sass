@@ -21,11 +21,30 @@ const statusLabels: Record<string, string> = {
   delivered: 'Entregue',
 };
 
-export function RecentOrders() {
+interface RecentOrdersProps {
+  dateRange?: string;
+}
+
+export function RecentOrders({ dateRange = '30' }: RecentOrdersProps) {
+  const getDateFrom = (days: string) => {
+    if (days === 'all') return null;
+    const date = new Date();
+    date.setDate(date.getDate() - parseInt(days));
+    return date.toISOString();
+  };
+
   const { data, isLoading } = useQuery({
-    queryKey: ['recent-orders'],
+    queryKey: ['recent-orders', dateRange],
     queryFn: async () => {
-      const response = await api.get('/api/v1/dashboard/recent-orders');
+      const params: any = {};
+      
+      const dateFrom = getDateFrom(dateRange);
+      if (dateFrom) {
+        params.date_from = dateFrom;
+        params.date_to = new Date().toISOString();
+      }
+      
+      const response = await api.get('/api/v1/dashboard/recent-orders', { params });
       return response.data;
     },
   });

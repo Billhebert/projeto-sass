@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Image from 'next/image';
 
 export default function AuthLayout({
   children,
@@ -12,7 +13,14 @@ export default function AuthLayout({
         <div className="w-full max-w-md space-y-8">
           <div className="flex items-center gap-2 mb-8">
             <Link href="/" className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-lg bg-ml-yellow" />
+              <div className="relative h-8 w-8 rounded-lg overflow-hidden">
+                <Image 
+                  src="/img/vendata.jpeg" 
+                  alt="Vendata Logo" 
+                  fill
+                  className="object-cover"
+                />
+              </div>
               <span className="text-xl font-bold">Vendata</span>
             </Link>
           </div>
@@ -23,7 +31,14 @@ export default function AuthLayout({
       {/* Right Side - Branding */}
       <div className="hidden lg:flex flex-col items-center justify-center bg-gradient-to-br from-ml-blue to-blue-700 text-white p-8">
         <div className="max-w-md text-center space-y-6">
-          <div className="h-24 w-24 rounded-2xl bg-ml-yellow mx-auto" />
+          <div className="relative h-24 w-24 rounded-2xl overflow-hidden mx-auto shadow-2xl">
+            <Image 
+              src="/img/vendata.jpeg" 
+              alt="Vendata Logo" 
+              fill
+              className="object-cover"
+            />
+          </div>
           <h2 className="text-3xl font-bold">
             Gerencie suas vendas no Mercado Livre
           </h2>

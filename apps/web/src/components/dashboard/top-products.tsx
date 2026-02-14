@@ -4,12 +4,32 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import Image from 'next/image';
+import { Badge } from '@/components/ui/badge';
 
-export function TopProducts() {
+interface TopProductsProps {
+  dateRange?: string;
+}
+
+export function TopProducts({ dateRange = '30' }: TopProductsProps) {
+  const getDateFrom = (days: string) => {
+    if (days === 'all') return null;
+    const date = new Date();
+    date.setDate(date.getDate() - parseInt(days));
+    return date.toISOString();
+  };
+
   const { data, isLoading } = useQuery({
-    queryKey: ['top-products'],
+    queryKey: ['top-products', dateRange],
     queryFn: async () => {
-      const response = await api.get('/api/v1/dashboard/top-products');
+      const params: any = {};
+      
+      const dateFrom = getDateFrom(dateRange);
+      if (dateFrom) {
+        params.date_from = dateFrom;
+        params.date_to = new Date().toISOString();
+      }
+      
+      const response = await api.get('/api/v1/dashboard/top-products', { params });
       return response.data;
     },
   });
@@ -93,7 +113,26 @@ export function TopProducts() {
           </div>
           <div className="flex-1 min-w-0">
             <p className="truncate font-medium text-sm">{product.title}</p>
-            <p className="text-xs text-muted-foreground">
+            <div className="flex items-center gap-2 mt-1">
+              {product.hasDiscount ? (
+                <>
+                  <span className="text-xs text-muted-foreground line-through">
+                    {formatCurrency(product.originalPrice)}
+                  </span>
+                  <span className="text-sm font-semibold text-ml-blue">
+                    {formatCurrency(product.price)}
+                  </span>
+                  <Badge className="h-4 px-1 text-[10px] bg-red-500 text-white">
+                    {product.discountPercentage}% OFF
+                  </Badge>
+                </>
+              ) : (
+                <span className="text-sm font-semibold text-ml-blue">
+                  {formatCurrency(product.price)}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
               {formatNumber(product.sold)} vendidos
             </p>
           </div>

@@ -16,8 +16,20 @@ export class Promotions {
   /**
    * Obtém promoções de um usuário
    */
-  async getUserPromotions(userId: number | string, appVersion: string = 'v2'): Promise<PromotionSearchResult> {
-    return this.mercadoLivre.get<PromotionSearchResult>(`/seller-promotions/users/${userId}?app_version=${appVersion}`);
+  async getUserPromotions(userId: number | string, options?: { limit?: number; offset?: number; searchAfter?: string }, appVersion: string = 'v2'): Promise<PromotionSearchResult> {
+    let url = `/seller-promotions/users/${userId}?app_version=${appVersion}`;
+    
+    if (options?.limit) {
+      url += `&limit=${options.limit}`;
+    }
+    if (options?.offset !== undefined) {
+      url += `&offset=${options.offset}`;
+    }
+    if (options?.searchAfter) {
+      url += `&search_after=${options.searchAfter}`;
+    }
+    
+    return this.mercadoLivre.get<PromotionSearchResult>(url);
   }
 
   /**

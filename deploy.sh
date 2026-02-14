@@ -39,39 +39,54 @@ cd $PROJECT_DIR
 
 # 1. Pull latest code
 log_info "Atualizando código do repositório..."
-git pull origin main
+git pull origin master
 
-# 2. Install dependencies
+# 2. Clean previous builds
+log_info "Limpando builds anteriores..."
+rm -rf apps/web/.next
+rm -rf apps/api/dist
+rm -rf node_modules/.cache
+
+# 3. Install dependencies
 log_info "Instalando dependências..."
 npm install
 
-# 3. Build API
+# 4. Build API
 log_info "Compilando API..."
 npm run build --workspace=apps/api
 
-# 4. Build Frontend
+# 5. Build Frontend
 log_info "Compilando Frontend..."
 npm run build --workspace=apps/web
 
-# 5. Run database migrations
-log_info "Executando migrações do banco de dados..."
-npm run prisma:migrate:deploy --workspace=apps/api
-
-# 6. Create logs directory
+# 7. Create logs directory
 log_info "Criando diretório de logs..."
 mkdir -p logs
 
-# 7. Restart applications with PM2
-log_info "Reiniciando aplicações com PM2..."
+# 8. Stop PM2 applications
+log_info "Parando aplicações antigas..."
+pm2 stop all || true
+
+# 9. Run database migrations
+log_info "Executando migrações do banco de dados..."
+npm run prisma:migrate:deploy --workspace=apps/api
+
+# 10. Restart applications with PM2 (force reload)
+log_info "Iniciando aplicações com PM2..."
 pm2 delete all || true
+sleep 2
 pm2 start ecosystem.config.json
 pm2 save
 
-# 8. Reload Nginx
+# 11. Wait for Next.js to be ready
+log_info "Aguardando Next.js iniciar..."
+sleep 5
+
+# 12. Reload Nginx
 log_info "Recarregando Nginx..."
 nginx -t && systemctl reload nginx
 
-# 9. Show status
+# 13. Show status
 log_info "Status das aplicações:"
 pm2 status
 

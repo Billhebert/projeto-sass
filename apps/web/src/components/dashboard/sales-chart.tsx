@@ -12,11 +12,30 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 
-export function SalesChart() {
+interface SalesChartProps {
+  dateRange?: string;
+}
+
+export function SalesChart({ dateRange = '30' }: SalesChartProps) {
+  const getDateFrom = (days: string) => {
+    if (days === 'all') return null;
+    const date = new Date();
+    date.setDate(date.getDate() - parseInt(days));
+    return date.toISOString();
+  };
+
   const { data, isLoading } = useQuery({
-    queryKey: ['sales-chart'],
+    queryKey: ['sales-chart', dateRange],
     queryFn: async () => {
-      const response = await api.get('/api/v1/dashboard/sales-chart');
+      const params: any = {};
+      
+      const dateFrom = getDateFrom(dateRange);
+      if (dateFrom) {
+        params.date_from = dateFrom;
+        params.date_to = new Date().toISOString();
+      }
+      
+      const response = await api.get('/api/v1/dashboard/sales-chart', { params });
       return response.data;
     },
   });

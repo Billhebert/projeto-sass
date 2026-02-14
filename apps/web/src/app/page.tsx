@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { ArrowRight, BarChart3, Package, Shield, Zap } from 'lucide-react';
 
@@ -9,7 +10,14 @@ export default function HomePage() {
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container flex h-16 items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-ml-yellow" />
+            <div className="relative h-8 w-8 rounded-lg overflow-hidden">
+              <Image 
+                src="/img/vendata.jpeg" 
+                alt="Vendata Logo" 
+                fill
+                className="object-cover"
+              />
+            </div>
             <span className="text-xl font-bold">Vendata</span>
           </div>
           <nav className="hidden md:flex items-center gap-6">
@@ -95,7 +103,14 @@ export default function HomePage() {
       <footer className="border-t py-12 mt-auto">
         <div className="container flex flex-col items-center justify-between gap-4 md:flex-row">
           <div className="flex items-center gap-2">
-            <div className="h-6 w-6 rounded bg-ml-yellow" />
+            <div className="relative h-6 w-6 rounded overflow-hidden">
+              <Image 
+                src="/img/vendata.jpeg" 
+                alt="Vendata Logo" 
+                fill
+                className="object-cover"
+              />
+            </div>
             <span className="font-semibold">Vendata</span>
           </div>
           <p className="text-sm text-muted-foreground">

@@ -69,6 +69,8 @@ export class Users {
       status?: string;
       tags?: string;
       catalogListing?: boolean;
+      offset?: number;
+      limit?: number;
     }
   ): Promise<UserItemsSearch> {
     const params = new URLSearchParams();
@@ -78,11 +80,25 @@ export class Users {
     if (filters?.status) params.append('status', filters.status);
     if (filters?.tags) params.append('tags', filters.tags);
     if (filters?.catalogListing !== undefined) params.append('catalog_listing', String(filters.catalogListing));
+    if (filters?.offset !== undefined) params.append('offset', String(filters.offset));
+    if (filters?.limit !== undefined) params.append('limit', String(filters.limit));
 
     const queryString = params.toString();
     const url = `/users/${userId}/items/search${queryString ? `?${queryString}` : ''}`;
 
-    return this.mercadoLivre.get<UserItemsSearch>(url);
+    console.log(`[SDK] Chamando: GET ${url}`);
+    console.log(`[SDK] Access Token: ${this.mercadoLivre.getAccessToken() ? `${this.mercadoLivre.getAccessToken()?.substring(0, 20)}...` : 'NONE'}`);
+
+    try {
+      const result = await this.mercadoLivre.get<UserItemsSearch>(url);
+      console.log(`[SDK] Sucesso: ${result.results?.length || 0} itens retornados`);
+      return result;
+    } catch (error: any) {
+      console.error(`[SDK] Erro ao buscar itens: ${error.message || error}`);
+      console.error(`[SDK] Status: ${error.status || error.statusCode || 'unknown'}`);
+      console.error(`[SDK] Response:`, error.response?.data || error);
+      throw error;
+    }
   }
 
   /**

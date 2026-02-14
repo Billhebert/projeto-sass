@@ -120,6 +120,7 @@ export class MercadoLivre {
       headers: {
         'Content-Type': 'application/json',
         'User-Agent': 'MercadoLivre-SDK/1.0',
+        'X-Format-New': 'true',
       },
     });
 

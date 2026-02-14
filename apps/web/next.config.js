@@ -10,7 +10,15 @@ const nextConfig = {
       },
       {
         protocol: 'https',
+        hostname: '*.mlstatic.com',
+      },
+      {
+        protocol: 'https',
         hostname: '*.mercadolibre.com',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.mercadolivre.com.br',
       },
     ],
   },

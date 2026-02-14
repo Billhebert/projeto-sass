@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth-store';
@@ -57,7 +58,14 @@ export function DashboardSidebar() {
     <aside className="hidden w-64 flex-col border-r bg-card lg:flex">
       {/* Logo */}
       <div className="flex h-16 items-center gap-2 border-b px-6">
-        <div className="h-8 w-8 rounded-lg bg-ml-yellow" style={{ backgroundImage: 'url(/img/vendata.jpeg)' }} />
+        <div className="relative h-8 w-8 rounded-lg overflow-hidden">
+          <Image 
+            src="/img/vendata.jpeg" 
+            alt="Vendata Logo" 
+            fill
+            className="object-cover"
+          />
+        </div>
         <span className="text-xl font-bold">Vendata</span>
       </div>
 

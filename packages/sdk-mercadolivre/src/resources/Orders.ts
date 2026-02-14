@@ -52,11 +52,17 @@ export class Orders {
   /**
    * Obtém pedidos de um vendedor
    */
-  async getBySeller(sellerId: number | string, options?: PaginationOptions): Promise<OrderSearchResult> {
+  async getBySeller(sellerId: number | string, options?: Record<string, any>): Promise<OrderSearchResult> {
     const params = new URLSearchParams({ seller: String(sellerId) });
     
-    if (options?.offset) params.append('offset', String(options.offset));
-    if (options?.limit) params.append('limit', String(options.limit));
+    // Adicionar todos os parâmetros de options
+    if (options) {
+      Object.entries(options).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          params.append(key, String(value));
+        }
+      });
+    }
 
     return this.mercadoLivre.get<OrderSearchResult>(`/orders/search?${params.toString()}`);
   }

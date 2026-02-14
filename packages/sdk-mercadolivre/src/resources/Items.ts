@@ -135,6 +135,16 @@ export class Items {
   }
 
   /**
+   * Obtém o preço de venda atual (promocional) de um item
+   */
+  async getSalePrice(itemId: string, context?: string): Promise<any> {
+    const url = context 
+      ? `/items/${itemId}/sale_price?context=${context}`
+      : `/items/${itemId}/sale_price`;
+    return this.mercadoLivre.get(url);
+  }
+
+  /**
    * Define preço de venda
    */
   async setSalePrice(itemId: string, price: number, context?: string): Promise<any> {
