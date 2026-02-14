@@ -28,9 +28,18 @@ export default function QuestionsPage() {
     queryKey: ['questions', { status: filter }],
     queryFn: async () => {
       const response = await api.get('/api/v1/mercadolivre/questions', {
-        params: { status: filter },
+        params: { status: filter, sort: 'date_desc' },
       });
-      return response.data;
+      
+      // Sort questions by date descending (most recent first)
+      const questions = response.data?.questions || [];
+      const sortedQuestions = questions.sort((a: any, b: any) => {
+        const dateA = new Date(a.date_created || a.created_date).getTime();
+        const dateB = new Date(b.date_created || b.created_date).getTime();
+        return dateB - dateA;
+      });
+      
+      return { questions: sortedQuestions };
     },
   });
 

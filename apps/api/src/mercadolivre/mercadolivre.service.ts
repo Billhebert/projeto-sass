@@ -2775,6 +2775,9 @@ export class MercadoLivreService {
   async getAllAccountsQuestions(userId: string, params: any = {}) {
     const accounts = await this.getUserAccounts(userId);
     const allQuestions: any[] = [];
+    
+    // Default sort to date_desc if not specified
+    const sort = params.sort || 'date_desc';
 
     for (const acc of accounts) {
       try {
@@ -2786,7 +2789,7 @@ export class MercadoLivreService {
         let hasMore = true;
         
         while (hasMore) {
-          const queryParams = { ...params, limit, offset };
+          const queryParams: any = { ...params, limit, offset, sort };
           const questions = await sdk.questions.getBySeller(acc.mlUserId, queryParams);
           
           if (questions.questions && questions.questions.length > 0) {

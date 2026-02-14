@@ -245,16 +245,23 @@ export class MercadoLivreController {
   @ApiOperation({ summary: 'Listar perguntas' })
   @ApiQuery({ name: 'accountId', required: false, description: 'ID da conta ML (se nao informado, usa todas as contas)' })
   @ApiQuery({ name: 'status', required: false })
+  @ApiQuery({ name: 'sort', required: false, description: 'Ordenação: date_desc, date_asc' })
   async getQuestions(
     @Request() req: any,
     @Query('accountId') accountId?: string,
     @Query('status') status?: string,
+    @Query('sort') sort?: string,
   ) {
+    const params: any = { status };
+    if (sort) {
+      params.sort = sort;
+    }
+    
     if (accountId) {
-      return this.mlService.getQuestions(req.user.sub, accountId, { status });
+      return this.mlService.getQuestions(req.user.sub, accountId, params);
     }
     // Return questions from all accounts
-    return this.mlService.getAllAccountsQuestions(req.user.sub, { status });
+    return this.mlService.getAllAccountsQuestions(req.user.sub, params);
   }
 
   @Post('questions/:questionId/answer')
