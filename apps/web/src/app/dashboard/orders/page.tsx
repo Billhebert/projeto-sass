@@ -70,7 +70,7 @@ export default function OrdersPage() {
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: ['orders', { status, dateRange, currentPage, itemsPerPage }],
+    queryKey: ['orders', { status, dateRange, currentPage, itemsPerPage, sortBy, sortOrder }],
     queryFn: async () => {
       const params: any = {};
       
@@ -87,6 +87,16 @@ export default function OrdersPage() {
       // Use order.status for ML API
       if (status && status !== 'all') {
         params.status = status;
+      }
+      
+      // Add sort parameter for ML API - ALWAYS send sort
+      console.log('[Frontend Orders] sortBy:', sortBy, 'sortOrder:', sortOrder);
+      if (sortBy === 'date') {
+        params.sort = sortOrder === 'desc' ? 'date_desc' : 'date_asc';
+      } else if (sortBy === 'amount') {
+        params.sort = sortOrder === 'desc' ? 'amount_desc' : 'amount_asc';
+      } else {
+        params.sort = 'date_desc'; // Default sort
       }
       
       console.log('[Frontend Orders] Request params:', params);

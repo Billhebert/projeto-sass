@@ -2297,6 +2297,11 @@ export class MercadoLivreService {
     const hasDateFrom = params.date_from !== undefined;
     const hasLimit = params.limit !== undefined;
     
+    // Default sort to date_desc if not specified
+    const sort = params.sort || 'date_desc';
+    
+    console.log('[getAllAccountsOrders] Received params:', JSON.stringify(params), 'Using sort:', sort);
+    
     if (hasDateFrom && hasLimit) {
       // Busca rápida com filtro de data (para paginação)
       // A API do ML só aceita max 50 por requisição
@@ -2306,7 +2311,7 @@ export class MercadoLivreService {
       const dateFrom = params.date_from ? `${params.date_from}T00:00:00.000-00:00` : undefined;
       const dateTo = params.date_to ? `${params.date_to}T23:59:59.999-00:00` : undefined;
       
-      console.log(`[getAllAccountsOrders] Paginated query: limit=${requestedLimit}, offset=${requestedOffset}, dateFrom=${dateFrom}, dateTo=${dateTo}, sort=${params.sort}`);
+      console.log(`[getAllAccountsOrders] Paginated query: limit=${requestedLimit}, offset=${requestedOffset}, dateFrom=${dateFrom}, dateTo=${dateTo}, sort=${sort}`);
       
       let totalFromAllAccounts = 0;
       
@@ -2322,8 +2327,8 @@ export class MercadoLivreService {
           };
           countParams['order.date_created.from'] = dateFrom;
           countParams['order.date_created.to'] = dateTo;
-          if (params.sort) {
-            countParams.sort = params.sort;
+          if (sort) {
+            countParams.sort = sort;
           }
           
           if (params.status) {
@@ -2365,8 +2370,8 @@ export class MercadoLivreService {
           if (dateTo) {
             countParams['order.date_created.to'] = dateTo;
           }
-          if (params.sort) {
-            countParams.sort = params.sort;
+          if (sort) {
+            countParams.sort = sort;
           }
           if (params.status) {
             countParams['order.status'] = params.status;
@@ -2401,8 +2406,8 @@ export class MercadoLivreService {
             };
             queryParams['order.date_created.from'] = dateFrom;
             queryParams['order.date_created.to'] = dateTo;
-            if (params.sort) {
-              queryParams.sort = params.sort;
+            if (sort) {
+              queryParams.sort = sort;
             }
             
             if (params.status) {
@@ -2523,11 +2528,11 @@ export class MercadoLivreService {
         queryParams['order.date_created.from'] = queryDateFrom;
         queryParams['order.date_created.to'] = queryDateTo;
       }
-      if (params.sort) {
-        queryParams.sort = params.sort;
+      if (sort) {
+        queryParams.sort = sort;
       }
       
-      console.log(`[getAllAccountsOrders] Paginated: limit=${limit}, offset=${offset}, dateFrom=${queryDateFrom}, dateTo=${queryDateTo}, sort=${params.sort}`);
+      console.log(`[getAllAccountsOrders] Paginated: limit=${limit}, offset=${offset}, dateFrom=${queryDateFrom}, dateTo=${queryDateTo}, sort=${sort}`);
       
       let lastPaging: any = { total: 0, limit, offset };
       

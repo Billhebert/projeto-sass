@@ -166,17 +166,34 @@ export class MercadoLivreController {
   @ApiQuery({ name: 'offset', required: false })
   @ApiQuery({ name: 'limit', required: false })
   @ApiQuery({ name: 'status', required: false })
+  @ApiQuery({ name: 'date_from', required: false })
+  @ApiQuery({ name: 'date_to', required: false })
+  @ApiQuery({ name: 'sort', required: false, description: 'Ordenação: date_desc, date_asc, amount_desc, amount_asc' })
   async getOrders(
     @Request() req: any,
     @Query('accountId') accountId?: string,
     @Query('offset') offset?: number,
     @Query('limit') limit?: number,
     @Query('status') status?: string,
+    @Query('date_from') dateFrom?: string,
+    @Query('date_to') dateTo?: string,
+    @Query('sort') sort?: string,
   ) {
     const params: any = { offset, limit };
     if (status) {
       params['order.status'] = status;
     }
+    if (dateFrom) {
+      params.date_from = dateFrom;
+    }
+    if (dateTo) {
+      params.date_to = dateTo;
+    }
+    if (sort) {
+      params.sort = sort;
+    }
+
+    console.log('[Orders Controller] Received sort:', sort, 'Full params:', params);
 
     if (accountId) {
       return this.mlService.getOrders(req.user.sub, accountId, params);
